@@ -21,7 +21,7 @@
   </header>
 
   <section class="text-white py-20 text-center bg-cover bg-center bg-no-repeat bg-blend-overlay"
-         style="background-image: linear-gradient(to right, rgba(37, 99, 235, 0.85), rgba(13, 148, 136, 0.85)), url('images/graduation_image.png');">
+           style="background-image: linear-gradient(to right, rgba(37, 99, 235, 0.85), rgba(13, 148, 136, 0.85)), url('images/graduation_image.png');">
     <div class="container mx-auto px-4">
       <h2 class="text-4xl font-bold mb-4">Cross Cultural Academic Transition</h2>
       <p class="text-lg mb-6">Navigate different educational systems worldwide with confidence. Get personalized guidance for your academic transition.</p>
@@ -30,71 +30,73 @@
         <button class="border border-white px-6 py-2 rounded font-semibold hover:bg-white hover:text-blue-700">Browse Resources</button>
       </div>
     </div>
-</section>
-
-  
+  </section>
 
   <main class="container mx-auto px-6 py-12">
     <section id="compare" class="mb-16">
       <h3 class="text-2xl font-semibold mb-4 text-center">Compare Education Systems</h3>
       <p class="text-gray-600 mb-6 text-center">Understand how different educational systems compare and what to expect when transitioning between them.</p>
-      <div class="bg-gray-100 shadow rounded-lg p-6">
-        <p><strong>Fake Data Example:</strong></p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <div>
-            <h4 class="font-bold text-blue-700">United States</h4>
-            <ul class="list-disc ml-5">
-              <li>Bachelor's Degree (4 years)</li>
-              <li>Master's Degree (1-2 years)</li>
-              <li>Ph.D. (4-7 years)</li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-bold text-teal-600">Germany</h4>
-            <ul class="list-disc ml-5">
-              <li>Bachelor's Degree (3-4 years)</li>
-              <li>Master's Degree (1-2 years)</li>
-              <li>Ph.D. (3-5 years)</li>
-            </ul>
-          </div>
-        </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <div>
-          <h4 class="font-bold text-blue-700">United Kingdom</h4>
-          <ul class="list-disc ml-5">
-            <li>Bachelor's Degree (3 years (4 in Scotland))</li>
-            <li>Master's Degree (1 year)</li>
-            <li>Ph.D. (4-7 years)</li>
-          </ul>
-        </div>
-        <div>
-          <h4 class="font-bold text-teal-600">China</h4>
-          <ul class="list-disc ml-5">
-            <li>Bachelor's Degree (4 years)</li>
-            <li>Master's Degree (2-3 years)</li>
-            <li>Ph.D. (3-5 years)</li>
-          </ul>
-        </div>
+      <div id="education-data" class="bg-gray-100 shadow rounded-lg p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- JSON data will be injected here by JS -->
       </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-      <div>
-        <h4 class="font-bold text-blue-700">Israel</h4>
-        <ul class="list-disc ml-5">
-          <li>Bachelor's Degree (3-4 years)</li>
-          <li>Master's Degree (2 years)</li>
-          <li>Ph.D. (4-7 years)</li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="font-bold text-teal-600">Italy</h4>
-        <ul class="list-disc ml-5">
-          <li>Bachelor's Degree (3 years)</li>
-          <li>Master's Degree (2 years)</li>
-          <li>Ph.D. (1-5 years)</li>
-        </ul>
-      </div>
-    </div>
-  </div>
     </section>
+  </main>
+  
+  <section id="resources" class="bg-gray-50 py-16">
+    <div class="text-center mb-10">
+      <h2 class="text-3xl font-bold">Essential Academic Transition Resources</h2>
+      <p class="text-gray-600 mt-2">Curated guides and tools to help you succeed in your new academic environment.</p>
+    </div>
+    <div id="resource-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6 px-4 md:px-0">
+      <!-- Cards will load here -->
+    </div>
+  </section>
+  
+
+  <script>
+    fetch('src/education_systems.json')
+      .then(response => response.json())
+      .then(data => {
+        const container = document.getElementById('education-data');
+        let html = '';
+
+        data.forEach((system, index) => {
+          const color = index % 2 === 0 ? 'text-blue-700' : 'text-teal-600';
+          html += `
+            <div class="mb-6">
+              <h4 class="font-bold ${color} text-lg mb-2">${system.country}</h4>
+              <ul class="list-disc ml-5 text-gray-700">
+                ${system.degrees.map(degree => `<li>${degree}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+      })
+      .catch(error => {
+        console.error('Error loading JSON data:', error);
+        document.getElementById('education-data').innerHTML = '<p class="text-red-500">Failed to load education system data.</p>';
+      });
+
+      fetch('src/resources.json')
+  .then(res => res.json())
+  .then(resources => {
+    const resourceContainer = document.getElementById("resource-cards");
+    resources.forEach(res => {
+      const card = document.createElement("div");
+      card.className = "bg-white rounded-xl shadow p-4 flex flex-col";
+      card.innerHTML = `
+        <img src="${res.img}" alt="${res.title}" class="rounded-md mb-5 w-85 h-85 object-cover">
+        <h3 class="font-bold text-lg mb-2">${res.title}</h3>
+        <p class="text-sm text-gray-600 flex-grow">${res.desc}</p>
+        <a href="${res.link}" class="mt-4 inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center">View Guide</a>
+      `;
+      resourceContainer.appendChild(card);
+    });
+  })
+  .catch(err => console.error('Failed to load resources:', err));
+
+  </script>
 </body>
 </html>

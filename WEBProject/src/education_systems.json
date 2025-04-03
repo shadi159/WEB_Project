@@ -1,0 +1,51 @@
+[
+    {
+      "country": "United States",
+      "degrees": [
+        "Bachelor's Degree (4 years)",
+        "Master's Degree (1-2 years)",
+        "Ph.D. (4-7 years)"
+      ]
+    },
+    {
+      "country": "Germany",
+      "degrees": [
+        "Bachelor's Degree (3-4 years)",
+        "Master's Degree (1-2 years)",
+        "Ph.D. (3-5 years)"
+      ]
+    },
+    {
+      "country": "United Kingdom",
+      "degrees": [
+        "Bachelor's Degree (3 years (4 in Scotland))",
+        "Master's Degree (1 year)",
+        "Ph.D. (4-7 years)"
+      ]
+    },
+    {
+      "country": "China",
+      "degrees": [
+        "Bachelor's Degree (4 years)",
+        "Master's Degree (2-3 years)",
+        "Ph.D. (3-5 years)"
+      ]
+    },
+    {
+      "country": "Israel",
+      "degrees": [
+        "Bachelor's Degree (3-4 years)",
+        "Master's Degree (2 years)",
+        "Ph.D. (4-7 years)"
+      ]
+    },
+    {
+      "country": "Italy",
+      "degrees": [
+        "Bachelor's Degree (3 years)",
+        "Master's Degree (2 years)",
+        "Ph.D. (1-5 years)"
+      ]
+    }
+  ]
+  
