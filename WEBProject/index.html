@@ -31,17 +31,42 @@
       </div>
     </div>
   </section>
-
+<section id="stories" class="bg-gray-100 py-16">
+      <div class="container mx-auto">
+        <div class="text-center mb-10">
+          <h2 class="text-3xl font-bold">Real Stories from Global Students</h2>
+          <p class="text-gray-600">Hear firsthand accounts of students who have successfully navigated the transition between different academic systems.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-white rounded-xl shadow p-6">
+            <h3 class="font-bold text-lg">Alice from France</h3>
+            <p class="text-sm text-gray-600">"Adapting to the U.S. education system was challenging, but tools like EduBridge made it easier to understand the differences in academic expectations."</p>
+          </div>
+          <div class="bg-white rounded-xl shadow p-6">
+            <h3 class="font-bold text-lg">John from Kenya</h3>
+            <p class="text-sm text-gray-600">"The grading systems were completely different from what I was used to back home. EduBridge helped me prepare for what was to come."</p>
+          </div>
+          <div class="bg-white rounded-xl shadow p-6">
+            <h3 class="font-bold text-lg">Ling from China</h3>
+            <p class="text-sm text-gray-600">"Understanding the nuances of academic writing in the UK versus China was tough. I appreciated the resource guides provided here."</p>
+          </div>
+        </div>
+      </div>
+    </section>
   <main class="container mx-auto px-6 py-12">
     <section id="compare" class="mb-16">
+      <div class="text-center mb-10">
+
+      </div>
       <h3 class="text-2xl font-semibold mb-4 text-center">Compare Education Systems</h3>
       <p class="text-gray-600 mb-6 text-center">Understand how different educational systems compare and what to expect when transitioning between them.</p>
       <div id="education-data" class="bg-gray-100 shadow rounded-lg p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- JSON data will be injected here by JS -->
       </div>
     </section>
+
   </main>
-  
+
   <section id="resources" class="bg-gray-50 py-16">
     <div class="text-center mb-10">
       <h2 class="text-3xl font-bold">Essential Academic Transition Resources</h2>
@@ -51,7 +76,6 @@
       <!-- Cards will load here -->
     </div>
   </section>
-  
 
   <script>
     fetch('src/education_systems.json')
