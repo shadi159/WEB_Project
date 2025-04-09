@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - EduBridge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <a href="profile.html" class="text-2xl font-bold text-blue-800">Edu<span class="text-teal-500">Bridge</span></a>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <a href="signin.html" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Sign Out</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex">
+        <!-- Sidebar Menu -->
+        <div class="w-64 bg-white shadow-lg h-screen">
+            <div class="p-4">
+                <div class="flex items-center space-x-4 mb-8">
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span class="text-blue-600 font-bold text-xl" id="userInitials">JD</span>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-900" id="userName">John Doe</h3>
+                        <p class="text-sm text-gray-500" id="userEmail">john@example.com</p>
+                    </div>
+                </div>
+                <nav class="space-y-2">
+                    <a href="profile.html" class="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>Profile</span>
+                    </a>
+                    <a href="settings.html" class="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>Settings</span>
+                    </a>
+                    <a href="about.html" class="flex items-center space-x-2 px-4 py-2 text-gray-700 bg-blue-50 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>About Us</span>
+                    </a>
+                    <a href="contact.html" class="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span>Contact</span>
+                    </a>
+                    <a href="signin.html" class="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>Sign Out</span>
+                    </a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 p-8">
+            <div class="max-w-4xl mx-auto">
+                <!-- Project Overview -->
+                <div class="bg-white shadow rounded-lg p-8 mb-8">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">About EduBridge</h1>
+                    <p class="text-gray-600 mb-6">
+                        EduBridge is an innovative educational platform designed to bridge the gap between students and educational resources. 
+                        Our mission is to provide a comprehensive learning environment that caters to diverse educational needs and learning styles.
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-blue-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-blue-800 mb-2">Our Vision</h3>
+                            <p class="text-gray-600">
+                                To create a world where education is accessible, engaging, and personalized for every learner.
+                            </p>
+                        </div>
+                        <div class="bg-teal-50 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-teal-800 mb-2">Our Mission</h3>
+                            <p class="text-gray-600">
+                                To empower students with the tools and resources they need to succeed in their educational journey.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Team Section -->
+                <div class="bg-white shadow rounded-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Our Team</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Team Member 1 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">SA</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Shadi Alkeesh</h3>
+                            <p class="text-gray-600">Project Lead</p>
+                        </div>
+
+                        <!-- Team Member 2 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">LA</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Lama Abu Abla</h3>
+                            <p class="text-gray-600">UI/UX Designer</p>
+                        </div>
+
+                        <!-- Team Member 3 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">AH</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Ayman Haj</h3>
+                            <p class="text-gray-600">Backend Developer</p>
+                        </div>
+
+                        <!-- Team Member 4 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">MO</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Michel Obed</h3>
+                            <p class="text-gray-600">Frontend Developer</p>
+                        </div>
+
+                        <!-- Team Member 5 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">S</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Sherbil</h3>
+                            <p class="text-gray-600">Content Manager</p>
+                        </div>
+
+                        <!-- Team Member 6 -->
+                        <div class="bg-gray-50 p-6 rounded-lg text-center">
+                            <div class="w-24 h-24 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                                <span class="text-blue-600 font-bold text-2xl">L</span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900">Loai</h3>
+                            <p class="text-gray-600">Quality Assurance</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/profile.js"></script>
+</body>
+</html> 
