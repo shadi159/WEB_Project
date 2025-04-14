@@ -1,916 +1,501 @@
-// API endpoints
-const COUNTRIES_API = 'https://restcountries.com/v3.1/all';
-const UNIVERSITIES_API = 'http://universities.hipolabs.com/search';
-const CITIES_API = 'https://countriesnow.space/api/v0.1/countries';
-const WEATHER_API = 'https://api.openweathermap.org/data/2.5/weather';
-const FOURSQUARE_API = 'https://api.foursquare.com/v3/places/search';
-const APARTMENTS_API = 'https://api.rentcast.io/v1/listings';
-
-// API endpoints for fake data
-const USERS_API = 'https://jsonplaceholder.typicode.com/users';
-const POSTS_API = 'https://jsonplaceholder.typicode.com/posts';
-const COMMENTS_API = 'https://jsonplaceholder.typicode.com/comments';
-const PHOTOS_API = 'https://jsonplaceholder.typicode.com/photos';
-
-// Mock data for all locations
-const MOCK_DATA = {
-    'Israel': {
-        'Jerusalem': {
-            universities: [
-                {
-                    name: 'Hebrew University of Jerusalem',
-                    web_pages: ['https://www.huji.ac.il/'],
-                    programs: ['Computer Science', 'Data Science', 'Software Engineering', 'Artificial Intelligence', 'Business Administration', 'Medicine'],
-                    rating: 4.8,
-                    tuition: '$15,000/year',
-                    housing: ['Student Dorms', 'Off-campus Housing', 'International Student Housing'],
-                    restaurants: ['University Cafeteria', 'Kosher Dining Hall', 'Student Center Cafe']
-                },
-                {
-                    name: 'Jerusalem College of Technology',
-                    web_pages: ['https://www.jct.ac.il/'],
-                    programs: ['Computer Science', 'Software Engineering', 'Business Administration', 'Engineering'],
-                    rating: 4.6,
-                    tuition: '$12,000/year',
-                    housing: ['JCT Dorms', 'Student Apartments', 'Family Housing'],
-                    restaurants: ['Campus Dining', 'Tech Cafe', 'Student Lounge']
-                }
-            ],
-            apartments: [
-                {
-                    name: 'Student Heights Apartments',
-                    price: '$800/month',
-                    distance: '0.3 miles from Hebrew University',
-                    amenities: ['Furnished', 'Wi-Fi', 'Security', 'Study Rooms'],
-                    rating: 4.5
-                },
-                {
-                    name: 'University View Residences',
-                    price: '$900/month',
-                    distance: '0.2 miles from campus',
-                    amenities: ['Air Conditioning', 'Laundry', 'Parking', 'Gym'],
-                    rating: 4.6
-                },
-                {
-                    name: 'City Center Student Living',
-                    price: '$750/month',
-                    distance: '0.5 miles from university',
-                    amenities: ['Balcony', 'Kitchen', 'Common Room', 'Bike Storage'],
-                    rating: 4.3
-                }
-            ],
-            attractions: [
-                {
-                    name: 'Old City',
-                    type: 'Historical',
-                    description: 'Historic walled area of Jerusalem with religious and cultural sites',
-                    distance: '2.0 km from Hebrew University'
-                },
-                {
-                    name: 'Mahane Yehuda Market',
-                    type: 'Cultural',
-                    description: 'Famous market with local food and culture',
-                    distance: '1.5 km from city center'
-                },
-                {
-                    name: 'Jerusalem Tech Hub',
-                    type: 'Professional',
-                    description: 'Modern technology center and startup ecosystem',
-                    distance: '0.8 km from university'
-                },
-                {
-                    name: 'Israel Museum',
-                    type: 'Cultural',
-                    description: 'National museum with art and archaeological collections',
-                    distance: '1.2 km from campus'
-                }
-            ]
-        }
-    }
-};
-
-// Cache for API responses
-const cache = {
-    countries: null,
-    universities: {},
-    cities: {}
-};
-
-// Mock weather data
-const MOCK_WEATHER = {
-    'New York': { temp: 20, description: 'Sunny', humidity: 65, wind: 5 },
-    'London': { temp: 15, description: 'Cloudy', humidity: 75, wind: 8 },
-    'Toronto': { temp: 10, description: 'Partly Cloudy', humidity: 60, wind: 6 },
-    'Sydney': { temp: 25, description: 'Clear', humidity: 55, wind: 4 },
-    'Berlin': { temp: 18, description: 'Sunny', humidity: 70, wind: 7 },
-    'Paris': { temp: 17, description: 'Partly Cloudy', humidity: 68, wind: 6 },
-    'Rome': { temp: 22, description: 'Sunny', humidity: 62, wind: 5 },
-    'Madrid': { temp: 24, description: 'Clear', humidity: 58, wind: 4 },
-    'Tokyo': { temp: 19, description: 'Cloudy', humidity: 72, wind: 7 },
-    'Seoul': { temp: 16, description: 'Partly Cloudy', humidity: 65, wind: 6 }
-};
-
-// Mock university data by country
-const MOCK_UNIVERSITIES = {
-    'US': [
-        {
-            name: 'Massachusetts Institute of Technology',
-            web_pages: ['http://web.mit.edu/'],
-            domains: ['mit.edu'],
-            country: 'United States'
-        },
-        {
-            name: 'Stanford University',
-            web_pages: ['http://www.stanford.edu/'],
-            domains: ['stanford.edu'],
-            country: 'United States'
-        },
-        {
-            name: 'Harvard University',
-            web_pages: ['http://www.harvard.edu/'],
-            domains: ['harvard.edu'],
-            country: 'United States'
-        }
-    ],
-    'GB': [
-        {
-            name: 'University of Oxford',
-            web_pages: ['http://www.ox.ac.uk/'],
-            domains: ['ox.ac.uk'],
-            country: 'United Kingdom'
-        },
-        {
-            name: 'University of Cambridge',
-            web_pages: ['http://www.cam.ac.uk/'],
-            domains: ['cam.ac.uk'],
-            country: 'United Kingdom'
-        },
-        {
-            name: 'Imperial College London',
-            web_pages: ['http://www.imperial.ac.uk/'],
-            domains: ['imperial.ac.uk'],
-            country: 'United Kingdom'
-        }
-    ],
-    'CA': [
-        {
-            name: 'University of Toronto',
-            web_pages: ['http://www.utoronto.ca/'],
-            domains: ['utoronto.ca'],
-            country: 'Canada'
-        },
-        {
-            name: 'University of British Columbia',
-            web_pages: ['http://www.ubc.ca/'],
-            domains: ['ubc.ca'],
-            country: 'Canada'
-        },
-        {
-            name: 'McGill University',
-            web_pages: ['http://www.mcgill.ca/'],
-            domains: ['mcgill.ca'],
-            country: 'Canada'
-        }
-    ],
-    'AU': [
-        {
-            name: 'University of Melbourne',
-            web_pages: ['http://www.unimelb.edu.au/'],
-            domains: ['unimelb.edu.au'],
-            country: 'Australia'
-        },
-        {
-            name: 'University of Sydney',
-            web_pages: ['http://www.sydney.edu.au/'],
-            domains: ['sydney.edu.au'],
-            country: 'Australia'
-        },
-        {
-            name: 'Australian National University',
-            web_pages: ['http://www.anu.edu.au/'],
-            domains: ['anu.edu.au'],
-            country: 'Australia'
-        }
-    ],
-    'FR': [
-        {
-            name: 'Sorbonne University',
-            web_pages: ['http://www.sorbonne-universite.fr/'],
-            domains: ['sorbonne-universite.fr'],
-            country: 'France'
-        },
-        {
-            name: 'École Polytechnique',
-            web_pages: ['http://www.polytechnique.edu/'],
-            domains: ['polytechnique.edu'],
-            country: 'France'
-        },
-        {
-            name: 'Paris Sciences et Lettres',
-            web_pages: ['http://www.psl.eu/'],
-            domains: ['psl.eu'],
-            country: 'France'
-        }
-    ],
-    'IT': [
-        {
-            name: 'University of Bologna',
-            web_pages: ['http://www.unibo.it/'],
-            domains: ['unibo.it'],
-            country: 'Italy'
-        },
-        {
-            name: 'Sapienza University of Rome',
-            web_pages: ['http://www.uniroma1.it/'],
-            domains: ['uniroma1.it'],
-            country: 'Italy'
-        },
-        {
-            name: 'Politecnico di Milano',
-            web_pages: ['http://www.polimi.it/'],
-            domains: ['polimi.it'],
-            country: 'Italy'
-        }
-    ],
-    'ES': [
-        {
-            name: 'University of Barcelona',
-            web_pages: ['http://www.ub.edu/'],
-            domains: ['ub.edu'],
-            country: 'Spain'
-        },
-        {
-            name: 'Complutense University of Madrid',
-            web_pages: ['http://www.ucm.es/'],
-            domains: ['ucm.es'],
-            country: 'Spain'
-        },
-        {
-            name: 'University of Valencia',
-            web_pages: ['http://www.uv.es/'],
-            domains: ['uv.es'],
-            country: 'Spain'
-        }
-    ],
-    'JP': [
-        {
-            name: 'University of Tokyo',
-            web_pages: ['http://www.u-tokyo.ac.jp/'],
-            domains: ['u-tokyo.ac.jp'],
-            country: 'Japan'
-        },
-        {
-            name: 'Kyoto University',
-            web_pages: ['http://www.kyoto-u.ac.jp/'],
-            domains: ['kyoto-u.ac.jp'],
-            country: 'Japan'
-        },
-        {
-            name: 'Osaka University',
-            web_pages: ['http://www.osaka-u.ac.jp/'],
-            domains: ['osaka-u.ac.jp'],
-            country: 'Japan'
-        }
-    ],
-    'KR': [
-        {
-            name: 'Seoul National University',
-            web_pages: ['http://www.snu.ac.kr/'],
-            domains: ['snu.ac.kr'],
-            country: 'South Korea'
-        },
-        {
-            name: 'Korea Advanced Institute of Science and Technology',
-            web_pages: ['http://www.kaist.ac.kr/'],
-            domains: ['kaist.ac.kr'],
-            country: 'South Korea'
-        },
-        {
-            name: 'Yonsei University',
-            web_pages: ['http://www.yonsei.ac.kr/'],
-            domains: ['yonsei.ac.kr'],
-            country: 'South Korea'
-        }
-    ]
-};
-
-// Predefined country data (needed for proper country code mapping)
+// Mock data for countries
 const COUNTRIES = [
     { code: 'US', name: 'United States' },
-    { code: 'GB', name: 'United Kingdom' },
+    { code: 'UK', name: 'United Kingdom' },
     { code: 'CA', name: 'Canada' },
     { code: 'AU', name: 'Australia' },
     { code: 'DE', name: 'Germany' },
     { code: 'FR', name: 'France' },
-    { code: 'IT', name: 'Italy' },
-    { code: 'ES', name: 'Spain' },
     { code: 'JP', name: 'Japan' },
-    { code: 'KR', name: 'South Korea' }
+    { code: 'IL', name: 'Israel' }
 ];
 
-// Fetch countries data
-async function fetchCountries() {
-    if (cache.countries) return cache.countries;
-    
-    try {
-        const response = await fetch(COUNTRIES_API);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+// Mock data for programs
+const PROGRAMS = [
+    { id: 'cs', name: 'Computer Science' },
+    { id: 'eng', name: 'Engineering' },
+    { id: 'bus', name: 'Business Administration' },
+    { id: 'med', name: 'Medicine' },
+    { id: 'law', name: 'Law' },
+    { id: 'art', name: 'Arts & Humanities' }
+];
+
+// Mock data for cities by country
+const CITIES = {
+    'US': ['New York', 'Los Angeles', 'Chicago', 'Boston', 'San Francisco'],
+    'UK': ['London', 'Manchester', 'Edinburgh', 'Oxford', 'Cambridge'],
+    'CA': ['Toronto', 'Vancouver', 'Montreal', 'Ottawa', 'Calgary'],
+    'AU': ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide'],
+    'DE': ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Heidelberg'],
+    'FR': ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux'],
+    'JP': ['Tokyo', 'Osaka', 'Kyoto', 'Fukuoka', 'Sapporo'],
+    'IL': ['Jerusalem', 'Tel Aviv', 'Haifa', 'Beer Sheva', 'Herzliya', 'Karmiel']
+};
+
+// Mock data for universities
+const UNIVERSITIES = {
+    'US': [
+        {
+            name: 'MIT',
+            rating: 4.9,
+            programs: ['cs', 'eng'],
+            tuition: '$53,000/year',
+            location: 'Boston',
+            ranking: '#1 in Technology'
+        },
+        {
+            name: 'Harvard University',
+            rating: 4.9,
+            programs: ['bus', 'med', 'law'],
+            tuition: '$51,000/year',
+            location: 'Boston',
+            ranking: '#1 in Law & Medicine'
         }
-        const data = await response.json();
-        
-        // Transform the data to match our structure
-        cache.countries = data
-            .filter(country => country.name.common && country.cca2) // Filter out any invalid entries
-            .map(country => ({
-                code: country.cca2,
-                name: country.name.common
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically
-        
-        return cache.countries;
+    ],
+    'UK': [
+        {
+            name: 'University of Oxford',
+            rating: 4.8,
+            programs: ['cs', 'eng', 'med', 'law'],
+            tuition: '£39,000/year',
+            location: 'Oxford',
+            ranking: '#1 in UK'
+        },
+        {
+            name: 'Imperial College London',
+            rating: 4.7,
+            programs: ['cs', 'eng'],
+            tuition: '£38,000/year',
+            location: 'London',
+            ranking: '#1 in Engineering'
+        }
+    ],
+    'IL': [
+        {
+            name: 'Hebrew University of Jerusalem',
+            rating: 4.8,
+            programs: ['cs', 'med', 'law', 'art'],
+            tuition: '$15,000/year',
+            location: 'Jerusalem',
+            ranking: '#1 in Israel'
+        },
+        {
+            name: 'Tel Aviv University',
+            rating: 4.7,
+            programs: ['cs', 'eng', 'bus', 'art'],
+            tuition: '$14,000/year',
+            location: 'Tel Aviv',
+            ranking: '#2 in Israel'
+        },
+        {
+            name: 'Technion',
+            rating: 4.9,
+            programs: ['cs', 'eng'],
+            tuition: '$16,000/year',
+            location: 'Haifa',
+            ranking: '#1 in Technology'
+        },
+        {
+            name: 'Braude College of Engineering',
+            rating: 4.6,
+            programs: ['cs', 'eng'],
+            tuition: '$12,000/year',
+            location: 'Karmiel',
+            ranking: '#1 in Northern Israel Engineering'
+        }
+    ]
+};
+
+// Cache for API responses
+const cache = {
+    stories: null
+};
+
+// Student stories data
+const studentData = [
+    {
+        name: "Maria Rodriguez",
+        country: "Spain",
+        university: "University of Toronto",
+        program: "Computer Science",
+        image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop",
+        quote: "The transition from Spain to Canada was challenging, but the supportive community at UofT made it easier."
+    },
+    {
+        name: "Ahmed Hassan",
+        country: "Egypt",
+        university: "Technical University of Munich",
+        program: "Engineering",
+        image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
+        quote: "The German education system's focus on practical learning was exactly what I needed for my engineering career."
+    },
+    {
+        name: "Yuki Tanaka",
+        country: "Japan",
+        university: "University of Melbourne",
+        program: "Business Administration",
+        image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop",
+        quote: "Studying in Australia opened my eyes to different business perspectives and helped me build a global network."
+    },
+    {
+        name: "Sophie Dubois",
+        country: "France",
+        university: "University of Oxford",
+        program: "International Relations",
+        image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop",
+        quote: "The tutorial system at Oxford was different from anything I'd experienced in France, but it helped me develop critical thinking skills."
+    },
+    {
+        name: "Carlos Silva",
+        country: "Brazil",
+        university: "Harvard University",
+        program: "Medicine",
+        image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop",
+        quote: "The research opportunities at Harvard have been incredible. The transition was tough, but the support system here is amazing."
+    },
+    {
+        name: "Ling Wei",
+        country: "China",
+        university: "University of British Columbia",
+        program: "Environmental Science",
+        image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop",
+        quote: "UBC's focus on sustainability and environmental research perfectly aligned with my academic goals."
+    }
+];
+
+// Fetch student stories
+async function fetchStudentStories() {
+    if (cache.stories) return cache.stories;
+
+    try {
+        // Transform student data into stories with additional information
+        const stories = studentData.map(student => ({
+            ...student,
+            rating: (Math.random() * 1 + 4).toFixed(1),
+            duration: `${Math.floor(Math.random() * 2) + 1} years`,
+            achievements: [
+                "Academic Excellence Scholarship",
+                "Research Assistant Position",
+                "International Student Ambassador"
+            ][Math.floor(Math.random() * 3)]
+        }));
+
+        cache.stories = stories;
+        return stories;
     } catch (error) {
-        console.error('Error fetching countries:', error);
+        console.error('Error fetching student stories:', error);
         return [];
     }
 }
 
-// Fetch cities for a country
-async function fetchCities(countryName) {
-    if (cache.cities[countryName]) return cache.cities[countryName];
+// Display student stories
+async function displayStudentStories() {
+    const storiesContainer = document.getElementById('studentStories');
+    if (!storiesContainer) return;
 
     try {
-        // First try: Direct API call to REST Countries API for capital city
-        const restCountriesResponse = await fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}`);
-        if (restCountriesResponse.ok) {
-            const countryData = await restCountriesResponse.json();
-            if (countryData[0]) {
-                const cities = [];
-                
-                // Add capital cities
-                if (countryData[0].capital && countryData[0].capital.length > 0) {
-                    cities.push(...countryData[0].capital);
-                }
-                
-                // If it's a small territory or country with few cities, this might be enough
-                if (cities.length > 0) {
-                    cache.cities[countryName] = cities;
-                    return cities;
-                }
-            }
+        // Show loading state
+        storiesContainer.innerHTML = `
+            <div class="w-full text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+                <p class="text-gray-600">Loading inspiring stories...</p>
+            </div>
+        `;
+
+        const stories = await fetchStudentStories();
+        
+        if (stories.length === 0) {
+            storiesContainer.innerHTML = `
+                <div class="w-full text-center py-8">
+                    <p class="text-red-600">Failed to load stories. Please try again later.</p>
+                </div>
+            `;
+            return;
         }
 
-        // Second try: Cities API with normalized country name
-        const response = await fetch(CITIES_API);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        
-        // Normalize strings for comparison (remove special characters and make lowercase)
-        const normalizeString = (str) => str.normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '');
+        // Create stories HTML
+        const storiesHTML = `
+            <div class="relative w-full col-span-full px-4 md:px-8 lg:px-12">
+                <div class="overflow-x-auto pb-4 -mx-4 md:-mx-8 lg:-mx-12">
+                    <div class="flex space-x-6 px-4 md:px-8 lg:px-12">
+                        ${stories.map(story => `
+                            <div class="bg-white rounded-xl shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 flex-shrink-0 w-[300px] md:w-[350px]">
+                                <div class="relative">
+                                    <img src="${story.image}" alt="${story.name}" class="w-full h-50 object-cover">
+                                    <div class="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
+                                        ${story.rating} ★
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div class="flex items-center mb-4">
+                                        <div class="flex-1">
+                                            <h3 class="text-xl font-bold text-gray-900">${story.name}</h3>
+                                            <p class="text-blue-600">${story.university}</p>
+                                        </div>
+                                    </div>
+                                    <div class="space-y-2 mb-4">
+                                        <p class="text-sm text-gray-600">
+                                            <span class="font-semibold">From:</span> ${story.country}
+                                        </p>
+                                        <p class="text-sm text-gray-600">
+                                            <span class="font-semibold">Program:</span> ${story.program}
+                                        </p>
+                                        <p class="text-sm text-gray-600">
+                                            <span class="font-semibold">Duration:</span> ${story.duration}
+                                        </p>
+                                    </div>
+                                    <div class="mb-4">
+                                        <p class="text-gray-700 italic">"${story.quote}"</p>
+                                    </div>
+                                    <div class="bg-gray-50 rounded-lg p-3">
+                                        <p class="text-sm text-gray-600">
+                                            <span class="font-semibold">Achievement:</span> ${story.achievements}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <button class="absolute top-1/2 -translate-y-1/2 left-0 md:left-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center cursor-pointer opacity-75 hover:opacity-100 transition-opacity z-10">
+                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </button>
+                <button class="absolute top-1/2 -translate-y-1/2 right-0 md:right-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center cursor-pointer opacity-75 hover:opacity-100 transition-opacity z-10">
+                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </button>
+            </div>
+        `;
 
-        const normalizedCountryName = normalizeString(countryName);
-        
-        // Find the country data with more flexible matching
-        const countryData = data.data.find(c => {
-            const normalizedApiCountry = normalizeString(c.country);
-            return normalizedApiCountry === normalizedCountryName ||
-                   normalizedApiCountry.includes(normalizedCountryName) ||
-                   normalizedCountryName.includes(normalizedApiCountry);
+        storiesContainer.innerHTML = storiesHTML;
+
+        // Add scroll functionality
+        const scrollContainer = storiesContainer.querySelector('.overflow-x-auto');
+        const leftButton = storiesContainer.querySelector('button:first-of-type');
+        const rightButton = storiesContainer.querySelector('button:last-of-type');
+
+        leftButton.addEventListener('click', () => {
+            scrollContainer.scrollBy({ left: -400, behavior: 'smooth' });
         });
 
-        if (countryData && countryData.cities && countryData.cities.length > 0) {
-            const cities = countryData.cities
-                .filter(city => city && city.trim()) // Remove empty entries
-                .slice(0, 10); // Take top 10 cities
-
-            cache.cities[countryName] = cities;
-            return cities;
-        }
-
-        // Third try: Generate a single city entry if nothing else worked
-        const fallbackCity = countryName; // Use country name as city for very small territories
-        cache.cities[countryName] = [fallbackCity];
-        return [fallbackCity];
-
+        rightButton.addEventListener('click', () => {
+            scrollContainer.scrollBy({ left: 400, behavior: 'smooth' });
+        });
     } catch (error) {
-        console.error(`Error fetching cities for ${countryName}:`, error);
-        // Final fallback: Use country name as city
-        const fallbackCity = countryName;
-        cache.cities[countryName] = [fallbackCity];
-        return [fallbackCity];
+        console.error('Error displaying student stories:', error);
+        storiesContainer.innerHTML = `
+            <div class="w-full text-center py-8">
+                <p class="text-red-600">Failed to load stories. Please try again later.</p>
+            </div>
+        `;
     }
 }
 
-// Fetch universities for a country
-async function fetchUniversities(countryCode, city) {
-    const cacheKey = `${countryCode}-${city}`;
-    if (cache.universities[cacheKey]) return cache.universities[cacheKey];
+// Function to update progress steps
+function updateProgressSteps(currentStep) {
+    const stepNumbers = document.querySelectorAll('.progress-step-number');
+    const stepLabels = document.querySelectorAll('.progress-step-label');
+    const progressBars = document.querySelectorAll('.progress-bar');
 
-    try {
-        // Get country name from the cached countries data
-        const countries = await fetchCountries();
-        const country = countries.find(c => c.code === countryCode);
-        if (!country) throw new Error(`Country not found for code: ${countryCode}`);
-
-        const response = await fetch(`${UNIVERSITIES_API}?country=${encodeURIComponent(country.name)}`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        
-        // Transform the data to match our structure
-        const universities = data.map(uni => ({
-            name: uni.name,
-            web_pages: uni.web_pages,
-            domains: uni.domains,
-            country: uni.country,
-            state_province: uni['state-province'],
-            programs: [
-                'Computer Science',
-                'Computer Engineering',
-                'Software Engineering',
-                'Information Technology',
-                'Data Science',
-                'Artificial Intelligence',
-                'Business Administration',
-                'Engineering',
-                'Medicine',
-                'Arts and Design',
-                'Mathematics',
-                'Physics',
-                'Chemistry',
-                'Biology',
-                'Economics'
-            ],
-            rating: (Math.random() * 1 + 4).toFixed(1),
-            tuition: `$${Math.floor(Math.random() * 30000 + 20000)}/year`,
-            housing: [
-                'Student Dorms',
-                'Off-campus Housing',
-                'International Student Housing'
-            ],
-            restaurants: [
-                'University Cafeteria',
-                'Student Center Cafe',
-                'Campus Dining Hall'
-            ],
-            description: `A prestigious university in ${city}, ${country.name} offering world-class education.`,
-            location: city,
-            contact: {
-                email: uni.domains[0] ? `info@${uni.domains[0]}` : 'contact@university.edu',
-                phone: `+${Math.floor(Math.random() * 10000000000)}`
+    stepNumbers.forEach((number, index) => {
+        const step = index + 1;
+        if (step <= currentStep) {
+            number.classList.remove('bg-gray-200', 'text-gray-600');
+            number.classList.add('bg-blue-600', 'text-white');
+            stepLabels[index].classList.remove('text-gray-500');
+            stepLabels[index].classList.add('text-gray-900');
+            
+            if (index > 0) {
+                progressBars[index - 1].classList.remove('bg-gray-200');
+                progressBars[index - 1].classList.add('bg-blue-600');
             }
-        }));
-
-        cache.universities[cacheKey] = universities;
-        return universities;
-    } catch (error) {
-        console.error('Error fetching universities:', error);
-        return [];
-    }
-}
-
-// Fetch weather for a city
-async function fetchWeather(city) {
-    // Return mock weather data
-    return MOCK_WEATHER[city] || {
-        temp: Math.floor(Math.random() * 30 + 10),
-        description: ['Sunny', 'Cloudy', 'Partly Cloudy', 'Clear'][Math.floor(Math.random() * 4)],
-        humidity: Math.floor(Math.random() * 40 + 40),
-        wind: Math.floor(Math.random() * 10 + 2)
-    };
-}
-
-// Fetch apartments for a city
-async function fetchApartments(city) {
-    if (cache.apartments[city]) return cache.apartments[city];
-
-    try {
-        // Fetch photos to create apartment listings
-        const photosResponse = await fetch(PHOTOS_API);
-        const photos = await photosResponse.json();
-
-        // Transform photos into apartment listings
-        const apartments = photos.slice(0, 10).map(photo => ({
-            name: `${photo.title.split(' ').slice(0, 3).join(' ')} Apartments`,
-            price: `$${Math.floor(Math.random() * 1000 + 800)}/month`,
-            distance: `${(Math.random() * 2).toFixed(1)} miles from university`,
-            amenities: [
-                'Furnished',
-                'Wi-Fi',
-                'Security',
-                'Study Rooms',
-                'Gym',
-                'Laundry'
-            ].sort(() => 0.5 - Math.random()).slice(0, 4),
-            rating: (Math.random() * 1 + 4).toFixed(1),
-            image: photo.url,
-            thumbnail: photo.thumbnailUrl,
-            description: photo.title
-        }));
-
-        cache.apartments[city] = apartments;
-        return apartments;
-    } catch (error) {
-        console.error('Error fetching apartments:', error);
-        return [];
-    }
-}
-
-// Fetch local attractions for a city
-async function fetchAttractions(city) {
-    if (cache.attractions[city]) return cache.attractions[city];
-
-    try {
-        // Fetch comments to create attractions
-        const commentsResponse = await fetch(COMMENTS_API);
-        const comments = await commentsResponse.json();
-
-        // Transform comments into attractions
-        const attractions = comments.slice(0, 8).map(comment => ({
-            name: `${comment.name.split(' ').slice(0, 3).join(' ')} ${
-                ['Park', 'Museum', 'Center', 'Gallery', 'Theater'][Math.floor(Math.random() * 5)]
-            }`,
-            type: ['Cultural', 'Historical', 'Entertainment', 'Educational', 'Sports'][
-                Math.floor(Math.random() * 5)
-            ],
-            description: comment.body.slice(0, 100) + '...',
-            distance: `${(Math.random() * 3 + 0.5).toFixed(1)} km from city center`,
-            rating: (Math.random() * 1 + 4).toFixed(1),
-            reviews: Math.floor(Math.random() * 500 + 100)
-        }));
-
-        cache.attractions[city] = attractions;
-        return attractions;
-    } catch (error) {
-        console.error('Error fetching attractions:', error);
-        return [];
-    }
-}
-
-// Helper functions for data transformation
-function getProgramsForUniversity(universityName) {
-    // This would be replaced with actual API data
-    return ['Computer Science', 'Business Administration', 'Engineering', 'Medicine'];
-}
-
-function getTuitionForCountry(country) {
-    const tuitionRanges = {
-        'United States': '$40,000 - $60,000/year',
-        'United Kingdom': '£20,000 - £35,000/year',
-        'Canada': 'CAD 25,000 - CAD 40,000/year',
-        'Australia': 'AUD 30,000 - AUD 45,000/year',
-        'Germany': '€0 - €20,000/year'
-    };
-    return tuitionRanges[country] || 'Contact university for details';
-}
-
-function getHousingOptions(universityName) {
-    return [
-        `${universityName} Dorms`,
-        'Student Housing Complex',
-        'Off-campus Apartments'
-    ];
-}
-
-function getNearbyRestaurants(universityName) {
-    return [
-        `${universityName} Dining Hall`,
-        'Campus Cafe',
-        'Student Center Restaurant'
-    ];
-}
-
-function getRandomAmenities() {
-    const allAmenities = [
-        'Furnished',
-        'High-speed Internet',
-        'Study Rooms',
-        'Gym',
-        '24/7 Security',
-        'Laundry Facilities',
-        'Common Areas',
-        'Bike Storage',
-        'Fitness Center',
-        'Business Center'
-    ];
-    return allAmenities.sort(() => 0.5 - Math.random()).slice(0, 4);
-}
-
-// Get data functions
-function getUniversities(country, city, program) {
-    try {
-        const cityData = MOCK_DATA[country]?.[city];
-        if (!cityData) return [];
-        
-        return cityData.universities.filter(uni => 
-            uni.programs.some(p => p.toLowerCase() === program.toLowerCase())
-        );
-    } catch (error) {
-        console.error('Error getting universities:', error);
-        return [];
-    }
-}
-
-function getApartments(country, city) {
-    try {
-        return MOCK_DATA[country]?.[city]?.apartments || [];
-    } catch (error) {
-        console.error('Error getting apartments:', error);
-        return [];
-    }
-}
-
-function getAttractions(country, city) {
-    try {
-        return MOCK_DATA[country]?.[city]?.attractions || [];
-    } catch (error) {
-        console.error('Error getting attractions:', error);
-        return [];
-    }
-}
-
-// Initialize the journey process
-async function initializeJourney() {
-    try {
-        // Step 1: Select Countries
-        const fromCountrySelect = document.getElementById('fromCountry');
-        const toCountrySelect = document.getElementById('toCountry');
-        
-        if (!fromCountrySelect || !toCountrySelect) {
-            throw new Error('Required elements not found');
+        } else {
+            number.classList.remove('bg-blue-600', 'text-white');
+            number.classList.add('bg-gray-200', 'text-gray-600');
+            stepLabels[index].classList.remove('text-gray-900');
+            stepLabels[index].classList.add('text-gray-500');
+            
+            if (index > 0) {
+                progressBars[index - 1].classList.remove('bg-blue-600');
+                progressBars[index - 1].classList.add('bg-gray-200');
+            }
         }
-        
-        // Show loading state
-        fromCountrySelect.innerHTML = '<option value="">Loading countries...</option>';
-        toCountrySelect.innerHTML = '<option value="">Loading countries...</option>';
-        
-        // Populate country dropdowns
-        const countries = await fetchCountries();
-        
-        // Clear loading state
-        fromCountrySelect.innerHTML = '<option value="">Select country</option>';
-        toCountrySelect.innerHTML = '<option value="">Select country</option>';
-        
-        countries.forEach(country => {
+    });
+}
+
+// Initialize journey
+function initializeJourney() {
+    // Populate country dropdowns
+    const fromCountrySelect = document.getElementById('fromCountry');
+    const toCountrySelect = document.getElementById('toCountry');
+    
+    if (fromCountrySelect && toCountrySelect) {
+        COUNTRIES.forEach(country => {
             const option = document.createElement('option');
             option.value = country.code;
             option.textContent = country.name;
             fromCountrySelect.appendChild(option.cloneNode(true));
-            toCountrySelect.appendChild(option);
+            toCountrySelect.appendChild(option.cloneNode(true));
         });
+    }
 
-        // Add event listeners with cleanup
-        const nextToStep2 = document.getElementById('nextToStep2');
-        if (nextToStep2) {
-            nextToStep2.addEventListener('click', async () => {
-                const fromCountry = fromCountrySelect.value;
-                const toCountry = toCountrySelect.value;
+    // Populate programs dropdown
+    const programSelect = document.getElementById('program');
+    if (programSelect) {
+        PROGRAMS.forEach(program => {
+            const option = document.createElement('option');
+            option.value = program.id;
+            option.textContent = program.name;
+            programSelect.appendChild(option);
+        });
+    }
 
-                if (!fromCountry || !toCountry) {
-                    alert('Please select both countries');
-                    return;
-                }
+    // Add event listeners
+    setupEventListeners();
+}
 
-                // Show loading state
-                const citySelect = document.getElementById('city');
-                if (!citySelect) {
-                    console.error('City select element not found');
-                    return;
-                }
+// Event listener setup
+function setupEventListeners() {
+    // Step 1 to Step 2
+    const nextToStep2 = document.getElementById('nextToStep2');
+    if (nextToStep2) {
+        nextToStep2.addEventListener('click', () => {
+            const fromCountry = document.getElementById('fromCountry').value;
+            const toCountry = document.getElementById('toCountry').value;
 
-                citySelect.innerHTML = '<option value="">Loading cities...</option>';
+            if (!fromCountry || !toCountry) {
+                alert('Please select both countries');
+                return;
+            }
 
-                // Get the selected country's name
-                const selectedCountry = countries.find(c => c.code === toCountry);
-                if (!selectedCountry) {
-                    alert('Country not found');
-                    return;
-                }
-
-                // Fetch cities for the selected country
-                const cities = await fetchCities(selectedCountry.name);
-
-                // Update cities dropdown
-                citySelect.innerHTML = '<option value="">Select a city</option>';
-                cities.forEach(city => {
-                    const option = document.createElement('option');
-                    option.value = city;
-                    option.textContent = city;
-                    citySelect.appendChild(option);
-                });
-
-                // Show step 2
-                const step1 = document.getElementById('step1');
-                const step2 = document.getElementById('step2');
-                if (step1 && step2) {
-                    step1.classList.add('hidden');
-                    step2.classList.remove('hidden');
-                }
+            // Populate cities dropdown
+            const citySelect = document.getElementById('city');
+            const cities = CITIES[toCountry] || [];
+            
+            citySelect.innerHTML = '<option value="">Select a city</option>';
+            cities.forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                citySelect.appendChild(option);
             });
-        }
 
-        // Step 2 to Step 1 (Back)
-        const backToStep1 = document.getElementById('backToStep1');
-        if (backToStep1) {
-            backToStep1.addEventListener('click', () => {
-                const step1 = document.getElementById('step1');
-                const step2 = document.getElementById('step2');
-                if (step1 && step2) {
-                    step2.classList.add('hidden');
-                    step1.classList.remove('hidden');
-                }
-            });
-        }
+            // Show step 2
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+            updateProgressSteps(2);
+        });
+    }
 
-        // Step 2 to Step 3
-        const nextToStep3 = document.getElementById('nextToStep3');
-        if (nextToStep3) {
-            nextToStep3.addEventListener('click', async () => {
-                const city = document.getElementById('city').value;
-                if (!city) {
-                    alert('Please select a city');
-                    return;
-                }
+    // Step 2 to Step 3
+    const nextToStep3 = document.getElementById('nextToStep3');
+    if (nextToStep3) {
+        nextToStep3.addEventListener('click', () => {
+            const city = document.getElementById('city').value;
+            if (!city) {
+                alert('Please select a city');
+                return;
+            }
 
-                // Get weather information for the city
-                const weather = await fetchWeather(city);
-                const weatherInfo = document.createElement('div');
-                weatherInfo.className = 'mt-4 p-4 bg-blue-50 rounded-lg';
-                weatherInfo.innerHTML = `
-                    <h4 class="font-medium text-blue-900">Current Weather in ${city}</h4>
-                    <p class="text-blue-700">Temperature: ${weather.temp}°C</p>
-                    <p class="text-blue-700">Condition: ${weather.description}</p>
-                    <p class="text-blue-700">Humidity: ${weather.humidity}%</p>
-                `;
-                
-                const step2 = document.getElementById('step2');
-                if (step2) {
-                    step2.appendChild(weatherInfo);
-                }
+            // Show step 3
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step3').classList.remove('hidden');
+            updateProgressSteps(3);
+        });
+    }
 
-                // Show step 3
-                const step3 = document.getElementById('step3');
-                if (step2 && step3) {
-                    step2.classList.add('hidden');
-                    step3.classList.remove('hidden');
-                }
-            });
-        }
+    // Back buttons
+    const backToStep1 = document.getElementById('backToStep1');
+    if (backToStep1) {
+        backToStep1.addEventListener('click', () => {
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step1').classList.remove('hidden');
+            updateProgressSteps(1);
+        });
+    }
 
-        // Step 3 to Step 2 (Back)
-        const backToStep2 = document.getElementById('backToStep2');
-        if (backToStep2) {
-            backToStep2.addEventListener('click', () => {
-                const step2 = document.getElementById('step2');
-                const step3 = document.getElementById('step3');
-                if (step2 && step3) {
-                    step3.classList.add('hidden');
-                    step2.classList.remove('hidden');
-                }
-            });
-        }
+    const backToStep2 = document.getElementById('backToStep2');
+    if (backToStep2) {
+        backToStep2.addEventListener('click', () => {
+            document.getElementById('step3').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+            updateProgressSteps(2);
+        });
+    }
 
-        // Show Results
-        const showResults = document.getElementById('showResults');
-        if (showResults) {
-            showResults.addEventListener('click', async () => {
-                const program = document.getElementById('program')?.value.toLowerCase();
-                const city = document.getElementById('city')?.value;
-                const toCountry = document.getElementById('toCountry')?.value;
+    // Show Results
+    const showResults = document.getElementById('showResults');
+    if (showResults) {
+        showResults.addEventListener('click', () => {
+            const toCountry = document.getElementById('toCountry').value;
+            const city = document.getElementById('city').value;
+            const program = document.getElementById('program').value;
 
-                if (!program || !city || !toCountry) {
-                    alert('Please select a program, city, and country');
-                    return;
-                }
+            if (!toCountry || !city || !program) {
+                alert('Please fill in all fields');
+                return;
+            }
 
-                try {
-                    // Show loading state
-                    const mainContent = document.querySelector('.bg-white.shadow.rounded-lg.p-8');
-                    if (mainContent) {
-                        mainContent.innerHTML = '<div class="text-center py-8"><p class="text-gray-600">Loading results...</p></div>';
-                    }
-
-                    // Fetch universities using the actual API
-                    const universities = await fetchUniversities(toCountry, city);
-
-                    // Filter universities by program (with more flexible matching)
-                    const filteredUniversities = universities.filter(uni => 
-                        uni.programs.some(p => {
-                            const programName = p.toLowerCase();
-                            // Check for exact match or common abbreviations
-                            if (program === 'cs') {
-                                return programName.includes('computer science') || 
-                                       programName === 'cs' || 
-                                       programName.includes('computer engineering') ||
-                                       programName.includes('software engineering');
-                            }
-                            return programName.includes(program) || 
-                                   program.includes(programName);
-                        })
-                    );
-
-                    // Create results HTML
-                    let resultsHTML = `
-                        <div class="space-y-8">
-                            <h2 class="text-2xl font-bold text-gray-900">Results for ${city}, ${toCountry} - ${program}</h2>
-                            
-                            <!-- Universities Section -->
-                            <div>
-                                <h3 class="text-xl font-semibold text-gray-900 mb-4">Universities</h3>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    `;
-
-                    if (filteredUniversities.length === 0) {
-                        resultsHTML += `
-                            <div class="bg-gray-50 p-6 rounded-lg">
-                                <p class="text-gray-600">No universities found for the selected program in this city.</p>
-                            </div>
-                        `;
-                    } else {
-                        filteredUniversities.forEach(university => {
-                            resultsHTML += `
-                                <div class="bg-gray-50 p-6 rounded-lg">
-                                    <h4 class="text-lg font-semibold text-gray-900">${university.name}</h4>
-                                    <p class="text-gray-600 mt-2">${university.description}</p>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Website:</h5>
-                                        <a href="${university.web_pages[0]}" target="_blank" class="text-blue-600 hover:text-blue-800">
-                                            ${university.web_pages[0]}
-                                        </a>
-                                    </div>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Programs:</h5>
-                                        <ul class="list-disc list-inside text-gray-600">
-                                            ${university.programs.map(p => `<li>${p}</li>`).join('')}
-                                        </ul>
-                                    </div>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Housing Options:</h5>
-                                        <ul class="list-disc list-inside text-gray-600">
-                                            ${university.housing.map(option => `<li>${option}</li>`).join('')}
-                                        </ul>
-                                    </div>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Nearby Restaurants:</h5>
-                                        <ul class="list-disc list-inside text-gray-600">
-                                            ${university.restaurants.map(restaurant => `<li>${restaurant}</li>`).join('')}
-                                        </ul>
-                                    </div>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Tuition:</h5>
-                                        <p class="text-gray-600">${university.tuition}</p>
-                                    </div>
-                                    <div class="mt-4">
-                                        <h5 class="font-medium text-gray-900">Contact:</h5>
-                                        <p class="text-gray-600">Email: ${university.contact.email}</p>
-                                        <p class="text-gray-600">Phone: ${university.contact.phone}</p>
-                                    </div>
-                                    <div class="mt-2">
-                                        <span class="text-yellow-500">${'★'.repeat(Math.floor(university.rating))}${'☆'.repeat(5 - Math.floor(university.rating))}</span>
-                                        <span class="text-gray-600 ml-2">(${university.rating})</span>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                    }
-
-                    resultsHTML += `
-                                </div>
-                            </div>
-                        </div>
-                    `;
-
-                    // Replace form with results
-                    if (mainContent) {
-                        mainContent.innerHTML = resultsHTML;
-                    }
-                } catch (error) {
-                    console.error('Error loading results:', error);
-                    const mainContent = document.querySelector('.bg-white.shadow.rounded-lg.p-8');
-                    if (mainContent) {
-                        mainContent.innerHTML = '<div class="text-center py-8"><p class="text-red-600">Error loading results. Please try again.</p></div>';
-                    }
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Error initializing journey:', error);
-        const mainContent = document.querySelector('.bg-white.shadow.rounded-lg.p-8');
-        if (mainContent) {
-            mainContent.innerHTML = `
-                <div class="text-center py-8">
-                    <p class="text-red-600">An error occurred while loading the journey planner. Please try again later.</p>
-                </div>
-            `;
-        }
+            displayResults(toCountry, city, program);
+        });
     }
 }
 
-// Initialize when the DOM is loaded
-document.addEventListener('DOMContentLoaded', initializeJourney); 
+// Display results
+function displayResults(countryCode, city, programId) {
+    const universities = UNIVERSITIES[countryCode] || [];
+    const filteredUniversities = universities.filter(uni => 
+        uni.location === city && uni.programs.includes(programId)
+    );
+
+    const mainContent = document.querySelector('.bg-white.shadow.rounded-lg.p-8');
+    if (!mainContent) return;
+
+    if (filteredUniversities.length === 0) {
+        mainContent.innerHTML = `
+            <div class="text-center py-8">
+                <p class="text-gray-600">No universities found matching your criteria.</p>
+                <p class="text-gray-500 mt-2">Try selecting a different program or city.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const resultsHTML = `
+        <div class="space-y-8">
+            <h2 class="text-2xl font-bold text-gray-900">Universities in ${city}</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                ${filteredUniversities.map(uni => `
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h3 class="text-xl font-bold text-gray-900">${uni.name}</h3>
+                        <div class="mt-2 flex items-center">
+                            <span class="text-yellow-400">${'★'.repeat(Math.floor(uni.rating))}</span>
+                            <span class="text-gray-600 ml-2">${uni.rating}</span>
+                        </div>
+                        <p class="mt-2 text-gray-600">${uni.ranking}</p>
+                        <p class="mt-2 text-blue-600 font-semibold">${uni.tuition}</p>
+                        <div class="mt-4">
+                            <h4 class="font-semibold text-gray-700">Available Programs:</h4>
+                            <ul class="mt-1 list-disc list-inside text-gray-600">
+                                ${uni.programs.map(pid => 
+                                    `<li>${PROGRAMS.find(p => p.id === pid)?.name || pid}</li>`
+                                ).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    mainContent.innerHTML = resultsHTML;
+}
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    initializeJourney();
+    displayStudentStories();
+});
