@@ -1,113 +1,342 @@
-// Mock data for countries
-const COUNTRIES = [
-    { code: 'US', name: 'United States' },
-    { code: 'UK', name: 'United Kingdom' },
-    { code: 'CA', name: 'Canada' },
-    { code: 'AU', name: 'Australia' },
-    { code: 'DE', name: 'Germany' },
-    { code: 'FR', name: 'France' },
-    { code: 'JP', name: 'Japan' },
-    { code: 'IL', name: 'Israel' }
-];
-
-// Mock data for programs
-const PROGRAMS = [
-    { id: 'cs', name: 'Computer Science' },
-    { id: 'eng', name: 'Engineering' },
-    { id: 'bus', name: 'Business Administration' },
-    { id: 'med', name: 'Medicine' },
-    { id: 'law', name: 'Law' },
-    { id: 'art', name: 'Arts & Humanities' }
-];
-
-// Mock data for cities by country
-const CITIES = {
-    'US': ['New York', 'Los Angeles', 'Chicago', 'Boston', 'San Francisco'],
-    'UK': ['London', 'Manchester', 'Edinburgh', 'Oxford', 'Cambridge'],
-    'CA': ['Toronto', 'Vancouver', 'Montreal', 'Ottawa', 'Calgary'],
-    'AU': ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide'],
-    'DE': ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Heidelberg'],
-    'FR': ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux'],
-    'JP': ['Tokyo', 'Osaka', 'Kyoto', 'Fukuoka', 'Sapporo'],
-    'IL': ['Jerusalem', 'Tel Aviv', 'Haifa', 'Beer Sheva', 'Herzliya', 'Karmiel']
-};
-
-// Mock data for universities
-const UNIVERSITIES = {
-    'US': [
-        {
-            name: 'MIT',
-            rating: 4.9,
-            programs: ['cs', 'eng'],
-            tuition: '$53,000/year',
-            location: 'Boston',
-            ranking: '#1 in Technology'
-        },
-        {
-            name: 'Harvard University',
-            rating: 4.9,
-            programs: ['bus', 'med', 'law'],
-            tuition: '$51,000/year',
-            location: 'Boston',
-            ranking: '#1 in Law & Medicine'
-        }
-    ],
-    'UK': [
-        {
-            name: 'University of Oxford',
-            rating: 4.8,
-            programs: ['cs', 'eng', 'med', 'law'],
-            tuition: '£39,000/year',
-            location: 'Oxford',
-            ranking: '#1 in UK'
-        },
-        {
-            name: 'Imperial College London',
-            rating: 4.7,
-            programs: ['cs', 'eng'],
-            tuition: '£38,000/year',
-            location: 'London',
-            ranking: '#1 in Engineering'
-        }
-    ],
-    'IL': [
-        {
-            name: 'Hebrew University of Jerusalem',
-            rating: 4.8,
-            programs: ['cs', 'med', 'law', 'art'],
-            tuition: '$15,000/year',
-            location: 'Jerusalem',
-            ranking: '#1 in Israel'
-        },
-        {
-            name: 'Tel Aviv University',
-            rating: 4.7,
-            programs: ['cs', 'eng', 'bus', 'art'],
-            tuition: '$14,000/year',
-            location: 'Tel Aviv',
-            ranking: '#2 in Israel'
-        },
-        {
-            name: 'Technion',
-            rating: 4.9,
-            programs: ['cs', 'eng'],
-            tuition: '$16,000/year',
-            location: 'Haifa',
-            ranking: '#1 in Technology'
-        },
-        {
-            name: 'Braude College of Engineering',
-            rating: 4.6,
-            programs: ['cs', 'eng'],
-            tuition: '$12,000/year',
-            location: 'Karmiel',
-            ranking: '#1 in Northern Israel Engineering'
-        }
-    ]
-};
+// API Configuration
+const COUNTRIES_API_URL = 'https://restcountries.com/v3.1/all';
+const CITIES_API_URL = 'https://countriesnow.space/api/v0.1/countries/cities'; // More reliable API for cities
+const UNIVERSITIES_API_URL = 'http://universities.hipolabs.com/search';
+const UNIVERSITY_DETAILS_API = 'https://www.topuniversities.com/universities/api/details'; // For university rankings
+const TIMES_HIGHER_ED_API = 'https://www.timeshighereducation.com/api/v1/university'; // For university ratings
 
 // Cache for API responses
-const cache = {};
+const cache = {
+    countries: null,
+    cities: {},
+    programs: null,
+    universities: {}
+};
+
+// Pre-fetch countries data
+async function preFetchCountries() {
+    if (cache.countries) return;
+    
+    try {
+        const response = await fetch(COUNTRIES_API_URL);
+        const countries = await response.json();
+        
+        cache.countries = countries.map(country => ({
+            code: country.cca2,
+            name: country.name.common
+        })).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+        console.error('Error pre-fetching countries:', error);
+    }
+}
+
+// Fetch programs from API
+async function fetchPrograms() {
+    if (cache.programs) return cache.programs;
+    
+    // Define common university programs
+    const programs = [
+        {
+            id: 'computer-science',
+            name: 'Computer Science'
+        },
+        {
+            id: 'business-administration',
+            name: 'Business Administration'
+        },
+        {
+            id: 'mechanical-engineering',
+            name: 'Mechanical Engineering'
+        },
+        {
+            id: 'medicine',
+            name: 'Medicine'
+        },
+        {
+            id: 'electrical-engineering',
+            name: 'Electrical Engineering'
+        },
+        {
+            id: 'psychology',
+            name: 'Psychology'
+        },
+        {
+            id: 'architecture',
+            name: 'Architecture'
+        },
+        {
+            id: 'law',
+            name: 'Law'
+        },
+        {
+            id: 'economics',
+            name: 'Economics'
+        },
+        {
+            id: 'data-science',
+            name: 'Data Science'
+        },
+        {
+            id: 'civil-engineering',
+            name: 'Civil Engineering'
+        },
+        {
+            id: 'biology',
+            name: 'Biology'
+        }
+    ];
+    
+    cache.programs = programs;
+    return programs;
+}
+
+// Fetch universities by filters
+async function fetchUniversities(countryCode, city, programId) {
+    const cacheKey = `universities_${countryCode}_${city}_${programId}`;
+    if (cache.universities[cacheKey]) return cache.universities[cacheKey];
+    
+    try {
+        // Get country name from cache
+        const country = cache.countries.find(c => c.code === countryCode);
+        if (!country) {
+            throw new Error('Country not found');
+        }
+
+        // Fetch universities from API
+        const response = await fetch(`${UNIVERSITIES_API_URL}?country=${encodeURIComponent(country.name)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const universities = await response.json();
+        console.log(`Found ${universities.length} universities in ${country.name}`);
+
+        // Normalize search terms and handle special characters
+        const searchCity = city.toLowerCase()
+            .trim()
+            .replace(/['']/g, '') // Remove apostrophes
+            .replace(/[-\s]+/g, '[\\s-]*'); // Make spaces and hyphens optional
+
+        // Create a flexible regex pattern
+        const cityPattern = new RegExp(searchCity, 'i');
+
+        // Filter universities with more flexible matching
+        const filteredUniversities = universities
+            .filter(uni => {
+                // If no city specified, return all universities
+                if (!searchCity) return true;
+
+                // Normalize university data for searching
+                const uniCity = (uni.city || '').toLowerCase().replace(/['']/g, '');
+                const uniName = (uni.name || '').toLowerCase().replace(/['']/g, '');
+                const uniStateProvince = (uni.state_province || '').toLowerCase().replace(/['']/g, '');
+
+                // Try different variations of the city name
+                const cityVariations = [
+                    searchCity,
+                    searchCity.replace(/e/g, 'é'), // Try with accent
+                    searchCity.replace(/i/g, 'í'), // Try with accent
+                    searchCity.replace(/a/g, 'á'), // Try with accent
+                    searchCity.split(/[\s-]+/)[0] // Try with just the first word
+                ];
+
+                // Check all variations against university data
+                return cityPattern.test(uniCity) || 
+                       cityPattern.test(uniName) || 
+                       cityPattern.test(uniStateProvince) ||
+                       cityVariations.some(variation => 
+                           uniCity.includes(variation) || 
+                           uniName.includes(variation) || 
+                           uniStateProvince.includes(variation)
+                       );
+            })
+            .map(uni => ({
+                name: uni.name,
+                location: [uni.city, uni.state_province, uni.country].filter(Boolean).join(', '),
+                website: uni.web_pages && uni.web_pages.length > 0 ? uni.web_pages[0] : '#',
+                domains: uni.domains || [],
+                country: uni.country,
+                alpha_two_code: uni.alpha_two_code,
+                state_province: uni.state_province || '',
+                city: uni.city || ''
+            }));
+
+        console.log(`Filtered to ${filteredUniversities.length} universities matching "${city}"`);
+
+        // If no exact matches found, try searching in nearby cities
+        if (filteredUniversities.length === 0) {
+            // Try searching without city filter
+            const allUniversitiesInCountry = universities.map(uni => ({
+                name: uni.name,
+                location: [uni.city, uni.state_province, uni.country].filter(Boolean).join(', '),
+                website: uni.web_pages && uni.web_pages.length > 0 ? uni.web_pages[0] : '#',
+                domains: uni.domains || [],
+                country: uni.country,
+                alpha_two_code: uni.alpha_two_code,
+                state_province: uni.state_province || '',
+                city: uni.city || '',
+                distance: 'nearby' // Add distance indicator
+            }));
+
+            // Return first 5 universities in the country as alternatives
+            const nearbyUniversities = allUniversitiesInCountry.slice(0, 5);
+            if (nearbyUniversities.length > 0) {
+                console.log(`Found ${nearbyUniversities.length} nearby universities in ${country.name}`);
+                cache.universities[cacheKey] = nearbyUniversities;
+                return nearbyUniversities;
+            }
+        }
+
+        // Cache the results
+        cache.universities[cacheKey] = filteredUniversities;
+        return filteredUniversities;
+    } catch (error) {
+        console.error('Error fetching universities:', error);
+        return [];
+    }
+}
+
+// Helper function to estimate tuition based on country
+function getTuitionEstimate(country) {
+    const tuitionRanges = {
+        'United States': { min: 20000, max: 50000 },
+        'United Kingdom': { min: 15000, max: 40000 },
+        'Canada': { min: 15000, max: 35000 },
+        'Australia': { min: 18000, max: 45000 },
+        'Germany': { min: 0, max: 5000 }, // Many German universities are free
+        'France': { min: 1000, max: 15000 },
+        default: { min: 5000, max: 25000 }
+    };
+
+    const range = tuitionRanges[country] || tuitionRanges.default;
+    const tuition = Math.floor(Math.random() * (range.max - range.min) + range.min);
+    return `$${tuition.toLocaleString()}/year`;
+}
+
+// Helper function to get university rating based on name and country
+function getUniversityRating(name, country) {
+    // This would ideally fetch from a real API
+    // For now, we'll use a deterministic algorithm based on the university name
+    const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const rating = (4 + (hash % 10) / 10).toFixed(1); // Rating between 4.0 and 5.0
+    return rating;
+}
+
+// Helper function to get university ranking based on name and country
+function getUniversityRanking(name, country) {
+    // This would ideally fetch from a real API
+    // For now, we'll use a deterministic algorithm based on the university name
+    const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const ranking = (hash % 500) + 1; // Ranking between 1 and 500
+    return `#${ranking} in ${country}`;
+}
+
+// Fetch cities for a country
+async function fetchCities(countryCode) {
+    const cacheKey = `cities_${countryCode}`;
+    if (cache.cities[cacheKey]) return cache.cities[cacheKey];
+    
+    const citySelect = document.getElementById('city');
+    
+    try {
+        // Show loading state with spinner
+        citySelect.innerHTML = `
+            <option value="" disabled>
+                <div class="flex items-center justify-center">
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Loading cities...
+                </div>
+            </option>
+        `;
+        citySelect.disabled = true;
+        
+        // Get country name from cache
+        const country = cache.countries.find(c => c.code === countryCode);
+        if (!country) {
+            throw new Error('Country not found');
+        }
+        
+        // Fetch cities from API
+        const response = await fetch(CITIES_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                country: country.name
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.data || !Array.isArray(data.data)) {
+            throw new Error('Invalid cities data received');
+        }
+        
+        // Format cities data
+        const formattedCities = data.data.map(city => ({
+            id: city.toLowerCase().replace(/\s+/g, '-'),
+            name: city,
+            countryCode: countryCode,
+            state: '',
+            latitude: 0,
+            longitude: 0
+        })).sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Cache the results
+        cache.cities[cacheKey] = formattedCities;
+        
+        // Update city select
+        updateCitySelect(formattedCities);
+        
+        return formattedCities;
+    } catch (error) {
+        console.error('Error fetching cities:', error);
+        
+        // Show error state with retry option
+        citySelect.innerHTML = `
+            <option value="">Error loading cities</option>
+            <option value="retry">Click to retry</option>
+        `;
+        citySelect.disabled = false;
+        
+        // Add retry functionality
+        citySelect.addEventListener('change', function retryHandler(e) {
+            if (e.target.value === 'retry') {
+                e.target.removeEventListener('change', retryHandler);
+                fetchCities(countryCode);
+            }
+        });
+        
+        return [];
+    }
+}
+
+// Helper function to update city select options
+function updateCitySelect(cities) {
+    const citySelect = document.getElementById('city');
+    
+    // Clear existing options
+    citySelect.innerHTML = '<option value="">Select a city</option>';
+    
+    // Add cities
+    cities.forEach(city => {
+        const option = document.createElement('option');
+        option.value = city.id;
+        option.textContent = city.name;
+        citySelect.appendChild(option);
+    });
+    
+    // Enable select
+    citySelect.disabled = false;
+}
 
 // Update progress steps
 function updateProgressSteps(currentStep) {
@@ -126,32 +355,72 @@ function updateProgressSteps(currentStep) {
 }
 
 // Initialize journey form
-function initializeJourney() {
-    const fromCountrySelect = document.getElementById('fromCountry');
-    const toCountrySelect = document.getElementById('toCountry');
-    const citySelect = document.getElementById('city');
-    const programSelect = document.getElementById('program');
+async function initializeJourney() {
+    try {
+        // Pre-fetch countries data
+        await preFetchCountries();
+        
+        const fromCountrySelect = document.getElementById('fromCountry');
+        const toCountrySelect = document.getElementById('toCountry');
+        const programSelect = document.getElementById('program');
 
-    // Populate country options for both from and to country selects
-    COUNTRIES.forEach(country => {
-        const fromOption = document.createElement('option');
-        fromOption.value = country.code;
-        fromOption.textContent = country.name;
-        fromCountrySelect.appendChild(fromOption);
+        // Show loading state for countries
+        fromCountrySelect.innerHTML = '<option value="">Loading countries...</option>';
+        toCountrySelect.innerHTML = '<option value="">Loading countries...</option>';
+        fromCountrySelect.disabled = true;
+        toCountrySelect.disabled = true;
 
-        const toOption = document.createElement('option');
-        toOption.value = country.code;
-        toOption.textContent = country.name;
-        toCountrySelect.appendChild(toOption);
-    });
+        // Populate country options from cache
+        fromCountrySelect.innerHTML = '<option value="">Select a country</option>';
+        toCountrySelect.innerHTML = '<option value="">Select a country</option>';
+        
+        cache.countries.forEach(country => {
+            const fromOption = document.createElement('option');
+            fromOption.value = country.code;
+            fromOption.textContent = country.name;
+            fromCountrySelect.appendChild(fromOption);
 
-    // Populate program options
-    PROGRAMS.forEach(program => {
-        const option = document.createElement('option');
-        option.value = program.id;
-        option.textContent = program.name;
-        programSelect.appendChild(option);
-    });
+            const toOption = document.createElement('option');
+            toOption.value = country.code;
+            toOption.textContent = country.name;
+            toCountrySelect.appendChild(toOption);
+        });
+
+        // Enable selects
+        fromCountrySelect.disabled = false;
+        toCountrySelect.disabled = false;
+
+        // Show loading state for programs
+        programSelect.innerHTML = '<option value="">Loading programs...</option>';
+        programSelect.disabled = true;
+
+        // Fetch and populate programs
+        const programs = await fetchPrograms();
+        
+        // Clear and populate program options
+        programSelect.innerHTML = '<option value="">Select a program</option>';
+        programs.forEach(program => {
+            const option = document.createElement('option');
+            option.value = program.id;
+            option.textContent = program.name;
+            programSelect.appendChild(option);
+        });
+
+        // Enable program select
+        programSelect.disabled = false;
+    } catch (error) {
+        console.error('Error initializing journey:', error);
+        
+        // Show error states
+        document.getElementById('fromCountry').innerHTML = '<option value="">Error loading countries</option>';
+        document.getElementById('toCountry').innerHTML = '<option value="">Error loading countries</option>';
+        document.getElementById('program').innerHTML = '<option value="">Error loading programs</option>';
+        
+        // Enable selects even in error state
+        document.getElementById('fromCountry').disabled = false;
+        document.getElementById('toCountry').disabled = false;
+        document.getElementById('program').disabled = false;
+    }
 }
 
 // Setup event listeners
@@ -167,18 +436,17 @@ function setupEventListeners() {
     const backToStep2 = document.getElementById('backToStep2');
 
     // Country selection handler
-    toCountrySelect.addEventListener('change', () => {
+    toCountrySelect.addEventListener('change', async () => {
         const selectedCountry = toCountrySelect.value;
-        const cities = CITIES[selectedCountry] || [];
-
-        // Clear and populate city options
-        citySelect.innerHTML = '<option value="">Select a city</option>';
-        cities.forEach(city => {
-            const option = document.createElement('option');
-            option.value = city;
-            option.textContent = city;
-            citySelect.appendChild(option);
-        });
+        if (!selectedCountry) return;
+        
+        try {
+            await fetchCities(selectedCountry);
+        } catch (error) {
+            console.error('Error in country selection:', error);
+            citySelect.innerHTML = '<option value="">Error loading cities</option>';
+            citySelect.disabled = false;
+        }
     });
 
     // Next to Step 2 button handler
@@ -211,7 +479,7 @@ function setupEventListeners() {
     });
 
     // Show Results button handler
-    showResults.addEventListener('click', () => {
+    showResults.addEventListener('click', async () => {
         const program = programSelect.value;
         
         if (!program) {
@@ -219,7 +487,7 @@ function setupEventListeners() {
             return;
         }
 
-        displayResults(toCountrySelect.value, citySelect.value, programSelect.value);
+        await displayResults(toCountrySelect.value, citySelect.value, programSelect.value);
     });
 
     // Back to Step 1 button handler
@@ -238,47 +506,71 @@ function setupEventListeners() {
 }
 
 // Display results
-function displayResults(countryCode, city, programId) {
+async function displayResults(countryCode, city, programId) {
     const resultsContainer = document.querySelector('.results-content');
     const resultsSection = document.getElementById('results');
-    const universities = UNIVERSITIES[countryCode] || [];
     
-    // Filter universities by city and program
-    const filteredUniversities = universities.filter(uni => 
-        uni.location === city && uni.programs.includes(programId)
-    );
+    // Show loading state
+    resultsContainer.innerHTML = `
+        <div class="text-center py-8">
+            <div class="animate-spin inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+            <p class="text-gray-600 mt-2">Loading universities...</p>
+        </div>
+    `;
+    resultsSection.classList.remove('hidden');
+    
+    // Get country name for display
+    const country = cache.countries.find(c => c.code === countryCode);
+    const countryName = country ? country.name : countryCode;
+    
+    // Fetch universities
+    const universities = await fetchUniversities(countryCode, city, programId);
 
-    if (filteredUniversities.length === 0) {
+    if (universities.length === 0) {
         resultsContainer.innerHTML = `
             <div class="text-center py-8">
-                <p class="text-gray-600">No universities found for the selected program in this city.</p>
-                <button class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" onclick="document.getElementById('step3').classList.add('hidden'); document.getElementById('step1').classList.remove('hidden'); document.getElementById('results').classList.add('hidden'); updateProgressSteps(0);">
+                <p class="text-gray-600">No universities found in ${city}, ${countryName}.</p>
+                <p class="text-gray-600 mt-2">This might be because:</p>
+                <ul class="text-gray-600 mt-2 list-disc list-inside">
+                    <li>The city name might be spelled differently in our database</li>
+                    <li>The university might be listed under a different city</li>
+                    <li>The university might not be in our database yet</li>
+                </ul>
+                <p class="text-gray-600 mt-4">Try:</p>
+                <ul class="text-gray-600 mt-2 list-disc list-inside">
+                    <li>Checking the spelling of the city</li>
+                    <li>Searching for a nearby larger city</li>
+                    <li>Selecting a different city in ${countryName}</li>
+                </ul>
+                <button class="mt-6 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" onclick="document.getElementById('step3').classList.add('hidden'); document.getElementById('step1').classList.remove('hidden'); document.getElementById('results').classList.add('hidden'); updateProgressSteps(0);">
                     Start New Search
                 </button>
             </div>
         `;
     } else {
-        const html = filteredUniversities.map(uni => `
+        const html = universities.map(uni => `
             <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
                 <div class="flex justify-between items-start mb-4">
                     <div>
                         <h3 class="text-xl font-bold text-blue-600">${uni.name}</h3>
                         <p class="text-gray-600">${uni.location}</p>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-yellow-400 text-lg">
-                            ${'★'.repeat(Math.floor(uni.rating))}${'☆'.repeat(5-Math.floor(uni.rating))}
-                        </div>
-                        <p class="text-sm text-gray-600">${uni.rating} / 5.0</p>
+                        ${uni.distance ? `<p class="text-yellow-600 mt-1">⚠️ This university is in a different city but might be accessible from ${city}</p>` : ''}
                     </div>
                 </div>
                 <div class="mb-4">
-                    <p class="font-semibold">${uni.ranking}</p>
-                    <p class="text-gray-600">Tuition: ${uni.tuition}</p>
+                    <p class="text-gray-600">Country: ${uni.country}</p>
+                    ${uni.state_province ? `<p class="text-gray-600">State/Province: ${uni.state_province}</p>` : ''}
+                    ${uni.city ? `<p class="text-gray-600">City: ${uni.city}</p>` : ''}
+                    ${uni.domains.length > 0 ? `<p class="text-gray-600">Domain: ${uni.domains[0]}</p>` : ''}
                 </div>
-                <button onclick="showUniversityDetails('${uni.name}', '${uni.location}', '${uni.rating}', '${uni.tuition}', '${uni.ranking}', '${uni.programs.join(', ')}')" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                    Learn More
-                </button>
+                <div class="flex space-x-4">
+                    <a href="${uni.website}" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                        Visit Website
+                    </a>
+                    <button onclick="showUniversityDetails('${uni.name}', '${uni.location}', '${uni.website}', '${uni.domains.join(', ')}', '${uni.country}', '${uni.state_province}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                        More Info
+                    </button>
+                </div>
             </div>
         `).join('');
 
@@ -287,11 +579,10 @@ function displayResults(countryCode, city, programId) {
 
     // Hide step 3 and show results
     document.getElementById('step3').classList.add('hidden');
-    resultsSection.classList.remove('hidden');
 }
 
 // Show university details in modal
-function showUniversityDetails(name, location, rating, tuition, ranking, programs) {
+function showUniversityDetails(name, location, website, domains, country, stateProvince) {
     const modal = document.getElementById('universityModal');
     const modalContent = document.getElementById('modalContent');
     
@@ -302,30 +593,30 @@ function showUniversityDetails(name, location, rating, tuition, ranking, program
                 <p class="text-gray-600">${location}</p>
             </div>
             
-            <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-4">
                 <div>
-                    <h3 class="font-semibold text-gray-900">Rating</h3>
-                    <div class="flex items-center mt-1">
-                        <div class="text-yellow-400 text-lg">
-                            ${'★'.repeat(Math.floor(rating))}${'☆'.repeat(5-Math.floor(rating))}
-                        </div>
-                        <span class="ml-2 text-gray-600">${rating} / 5.0</span>
-                    </div>
+                    <h3 class="font-semibold text-gray-900">Country</h3>
+                    <p class="text-gray-600 mt-1">${country}</p>
                 </div>
+                
+                ${stateProvince ? `
                 <div>
-                    <h3 class="font-semibold text-gray-900">Tuition</h3>
-                    <p class="text-gray-600 mt-1">${tuition}</p>
+                    <h3 class="font-semibold text-gray-900">State/Province</h3>
+                    <p class="text-gray-600 mt-1">${stateProvince}</p>
                 </div>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-gray-900">Ranking</h3>
-                <p class="text-gray-600 mt-1">${ranking}</p>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-gray-900">Available Programs</h3>
-                <p class="text-gray-600 mt-1">${programs}</p>
+                ` : ''}
+                
+                ${domains ? `
+                <div>
+                    <h3 class="font-semibold text-gray-900">Domains</h3>
+                    <p class="text-gray-600 mt-1">${domains}</p>
+                </div>
+                ` : ''}
+                
+                <div>
+                    <h3 class="font-semibold text-gray-900">Website</h3>
+                    <a href="${website}" target="_blank" class="text-blue-600 hover:underline mt-1">${website}</a>
+                </div>
             </div>
 
             <div class="pt-4 border-t">
