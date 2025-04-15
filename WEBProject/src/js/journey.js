@@ -102,6 +102,33 @@ async function fetchUniversities(countryCode, city, programId) {
             throw new Error('Country not found');
         }
 
+        // Add Braude College of Engineering for Karmiel, Israel
+        const normalizedCity = city.toLowerCase().trim().replace(/['']/g, '');
+        console.log('Searching for city:', normalizedCity, 'in country:', country.name);
+        
+        if (country.name.toLowerCase() === 'israel' && normalizedCity.includes('karmi')) {
+            console.log('Found Karmiel match, returning Braude College');
+            const braudeCollege = {
+                name: 'Braude College of Engineering',
+                country: 'Israel',
+                city: 'Karmiel',
+                state_province: 'Northern District',
+                location: 'Karmiel, Northern District, Israel',
+                domains: ['braude.ac.il'],
+                web_pages: ['https://w3.braude.ac.il/'],
+                programs: [
+                    'Software Engineering',
+                    'Electrical Engineering',
+                    'Mechanical Engineering',
+                    'Industrial Engineering',
+                    'Biomedical Engineering',
+                    'Computer Science'
+                ]
+            };
+            cache.universities[cacheKey] = [braudeCollege];
+            return [braudeCollege];
+        }
+
         // Fetch universities from API
         const response = await fetch(`${UNIVERSITIES_API_URL}?country=${encodeURIComponent(country.name)}`);
         if (!response.ok) {
@@ -158,7 +185,8 @@ async function fetchUniversities(countryCode, city, programId) {
                 country: uni.country,
                 alpha_two_code: uni.alpha_two_code,
                 state_province: uni.state_province || '',
-                city: uni.city || ''
+                city: uni.city || '',
+                programs: uni.programs || [] // Ensure programs is always an array
             }));
 
         console.log(`Filtered to ${filteredUniversities.length} universities matching "${city}"`);
@@ -175,7 +203,8 @@ async function fetchUniversities(countryCode, city, programId) {
                 alpha_two_code: uni.alpha_two_code,
                 state_province: uni.state_province || '',
                 city: uni.city || '',
-                distance: 'nearby' // Add distance indicator
+                distance: 'nearby', // Add distance indicator
+                programs: uni.programs || [] // Ensure programs is always an array
             }));
 
             // Return first 5 universities in the country as alternatives
@@ -553,7 +582,7 @@ async function displayResults(countryCode, city, programId) {
                 <div class="flex justify-between items-start mb-4">
                     <div>
                         <h3 class="text-xl font-bold text-blue-600">${uni.name}</h3>
-                        <p class="text-gray-600">${uni.location}</p>
+                        <p class="text-gray-600">${uni.location || `${uni.city}, ${uni.state_province || ''}, ${uni.country}`}</p>
                         ${uni.distance ? `<p class="text-yellow-600 mt-1">⚠️ This university is in a different city but might be accessible from ${city}</p>` : ''}
                     </div>
                 </div>
@@ -564,10 +593,10 @@ async function displayResults(countryCode, city, programId) {
                     ${uni.domains.length > 0 ? `<p class="text-gray-600">Domain: ${uni.domains[0]}</p>` : ''}
                 </div>
                 <div class="flex space-x-4">
-                    <a href="${uni.website}" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                    <a href="${uni.web_pages[0]}" target="_blank" rel="noopener noreferrer" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                         Visit Website
                     </a>
-                    <button onclick="showUniversityDetails('${uni.name}', '${uni.location}', '${uni.website}', '${uni.domains.join(', ')}', '${uni.country}', '${uni.state_province}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                    <button onclick="showUniversityDetails('${uni.name}', '${uni.location || `${uni.city}, ${uni.state_province || ''}, ${uni.country}`}', '${uni.web_pages[0]}', '${uni.domains.join(', ')}', '${uni.country}', '${uni.state_province || ''}', '${(uni.programs || []).join(', ')}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
                         More Info
                     </button>
                 </div>
@@ -582,51 +611,54 @@ async function displayResults(countryCode, city, programId) {
 }
 
 // Show university details in modal
-function showUniversityDetails(name, location, website, domains, country, stateProvince) {
+function showUniversityDetails(name, location, website, domains, country, stateProvince, programs) {
     const modal = document.getElementById('universityModal');
-    const modalContent = document.getElementById('modalContent');
+    const modalContent = document.getElementById('universityModalContent');
     
-    modalContent.innerHTML = `
-        <div class="space-y-6">
-            <div class="border-b pb-4">
-                <h2 class="text-2xl font-bold text-gray-900">${name}</h2>
+    // Convert domains string to array if needed
+    const domainsArray = typeof domains === 'string' ? domains.split(',') : domains;
+    
+    // Create detailed content
+    let content = `
+        <div class="space-y-4">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800">${name}</h2>
                 <p class="text-gray-600">${location}</p>
             </div>
-            
-            <div class="space-y-4">
-                <div>
-                    <h3 class="font-semibold text-gray-900">Country</h3>
-                    <p class="text-gray-600 mt-1">${country}</p>
-                </div>
-                
-                ${stateProvince ? `
-                <div>
-                    <h3 class="font-semibold text-gray-900">State/Province</h3>
-                    <p class="text-gray-600 mt-1">${stateProvince}</p>
-                </div>
-                ` : ''}
-                
-                ${domains ? `
-                <div>
-                    <h3 class="font-semibold text-gray-900">Domains</h3>
-                    <p class="text-gray-600 mt-1">${domains}</p>
-                </div>
-                ` : ''}
-                
-                <div>
-                    <h3 class="font-semibold text-gray-900">Website</h3>
-                    <a href="${website}" target="_blank" class="text-blue-600 hover:underline mt-1">${website}</a>
-                </div>
+            ${stateProvince ? `
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">State/Province</h3>
+                <p class="text-gray-600">${stateProvince}</p>
             </div>
-
-            <div class="pt-4 border-t">
-                <button onclick="closeUniversityModal()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                    Close
-                </button>
+            ` : ''}
+            ${domainsArray.length > 0 ? `
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Domains</h3>
+                <p class="text-gray-600">${domainsArray.join(', ')}</p>
+            </div>
+            ` : ''}
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Country</h3>
+                <p class="text-gray-600">${country}</p>
+            </div>
+            ${programs ? `
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Available Programs</h3>
+                <ul class="list-disc list-inside text-gray-600">
+                    ${programs.split(',').map(program => `<li>${program.trim()}</li>`).join('')}
+                </ul>
+            </div>
+            ` : ''}
+            <div>
+                <h3 class="text-lg font-semibold text-gray-700">Website</h3>
+                <a href="${website}" target="_blank" class="text-blue-600 hover:text-blue-800">
+                    ${website}
+                </a>
             </div>
         </div>
     `;
-
+    
+    modalContent.innerHTML = content;
     modal.classList.remove('hidden');
 }
 
@@ -642,5 +674,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
 
     // Add event listener for closing modal
-    document.getElementById('closeModal').addEventListener('click', closeUniversityModal);
+    const closeModalButton = document.getElementById('closeModal');
+    if (closeModalButton) {
+        closeModalButton.addEventListener('click', closeUniversityModal);
+    }
 });
