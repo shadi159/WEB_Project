@@ -38,11 +38,8 @@
         <h2 class="text-3xl font-bold">Real Stories from Global Students</h2>
         <p class="text-gray-600">Hear firsthand accounts of students who have successfully navigated the transition between different academic systems.</p>
       </div>
-      <div id="studentStories" class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Stories will be loaded here dynamically -->
-        <div class="text-center">
-          <p class="text-gray-600">Loading stories...</p>
-        </div>
+      <div id="studentStories" class="grid grid-cols-1 md:grid-cols-3 gap-6 px-4 md:px-0">
+        <!-- Stories will be loaded dynamically -->
       </div>
     </div>
   </section>
@@ -91,6 +88,11 @@
     <div id="resource-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6 px-4 md:px-0">
       <!-- Cards will load here -->
     </div>
+    <div class="text-center mt-10">
+      <a href="src/Resources.html" class="inline-block bg-blue-600 text-white px-12 py-4 rounded-lg hover:bg-blue-700 transition-colors duration-200 text-lg font-semibold shadow-lg hover:shadow-xl">
+        Go to Resources
+      </a>
+    </div>
   </section>
 
   <section id="about" class="bg-white py-16">
@@ -122,27 +124,76 @@
     &copy; 2025 EduBridge. All rights reserved.
   </footer>
 
-  <script src="src/js/journey.js"></script>
-  <script src="src/js/comparison.js"></script>
+  <!-- Load all JavaScript files -->
+  <script src="./src/js/comparison.js"></script>
+  <script src="./src/js/stories.js"></script>
+  <script src="./src/js/journey.js"></script>
+  
   <script>
-    // Load resources data
-    fetch('src/resources.json')
-      .then(res => res.json())
-      .then(resources => {
-        const resourceContainer = document.getElementById("resource-cards");
-        resources.forEach(res => {
-          const card = document.createElement("div");
-          card.className = "bg-white rounded-xl shadow p-4 flex flex-col";
-          card.innerHTML = `
-            <img src="${res.img}" alt="${res.title}" class="rounded-md mb-5 w-85 h-85 object-cover">
-            <h3 class="font-bold text-lg mb-2">${res.title}</h3>
-            <p class="text-sm text-gray-600 flex-grow">${res.desc}</p>
-            <a href="${res.link}" class="mt-4 inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center">View Guide</a>
-          `;
-          resourceContainer.appendChild(card);
-        });
-      })
-      .catch(err => console.error('Failed to load resources:', err));
+    document.addEventListener('DOMContentLoaded', () => {
+      // Load resources data
+      fetch('src/resources.json')
+        .then(res => res.json())
+        .then(resources => {
+          const resourceContainer = document.getElementById("resource-cards");
+          resources.forEach(res => {
+            const card = document.createElement("div");
+            card.className = "bg-white rounded-xl shadow p-4 flex flex-col";
+            card.innerHTML = `
+              <img src="${res.img}" alt="${res.title}" class="rounded-md mb-5 w-85 h-85 object-cover">
+              <h3 class="font-bold text-lg mb-2">${res.title}</h3>
+              <p class="text-sm text-gray-600 flex-grow">${res.desc}</p>
+            `;
+            resourceContainer.appendChild(card);
+          });
+        })
+        .catch(err => console.error('Failed to load resources:', err));
+
+      // Initialize country dropdowns
+      const country1Select = document.getElementById('country1');
+      const country2Select = document.getElementById('country2');
+      const compareBtn = document.getElementById('compareBtn');
+
+      // Clear existing options
+      while (country1Select.options.length > 1) {
+        country1Select.remove(1);
+      }
+      while (country2Select.options.length > 1) {
+        country2Select.remove(1);
+      }
+
+      // Populate country select options using COUNTRIES from journey.js
+      COUNTRIES.forEach(country => {
+        const option1 = document.createElement('option');
+        option1.value = country.code;
+        option1.textContent = country.name;
+        country1Select.appendChild(option1);
+
+        const option2 = document.createElement('option');
+        option2.value = country.code;
+        option2.textContent = country.name;
+        country2Select.appendChild(option2);
+      });
+
+      // Add click handler for compare button
+      compareBtn.addEventListener('click', () => {
+        const country1 = country1Select.value;
+        const country2 = country2Select.value;
+
+        if (!country1 || !country2) {
+          alert('Please select both countries to compare.');
+          return;
+        }
+
+        if (country1 === country2) {
+          alert('Please select two different countries to compare.');
+          return;
+        }
+
+        // Call the global displayComparison function
+        window.displayComparison(country1, country2);
+      });
+    });
   </script>
 </body>
 </html>

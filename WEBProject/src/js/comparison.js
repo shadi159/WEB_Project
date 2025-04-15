@@ -119,8 +119,8 @@ async function fetchComparisonData(country1, country2) {
     }
 }
 
-// Display comparison data in the HTML
-async function displayComparison(country1, country2) {
+// Make functions globally accessible
+window.displayComparison = async function(country1, country2) {
     const container = document.getElementById('education-data');
     if (!container) return;
 
@@ -211,41 +211,4 @@ async function displayComparison(country1, country2) {
             </div>
         `;
     }
-}
-
-// Initialize comparison functionality
-document.addEventListener('DOMContentLoaded', () => {
-    const country1Select = document.getElementById('country1');
-    const country2Select = document.getElementById('country2');
-    const compareBtn = document.getElementById('compareBtn');
-
-    // Populate country select options
-    COUNTRIES.forEach(country => {
-        const option1 = document.createElement('option');
-        option1.value = country.code;
-        option1.textContent = country.name;
-        country1Select.appendChild(option1);
-
-        const option2 = document.createElement('option');
-        option2.value = country.code;
-        option2.textContent = country.name;
-        country2Select.appendChild(option2);
-    });
-
-    compareBtn.addEventListener('click', () => {
-        const country1 = country1Select.value;
-        const country2 = country2Select.value;
-
-        if (!country1 || !country2) {
-            alert('Please select both countries to compare.');
-            return;
-        }
-
-        if (country1 === country2) {
-            alert('Please select two different countries to compare.');
-            return;
-        }
-
-        displayComparison(country1, country2);
-    });
-}); 
+} 
