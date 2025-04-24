@@ -94,20 +94,15 @@ async function fetchPrograms() {
 async function fetchUniversities(countryCode, city, programId) {
     const cacheKey = `universities_${countryCode}_${city}_${programId}`;
     if (cache.universities[cacheKey]) return cache.universities[cacheKey];
-    
-    try {
-        // Get country name from cache
-        const country = cache.countries.find(c => c.code === countryCode);
-        if (!country) {
-            throw new Error('Country not found');
-        }
 
-        // Add Braude College of Engineering for Karmiel, Israel
+    try {
+        const country = cache.countries.find(c => c.code === countryCode);
+        if (!country) throw new Error('Country not found');
+
         const normalizedCity = city.toLowerCase().trim().replace(/['']/g, '');
-        console.log('Searching for city:', normalizedCity, 'in country:', country.name);
-        
+
+        // Special case: add Braude College manually
         if (country.name.toLowerCase() === 'israel' && normalizedCity.includes('karmi')) {
-            console.log('Found Karmiel match, returning Braude College');
             const braudeCollege = {
                 name: 'Braude College of Engineering',
                 country: 'Israel',
@@ -129,101 +124,65 @@ async function fetchUniversities(countryCode, city, programId) {
             return [braudeCollege];
         }
 
-        // Fetch universities from API
-        const response = await fetch(`${UNIVERSITIES_API_URL}?country=${encodeURIComponent(country.name)}`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        // Step 1: Optimized API call with city+country
+        let response = await fetch(`${UNIVERSITIES_API_URL}?name=${encodeURIComponent(city)}&country=${encodeURIComponent(country.name)}`);
+        let universities = response.ok ? await response.json() : [];
+
+        // Step 2: Fallback to country-only if no matches
+        if (!response.ok || universities.length === 0) {
+            console.warn('Fallback to country-only search');
+            response = await fetch(`${UNIVERSITIES_API_URL}?country=${encodeURIComponent(country.name)}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            universities = await response.json();
         }
 
-        const universities = await response.json();
-        console.log(`Found ${universities.length} universities in ${country.name}`);
-
-        // Normalize search terms and handle special characters
-        const searchCity = city.toLowerCase()
-            .trim()
-            .replace(/['']/g, '') // Remove apostrophes
-            .replace(/[-\s]+/g, '[\\s-]*'); // Make spaces and hyphens optional
-
-        // Create a flexible regex pattern
+        // Step 3: Filter results by city relevance
+        const searchCity = normalizedCity.replace(/[-\s]+/g, '[\\s-]*');
         const cityPattern = new RegExp(searchCity, 'i');
 
-        // Filter universities with more flexible matching
         const filteredUniversities = universities
             .filter(uni => {
-                // If no city specified, return all universities
-                if (!searchCity) return true;
-
-                // Normalize university data for searching
-                const uniCity = (uni.city || '').toLowerCase().replace(/['']/g, '');
-                const uniName = (uni.name || '').toLowerCase().replace(/['']/g, '');
-                const uniStateProvince = (uni.state_province || '').toLowerCase().replace(/['']/g, '');
-
-                // Try different variations of the city name
-                const cityVariations = [
-                    searchCity,
-                    searchCity.replace(/e/g, 'é'), // Try with accent
-                    searchCity.replace(/i/g, 'í'), // Try with accent
-                    searchCity.replace(/a/g, 'á'), // Try with accent
-                    searchCity.split(/[\s-]+/)[0] // Try with just the first word
-                ];
-
-                // Check all variations against university data
-                return cityPattern.test(uniCity) || 
-                       cityPattern.test(uniName) || 
-                       cityPattern.test(uniStateProvince) ||
-                       cityVariations.some(variation => 
-                           uniCity.includes(variation) || 
-                           uniName.includes(variation) || 
-                           uniStateProvince.includes(variation)
-                       );
+                const uniCity = (uni.city || '').toLowerCase();
+                const uniName = (uni.name || '').toLowerCase();
+                const uniState = (uni.state_province || '').toLowerCase();
+                return cityPattern.test(uniCity) || cityPattern.test(uniName) || cityPattern.test(uniState);
             })
             .map(uni => ({
                 name: uni.name,
                 location: [uni.city, uni.state_province, uni.country].filter(Boolean).join(', '),
-                website: uni.web_pages && uni.web_pages.length > 0 ? uni.web_pages[0] : '#',
+                website: uni.web_pages?.[0] || '#',
                 domains: uni.domains || [],
                 country: uni.country,
                 alpha_two_code: uni.alpha_two_code,
                 state_province: uni.state_province || '',
                 city: uni.city || '',
-                programs: uni.programs || [] // Ensure programs is always an array
+                programs: uni.programs || []
             }));
 
-        console.log(`Filtered to ${filteredUniversities.length} universities matching "${city}"`);
-
-        // If no exact matches found, try searching in nearby cities
-        if (filteredUniversities.length === 0) {
-            // Try searching without city filter
-            const allUniversitiesInCountry = universities.map(uni => ({
+        // Final fallback: return first 5 if no city matches
+        const result = filteredUniversities.length > 0
+            ? filteredUniversities
+            : universities.slice(0, 5).map(uni => ({
                 name: uni.name,
                 location: [uni.city, uni.state_province, uni.country].filter(Boolean).join(', '),
-                website: uni.web_pages && uni.web_pages.length > 0 ? uni.web_pages[0] : '#',
+                website: uni.web_pages?.[0] || '#',
                 domains: uni.domains || [],
                 country: uni.country,
                 alpha_two_code: uni.alpha_two_code,
                 state_province: uni.state_province || '',
                 city: uni.city || '',
-                distance: 'nearby', // Add distance indicator
-                programs: uni.programs || [] // Ensure programs is always an array
+                distance: 'nearby',
+                programs: uni.programs || []
             }));
 
-            // Return first 5 universities in the country as alternatives
-            const nearbyUniversities = allUniversitiesInCountry.slice(0, 5);
-            if (nearbyUniversities.length > 0) {
-                console.log(`Found ${nearbyUniversities.length} nearby universities in ${country.name}`);
-                cache.universities[cacheKey] = nearbyUniversities;
-                return nearbyUniversities;
-            }
-        }
-
-        // Cache the results
-        cache.universities[cacheKey] = filteredUniversities;
-        return filteredUniversities;
+        cache.universities[cacheKey] = result;
+        return result;
     } catch (error) {
         console.error('Error fetching universities:', error);
         return [];
     }
 }
+
 
 // Helper function to estimate tuition based on country
 function getTuitionEstimate(country) {
@@ -538,7 +497,7 @@ function setupEventListeners() {
 async function displayResults(countryCode, city, programId) {
     const resultsContainer = document.querySelector('.results-content');
     const resultsSection = document.getElementById('results');
-    
+
     // Show loading state
     resultsContainer.innerHTML = `
         <div class="text-center py-8">
@@ -547,12 +506,10 @@ async function displayResults(countryCode, city, programId) {
         </div>
     `;
     resultsSection.classList.remove('hidden');
-    
-    // Get country name for display
+
     const country = cache.countries.find(c => c.code === countryCode);
     const countryName = country ? country.name : countryCode;
-    
-    // Fetch universities
+
     const universities = await fetchUniversities(countryCode, city, programId);
 
     if (universities.length === 0) {
@@ -593,10 +550,10 @@ async function displayResults(countryCode, city, programId) {
                     ${uni.domains.length > 0 ? `<p class="text-gray-600">Domain: ${uni.domains[0]}</p>` : ''}
                 </div>
                 <div class="flex space-x-4">
-                    <a href="${uni.web_pages[0]}" target="_blank" rel="noopener noreferrer" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                    <a href="${Array.isArray(uni.web_pages) && uni.web_pages.length > 0 ? uni.web_pages[0] : '#'}" target="_blank" rel="noopener noreferrer" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                         Visit Website
                     </a>
-                    <button onclick="showUniversityDetails('${uni.name}', '${uni.location || `${uni.city}, ${uni.state_province || ''}, ${uni.country}`}', '${uni.web_pages[0]}', '${uni.domains.join(', ')}', '${uni.country}', '${uni.state_province || ''}', '${(uni.programs || []).join(', ')}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                    <button onclick="showUniversityDetails('${uni.name}', '${uni.location || `${uni.city}, ${uni.state_province || ''}, ${uni.country}`}', '${Array.isArray(uni.web_pages) && uni.web_pages.length > 0 ? uni.web_pages[0] : '#'}', '${uni.domains.join(', ')}', '${uni.country}', '${uni.state_province || ''}', '${(uni.programs || []).join(', ')}')" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
                         More Info
                     </button>
                 </div>
@@ -609,6 +566,7 @@ async function displayResults(countryCode, city, programId) {
     // Hide step 3 and show results
     document.getElementById('step3').classList.add('hidden');
 }
+
 
 // Show university details in modal
 function showUniversityDetails(name, location, website, domains, country, stateProvince, programs) {
