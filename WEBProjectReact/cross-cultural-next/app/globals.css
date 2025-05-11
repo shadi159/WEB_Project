@@ -1,0 +1,254 @@
+/* src/app/globals.css */
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+:root {
+  --color-primary: #4a2dcc;
+  --color-secondary: #333333;
+  --color-accent: #6b21a8;
+  --color-text: #333333;
+  --color-text-light: #666666;
+  --color-background: #ffffff;
+  --color-border: #e5e7eb;
+  --font-geist-sans: 'Georgia, serif';
+  --font-geist-mono: 'Courier New, monospace';
+}
+
+/* Base Styles */
+@layer base {
+  html {
+    width: 100%;
+    font-family: Georgia, serif;
+    color: var(--color-text);
+    background-color: var(--color-background);
+    line-height: 1.5;
+  }
+
+  body {
+    @apply   px-4 sm:px-6 lg:px-8;
+  }
+
+  h1 {
+    @apply text-3xl font-bold mb-4 text-secondary;
+  }
+
+  h2 {
+    @apply text-2xl font-bold mb-3 text-secondary;
+  }
+
+  h3 {
+    @apply text-xl font-bold mb-2 text-secondary;
+  }
+
+  a {
+    @apply text-primary no-underline;
+  }
+
+  a:hover {
+    @apply underline;
+  }
+
+  p {
+    @apply mb-4;
+  }
+}
+
+/* Custom Components with Tailwind */
+@layer components {
+  .header {
+    @apply py-4 border-b border-gray-200 mb-8;
+  }
+
+  .site-title {
+    @apply text-2xl font-bold text-primary;
+  }
+
+  .nav-container {
+    @apply flex justify-between items-center;
+  }
+
+  .auth-buttons {
+    @apply flex space-x-2;
+  }
+
+  .btn {
+    @apply inline-block px-4 py-2 border rounded transition-all duration-200 ease-in-out;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white border-primary;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-secondary border-gray-300;
+  }
+
+  .btn:hover {
+    @apply opacity-90 no-underline;
+  }
+
+  .hero-section {
+    @apply mb-12;
+  }
+
+  .hero-title {
+    @apply text-4xl font-bold mb-2 text-secondary;
+  }
+
+  .hero-description {
+    @apply text-lg mb-6 text-text-light;
+  }
+
+  .cta-buttons {
+    @apply flex flex-wrap gap-2 mb-8;
+  }
+
+  .stats-container {
+    @apply mb-12;
+  }
+
+  .stat-item {
+    @apply mb-2;
+  }
+
+  .stat-number {
+    @apply text-xl font-bold text-secondary;
+  }
+
+  .stat-label {
+    @apply block text-text-light;
+  }
+
+  .features-section {
+    @apply mb-12;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold mb-4 text-secondary;
+  }
+
+  .section-description {
+    @apply mb-6;
+  }
+
+  .journey-section {
+    @apply mb-12;
+  }
+
+  .journey-description {
+    @apply mb-4;
+  }
+
+  .feature-list {
+    @apply list-disc pl-6 mb-4 space-y-2;
+  }
+
+  .feature-item {
+    @apply flex items-start;
+  }
+
+  .feature-icon {
+    @apply mr-2 text-primary;
+  }
+
+  .feature-text {
+    @apply text-base;
+  }
+
+  .resources-section {
+    @apply mb-12;
+  }
+
+  .resources-description {
+    @apply mb-4;
+  }
+
+  .link-arrow {
+    @apply flex items-center text-primary font-medium;
+  }
+
+  .link-arrow:hover {
+    @apply no-underline opacity-90;
+  }
+
+  .arrow-icon {
+    @apply ml-1;
+  }
+
+  .book-icon {
+    @apply text-primary;
+  }
+
+  .checkmark-list {
+    @apply space-y-2 pl-0 list-none;
+  }
+
+  .checkmark-item {
+    @apply flex items-start;
+  }
+
+  .checkmark-icon {
+    @apply mr-2 text-primary flex-shrink-0;
+  }
+
+  .location-icon {
+    @apply text-primary;
+  }
+
+  .nav-btn {
+    @apply px-4 py-1.5 border border-gray-300 rounded text-sm font-medium;
+  }
+  
+  .nav-btn:hover {
+    @apply bg-gray-50;
+  }
+
+  .sign-in {
+    @apply border-primary text-primary;
+  }
+  
+  .sign-in:hover {
+    @apply bg-primary/10;
+  }
+  
+  .get-started {
+    @apply bg-primary text-white;
+  }
+  
+  .get-started:hover {
+    @apply bg-primary-dark;
+  }
+
+  .checkmark {
+    @apply text-sm flex items-center mb-2;
+  }
+  
+  .checkmark::before {
+    content: "✓";
+    @apply mr-2 text-primary font-bold text-base;
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 50%;
+    border: 1px solid var(--color-primary);
+  }
+}
+
+/* Responsive adjustments */
+@media (min-width: 640px) {
+  .hero-title {
+    @apply text-5xl;
+  }
+  
+  .stats-container {
+    @apply grid grid-cols-2 gap-4;
+  }
+}
+
+@media (min-width: 768px) {
+  .stats-container {
+    @apply grid-cols-4;
+  }
+}
