@@ -24,7 +24,7 @@ const SignIn = () => {
       if (!storedUser) {
         toast({
           title: "No account found",
-          description: "Please register first.",
+          description: "Please Register first.",
           variant: "destructive",
         });
         setIsLoading(false);
@@ -91,7 +91,7 @@ const SignIn = () => {
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in..." : "Sign in"}
+            {isLoading ? "SignIng in..." : "Sign in"}
           </Button>
 
           <div className="mt-4 text-center text-sm">

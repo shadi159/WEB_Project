@@ -37,7 +37,7 @@ const Profile = () => {
   };
 
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState(() => {
+  const [Profile, setProfile] = useState(() => {
     const storedUser = localStorage.getItem("user");
     return storedUser ? JSON.parse(storedUser) : defaultUser;
   });
@@ -46,7 +46,7 @@ const Profile = () => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) {
       toast({ title: "Please sign in", description: "Redirecting to sign in..." });
-      router.push("/signin");
+      router.push("/SignIn");
     }
   }, [router, toast]);
 
@@ -59,7 +59,7 @@ const Profile = () => {
     setProfile((prev: any) => ({ ...prev, [name]: value }));
   };
 
-  const handlePreferenceChange = (preference: keyof typeof profile.preferences) => {
+  const handlePreferenceChange = (preference: keyof typeof Profile.preferences) => {
     setProfile((prev: any) => ({
       ...prev,
       preferences: {
@@ -70,9 +70,9 @@ const Profile = () => {
   };
 
   const handleSaveProfile = () => {
-    localStorage.setItem("user", JSON.stringify(profile));
+    localStorage.setItem("user", JSON.stringify(Profile));
     setIsEditing(false);
-    toast({ title: "Profile updated", description: "Your profile information has been saved." });
+    toast({ title: "Profile updated", description: "Your Profile information has been saved." });
   };
 
   return (
@@ -94,29 +94,29 @@ const Profile = () => {
                 <Avatar className="w-24 h-24 mx-auto">
                   <AvatarImage src="" />
                   <AvatarFallback className="text-3xl bg-purple-500 text-white">
-                    {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
+                    {Profile.firstName.charAt(0)}{Profile.lastName.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <CardTitle className="mt-4">{profile.firstName} {profile.lastName}</CardTitle>
-                <CardDescription>{profile.email}</CardDescription>
+                <CardTitle className="mt-4">{Profile.firstName} {Profile.lastName}</CardTitle>
+                <CardDescription>{Profile.email}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">From:</span>
-                    <span className="font-medium">{profile.country}</span>
+                    <span className="font-medium">{Profile.country}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Destination:</span>
-                    <span className="font-medium">{profile.destination}</span>
+                    <span className="font-medium">{Profile.destination}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Education Level:</span>
-                    <span className="font-medium">{profile.educationalLevel}</span>
+                    <span className="font-medium">{Profile.educationalLevel}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Field:</span>
-                    <span className="font-medium">{profile.fieldOfStudy}</span>
+                    <span className="font-medium">{Profile.fieldOfStudy}</span>
                   </div>
                 </div>
               </CardContent>
@@ -155,7 +155,7 @@ const Profile = () => {
                         <Input
                           id="firstName"
                           name="firstName"
-                          value={profile.firstName}
+                          value={Profile.firstName}
                           onChange={handleProfileChange}
                           disabled={!isEditing}
                         />
@@ -165,7 +165,7 @@ const Profile = () => {
                         <Input
                           id="lastName"
                           name="lastName"
-                          value={profile.lastName}
+                          value={Profile.lastName}
                           onChange={handleProfileChange}
                           disabled={!isEditing}
                         />
@@ -178,7 +178,7 @@ const Profile = () => {
                         id="email"
                         name="email"
                         type="email"
-                        value={profile.email}
+                        value={Profile.email}
                         onChange={handleProfileChange}
                         disabled={!isEditing}
                       />
@@ -189,7 +189,7 @@ const Profile = () => {
                       <Input
                         id="phone"
                         name="phone"
-                        value={profile.phone}
+                        value={Profile.phone}
                         onChange={handleProfileChange}
                         disabled={!isEditing}
                       />
@@ -199,7 +199,7 @@ const Profile = () => {
                     <Label htmlFor="country">Home Country</Label>
                       <CountrySelect
                         id="country"
-                        value={profile.country}
+                        value={Profile.country}
                         onChange={(value) => handleSelectChange("country", value)}
                         disabled={!isEditing}
                     />
@@ -210,7 +210,7 @@ const Profile = () => {
                     <Label htmlFor="destination">Destination Country</Label>
                       <CountrySelect
                         id="destination"
-                        value={profile.destination}
+                        value={Profile.destination}
                         onChange={(value) => handleSelectChange("destination", value)}
                         disabled={!isEditing}
                     />
@@ -221,7 +221,7 @@ const Profile = () => {
                       <Textarea
                         id="bio"
                         name="bio"
-                        value={profile.bio}
+                        value={Profile.bio}
                         onChange={handleProfileChange}
                         disabled={!isEditing}
                         rows={4}
@@ -242,7 +242,7 @@ const Profile = () => {
                       <Label htmlFor="educationalLevel">Educational Level</Label>
                       <Select
                         disabled={!isEditing}
-                        defaultValue={profile.educationalLevel}
+                        defaultValue={Profile.educationalLevel}
                         onValueChange={(value) => handleSelectChange("educationalLevel", value)}
                       >
                         <SelectTrigger id="educationalLevel">
@@ -262,7 +262,7 @@ const Profile = () => {
                       <Label htmlFor="fieldOfStudy">Field of Study</Label>
                       <Select
                         disabled={!isEditing}
-                        defaultValue={profile.fieldOfStudy}
+                        defaultValue={Profile.fieldOfStudy}
                         onValueChange={(value) => handleSelectChange("fieldOfStudy", value)}
                       >
                         <SelectTrigger id="fieldOfStudy">
@@ -331,7 +331,7 @@ const Profile = () => {
                         </div>
                         <Switch
                           disabled={!isEditing}
-                          checked={profile.preferences.emailNotifications}
+                          checked={Profile.preferences.emailNotifications}
                           onCheckedChange={() => handlePreferenceChange("emailNotifications")}
                         />
                       </div>
@@ -347,7 +347,7 @@ const Profile = () => {
                         </div>
                         <Switch
                           disabled={!isEditing}
-                          checked={profile.preferences.appNotifications}
+                          checked={Profile.preferences.appNotifications}
                           onCheckedChange={() => handlePreferenceChange("appNotifications")}
                         />
                       </div>
@@ -363,7 +363,7 @@ const Profile = () => {
                         </div>
                         <Switch
                           disabled={!isEditing}
-                          checked={profile.preferences.resourceRecommendations}
+                          checked={Profile.preferences.resourceRecommendations}
                           onCheckedChange={() => handlePreferenceChange("resourceRecommendations")}
                         />
                       </div>
@@ -379,7 +379,7 @@ const Profile = () => {
                         </div>
                         <Switch
                           disabled={!isEditing}
-                          checked={profile.preferences.peerConnections}
+                          checked={Profile.preferences.peerConnections}
                           onCheckedChange={() => handlePreferenceChange("peerConnections")}
                         />
                       </div>

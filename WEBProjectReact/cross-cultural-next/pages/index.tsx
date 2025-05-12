@@ -10,13 +10,13 @@ import { BookOpen, MapPin, User, ArrowRight, CheckCircle } from "lucide-react";
 const Index = () => {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b">
+      <header className="border-gray-50 sticky top-0 z-10 bg-white shadow-md">
         <div >
           <div className="flex justify-between items-center py-4">
-          <div>
+          <div className="flex items-center ml-6  ">
             <Logo />
           </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 mr-6">
               <Link href="/SignIn">
                 <Button variant="outline">Sign In</Button>
               </Link>

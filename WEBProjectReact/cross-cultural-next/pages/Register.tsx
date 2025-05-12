@@ -56,7 +56,7 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/register", {
+      const res = await fetch("/api/Register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -80,9 +80,9 @@ const Register = () => {
       } else {
         toast({
           title: "Account created!",
-          description: "You have successfully registered.",
+          description: "You have successfully Registered.",
         });
-        router.push("/signin");
+        router.push("/SignIn");
       }
     } catch (err: any) {
       toast({

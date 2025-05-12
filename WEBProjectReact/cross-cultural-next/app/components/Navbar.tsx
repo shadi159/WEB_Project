@@ -39,8 +39,8 @@ const Navbar = () => {
   
 
   return (
-    <header className="bg-white border-b sticky top-0 z-10">
-      <div className="justify-items-start shadow-sm px-4 sm:px-6 lg:px-8">
+    <header className="bg-white border-gray-50 sticky top-0 z-10">
+      <div className="justify-items-start shadow-md px-0 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
@@ -162,14 +162,14 @@ const Navbar = () => {
                     </div>
                     <div className="mt-3 space-y-1">
                       <Link
-                        href="/profile"
+                        href="/Profile"
                         className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         Your Profile
                       </Link>
                       <Link
-                        href="/signin"
+                        href="/SignIn"
                         className="block px-3 py-2 rounded-md text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
