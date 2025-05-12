@@ -40,7 +40,7 @@ const Navbar = () => {
 
   return (
     <header className="bg-white border-b sticky top-0 z-10">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="justify-items-start shadow-sm px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
@@ -69,36 +69,36 @@ const Navbar = () => {
           <div className="hidden md:ml-6 md:flex md:items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative rounded-full p-1">
+                <Button variant="ghost" className="relative rounded-full p-0.5 flex ml-290">
                   <Avatar>
-                    <AvatarFallback className="bg-brand-purple text-white">SJ</AvatarFallback>
+                    <AvatarFallback className="bg-purple-500 text-white">SJ</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="max-h-60 overflow-auto bg-gray-100">
                 <DropdownMenuLabel>Sarah Johnson</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/profile" className="cursor-pointer flex items-center gap-2">
+                  <Link href="/Profile" className="cursor-pointer flex items-center gap-2">
                     <User className="h-4 w-4" />
                     <span>Profile</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/journey" className="cursor-pointer flex items-center gap-2">
+                  <Link href="/Journey" className="cursor-pointer flex items-center gap-2">
                     <MapPin className="h-4 w-4" />
                     <span>My Journey</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/resources" className="cursor-pointer flex items-center gap-2">
+                  <Link href="/Resources" className="cursor-pointer flex items-center gap-2">
                     <BookOpen className="h-4 w-4" />
                     <span>Saved Resources</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/signin" className="cursor-pointer text-red-500 flex items-center gap-2">
+                  <Link href="/SignIn" className="cursor-pointer text-red-500 flex items-center gap-2">
                     <LogOut className="h-4 w-4" />
                     <span>Sign Out</span>
                   </Link>
@@ -107,7 +107,7 @@ const Navbar = () => {
             </DropdownMenu>
           </div>
           
-          <div className="flex items-center md:hidden">
+          <div className="flex items-center">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative rounded-full">
@@ -135,7 +135,7 @@ const Navbar = () => {
                       href={item.href}
                       className={`block px-3 py-2 rounded-md text-base font-medium ${
                         isActive(item.href)
-                          ? "bg-brand-blue/10 text-brand-blue"
+                          ? "bg-blue-500/10 text-brand-blue"
                           : "text-gray-700 hover:text-gray-900 hover:bg-gray-50"
                       }`}
                       onClick={() => setIsMobileMenuOpen(false)}
@@ -148,7 +148,7 @@ const Navbar = () => {
                     <div className="flex items-center px-3">
                       <div className="flex-shrink-0">
                         <Avatar>
-                          <AvatarFallback className="bg-brand-purple text-white">SJ</AvatarFallback>
+                          <AvatarFallback className="bg-purple-500 text-white">SJ</AvatarFallback>
                         </Avatar>
                       </div>
                       <div className="ml-3">

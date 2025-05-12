@@ -28,7 +28,7 @@ const SignIn = () => {
           variant: "destructive",
         });
         setIsLoading(false);
-        router.push("/register");
+        router.push("/Register");
         return;
       }
 
@@ -40,7 +40,7 @@ const SignIn = () => {
           description: "You have been signed in.",
         });
         setIsLoading(false);
-        router.push("/profile");
+        router.push("/Profile");
       } else {
         toast({
           title: "Invalid credentials",
@@ -96,7 +96,7 @@ const SignIn = () => {
 
           <div className="mt-4 text-center text-sm">
             <span className="text-muted-foreground">Don't have an account?</span>{" "}
-            <Link href="/register" className="font-medium text-brand-blue hover:text-brand-purple">
+            <Link href="/Profile" className="font-medium text-brand-blue hover:text-brand-purple">
               Create one now
             </Link>
           </div>

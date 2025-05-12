@@ -10,10 +10,10 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(42);
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
       <Navbar />
       
-      <main className="container py-6">
+      <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Welcome back, Sarah!</h1>
           <p className="text-muted-foreground">
@@ -74,11 +74,13 @@ const Dashboard = () => {
 
         <div className="mt-8">
           <Tabs defaultValue="upcoming">
-            <TabsList className="mb-4">
-              <TabsTrigger value="upcoming">Upcoming Tasks</TabsTrigger>
-              <TabsTrigger value="recommended">Recommended</TabsTrigger>
-              <TabsTrigger value="recent">Recent Activity</TabsTrigger>
-            </TabsList>
+            <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+              <TabsList className="flex flex-wrap gap-2 bg-gray-100 rounded-md">
+                <TabsTrigger value="upcoming">Upcoming Tasks</TabsTrigger>
+                <TabsTrigger value="recommended">Recommended</TabsTrigger>
+                <TabsTrigger value="recent">Recent Activity</TabsTrigger>
+              </TabsList>
+            </div>
             
             <TabsContent value="upcoming" className="space-y-4">
               <Card>
@@ -88,7 +90,7 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <p>Finish your application for Oxford University, including personal statement and references.</p>
-                  <Button className="mt-4 bg-brand-blue hover:bg-brand-purple">Continue</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-purple-500">Continue</Button>
                 </CardContent>
               </Card>
               
@@ -99,7 +101,7 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <p>Complete practice tests and review vocabulary for your upcoming IELTS exam.</p>
-                  <Button className="mt-4 bg-brand-blue hover:bg-brand-purple">Start Studying</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-purple-500">Start Studying</Button>
                 </CardContent>
               </Card>
               
@@ -110,7 +112,7 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <p>Explore on-campus housing and private accommodation options in your destination city.</p>
-                  <Button className="mt-4 bg-brand-blue hover:bg-brand-purple">Explore Options</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-purple-500">Explore Options</Button>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -123,7 +125,7 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <p>Learn how UK universities grade assignments and exams compared to your home country.</p>
-                  <Button className="mt-4 bg-brand-blue hover:bg-brand-purple">Read Article</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-purple-500">Read Article</Button>
                 </CardContent>
               </Card>
               
@@ -134,7 +136,7 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <p>Join this workshop to understand expectations for academic writing in your new university.</p>
-                  <Button className="mt-4 bg-brand-blue hover:bg-brand-purple">Register</Button>
+                  <Button className="mt-4 bg-blue-500 hover:bg-purple-500">Register</Button>
                 </CardContent>
               </Card>
             </TabsContent>

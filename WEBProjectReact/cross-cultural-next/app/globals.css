@@ -1,11 +1,12 @@
 /* src/app/globals.css */
+@import url('https://fonts.googleapis.com/css2?family=Georgia:wght@400;700&display=swap');
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
 :root {
-  --color-primary: #4a2dcc;
+  --color-primary: #4285F4;
   --color-secondary: #333333;
-  --color-accent: #6b21a8;
+  --color-accent: #A259FF;
   --color-text: #333333;
   --color-text-light: #666666;
   --color-background: #ffffff;
@@ -24,12 +25,8 @@
     line-height: 1.5;
   }
 
-  body {
-    @apply   px-4 sm:px-6 lg:px-8;
-  }
-
   h1 {
-    @apply text-3xl font-bold mb-4 text-secondary;
+    @apply text-3xl font-bold mb-4 ;
   }
 
   h2 {

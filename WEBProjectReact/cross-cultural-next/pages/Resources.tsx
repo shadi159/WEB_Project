@@ -147,10 +147,10 @@ const Resources = () => {
   const featuredResources = resourcesData.filter((resource) => resource.featured);
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
       <Navbar />
 
-      <main className="container py-6">
+      <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Resource Library</h1>
           <p className="text-muted-foreground">
@@ -162,7 +162,7 @@ const Resources = () => {
           <div className="md:col-span-2">
             <Tabs defaultValue="all">
               <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-                <TabsList>
+                <TabsList className="flex flex-wrap gap-2 bg-gray-100 rounded-md">
                   <TabsTrigger value="all">All Resources</TabsTrigger>
                   <TabsTrigger value="featured">Featured</TabsTrigger>
                   <TabsTrigger value="saved">Saved</TabsTrigger>
@@ -229,7 +229,7 @@ const Resources = () => {
           </div>
 
           <div>
-            <Card>
+            <Card className="bg-white shadow-md">
               <CardHeader>
                 <CardTitle>Filter by Category</CardTitle>
               </CardHeader>
@@ -249,7 +249,7 @@ const Resources = () => {
               </CardContent>
             </Card>
 
-            <Card className="mt-6">
+            <Card className="bg-white shadow-md mt-6">
               <CardHeader>
                 <CardTitle>Resource Types</CardTitle>
               </CardHeader>
@@ -267,7 +267,7 @@ const Resources = () => {
               </CardContent>
             </Card>
 
-            <Card className="mt-6">
+            <Card className="bg-white shadow-md mt-6">
               <CardHeader>
                 <CardTitle>Need Help?</CardTitle>
                 <CardDescription>
@@ -278,7 +278,7 @@ const Resources = () => {
                 <p className="text-sm">
                   Our advisors can help you find resources specific to your academic transition needs.
                 </p>
-                <Button className="w-full mt-4 bg-brand-blue hover:bg-brand-purple">
+                <Button className="w-full mt-4 bg-blue-500 hover:bg-purple-500">
                   Contact an Advisor
                 </Button>
               </CardContent>
@@ -300,14 +300,14 @@ const ResourceCard = ({
   onToggleSave?: (r: Resource) => void;
 }) => {
   return (
-    <Card>
+    <Card className="bg-white shadow-sm hover:shadow-lg transition-shadow duration-200">
       <CardHeader>
         <div className="flex justify-between items-start">
           <div>
             <CardTitle>{resource.title}</CardTitle>
             <CardDescription className="mt-1">{resource.description}</CardDescription>
           </div>
-          <Badge>{resource.type}</Badge>
+          <Badge className="bg-blue-500 hover:bg-blue-300">{resource.type}</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -321,11 +321,11 @@ const ResourceCard = ({
       </CardContent>
       <CardFooter className="flex justify-between">
         {onToggleSave && (
-          <Button variant="ghost" onClick={() => onToggleSave(resource)}>
+          <Button variant="secondary" onClick={() => onToggleSave(resource)}>
             {isSaved ? "Remove from saved" : "Save for later"}
           </Button>
         )}
-        <Button className="gap-2 bg-brand-blue hover:bg-brand-purple">
+        <Button className="gap-2 bg-blue-500 hover:bg-purple-500">
           View Resource <ArrowRight className="h-4 w-4" />
         </Button>
       </CardFooter>

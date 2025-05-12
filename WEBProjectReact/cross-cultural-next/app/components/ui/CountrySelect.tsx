@@ -63,7 +63,7 @@ const CountrySelect = ({ id, value, onChange, disabled, placeholder = "Select co
           <SelectValue placeholder={placeholder} />
         )}
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="max-h-60 overflow-auto bg-gray-200">
         {countries.map((country) => (
           <SelectItem key={country.code} value={country.name}>
             {country.name}

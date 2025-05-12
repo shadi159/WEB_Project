@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -7,7 +9,13 @@ import { Label } from "../app/components/ui/label";
 import { useToast } from "../app/components/ui/use-toast";
 import Logo from "../app/components/Logo";
 import CountrySelect from "../app/components/ui/CountrySelect";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../app/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../app/components/ui/select";
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -47,30 +55,44 @@ const Register = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const userToSave = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: "",
-        country: formData.country,
-        destination: "",
-        educationalLevel: formData.educationalLevel,
-        fieldOfStudy: "",
-        bio: "",
-        preferences: {
-          emailNotifications: true,
-          appNotifications: true,
-          resourceRecommendations: true,
-          peerConnections: true,
-        },
-      };
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          country: formData.country,
+          educationalLevel: formData.educationalLevel,
+        }),
+      });
 
-      localStorage.setItem("user", JSON.stringify(userToSave));
-      toast({ title: "Account created!", description: "You have successfully registered." });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({
+          title: "Registration failed",
+          description: data.message || "Something went wrong.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Account created!",
+          description: "You have successfully registered.",
+        });
+        router.push("/signin");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-      router.push("/signin");
-    }, 1500);
+    }
   };
 
   return (
@@ -120,7 +142,7 @@ const Register = () => {
                 <SelectTrigger id="educationalLevel">
                   <SelectValue placeholder="Select level" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60 overflow-auto bg-gray-200">
                   <SelectItem value="High School">High School</SelectItem>
                   <SelectItem value="Undergraduate">Undergraduate</SelectItem>
                   <SelectItem value="Graduate">Graduate</SelectItem>
@@ -137,7 +159,7 @@ const Register = () => {
 
           <div className="mt-4 text-center text-sm">
             <span className="text-muted-foreground">Already have an account?</span>{" "}
-            <Link href="/signin" className="font-medium text-brand-blue hover:text-brand-purple">
+            <Link href="/SignIn" className="font-medium text-brand-blue hover:text-brand-purple">
               Sign in
             </Link>
           </div>

@@ -1,0 +1,3 @@
+username: globaledu
+password: global123
+database name: globaledudb

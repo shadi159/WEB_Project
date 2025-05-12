@@ -93,7 +93,7 @@ const Profile = () => {
               <CardHeader className="text-center">
                 <Avatar className="w-24 h-24 mx-auto">
                   <AvatarImage src="" />
-                  <AvatarFallback className="text-3xl bg-brand-purple text-white">
+                  <AvatarFallback className="text-3xl bg-purple-500 text-white">
                     {profile.firstName.charAt(0)}{profile.lastName.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
@@ -411,7 +411,7 @@ const Profile = () => {
                       Cancel
                     </Button>
                     <Button 
-                      className="bg-brand-blue hover:bg-brand-purple"
+                      className="bg-blue-500 hover:bg-purple-500"
                       onClick={handleSaveProfile}
                     >
                       Save Changes

@@ -142,10 +142,10 @@ const Journey = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
       <Navbar />
       
-      <main className="container py-6">
+      <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Your Academic Journey</h1>
           <p className="text-muted-foreground mb-4">
@@ -242,7 +242,7 @@ const Journey = () => {
                       </CardContent>
                       
                       <CardFooter>
-                        <Button className="w-full bg-brand-blue hover:bg-brand-purple">
+                        <Button className="w-full bg-blue-500 hover:bg-purple-500">
                           {step.completed ? "Review Step" : stepProgress > 0 ? "Continue Step" : "Start Step"}
                         </Button>
                       </CardFooter>
