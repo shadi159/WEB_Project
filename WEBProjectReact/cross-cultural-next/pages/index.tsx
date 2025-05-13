@@ -272,7 +272,7 @@ const Index = () => {
                 <div className="bg-white p-8 rounded-lg shadow-sm">
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="md:w-1/3 flex justify-center">
-                      <div className="w-32 h-32 rounded-full bg-brand-orange/20 flex items-center justify-center">
+                      <div className="w-32 h-32 rounded-full bg-orange-500/20 flex items-center justify-center">
                         <span className="text-3xl font-bold text-brand-orange">LZ</span>
                       </div>
                     </div>

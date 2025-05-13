@@ -76,10 +76,10 @@ const Profile = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
       <Navbar />
       
-      <main className="container py-6">
+      <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">User Profile</h1>
           <p className="text-muted-foreground">
@@ -248,7 +248,7 @@ const Profile = () => {
                         <SelectTrigger id="educationalLevel">
                           <SelectValue placeholder="Select level" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-60 overflow-auto bg-gray-200">
                           <SelectItem value="High School">High School</SelectItem>
                           <SelectItem value="Undergraduate">Undergraduate</SelectItem>
                           <SelectItem value="Graduate">Graduate</SelectItem>
@@ -268,7 +268,7 @@ const Profile = () => {
                         <SelectTrigger id="fieldOfStudy">
                           <SelectValue placeholder="Select field" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-60 overflow-auto bg-gray-200">
                           <SelectItem value="Computer Science">Computer Science</SelectItem>
                           <SelectItem value="Business">Business</SelectItem>
                           <SelectItem value="Engineering">Engineering</SelectItem>

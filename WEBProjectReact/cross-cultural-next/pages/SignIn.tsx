@@ -11,6 +11,7 @@ const SignIn = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
 
@@ -39,6 +40,9 @@ const SignIn = () => {
           title: "Success!",
           description: "You have been signed in.",
         });
+        // after you do localStorage.setItem("user", JSON.stringify(userData));
+        sessionStorage.setItem("isLoggedIn", "true");
+        setIsLoggedIn(true);
         setIsLoading(false);
         router.push("/Profile");
       } else {
