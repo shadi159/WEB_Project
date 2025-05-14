@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/components/ui/tabs";
 import { Button } from "../app/components/ui/button";

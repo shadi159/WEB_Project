@@ -142,9 +142,8 @@ const Journey = () => {
   };
 
   return (
-    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-origin-padding  from-gray-50 to-gray-100">
       <Navbar />
-      
       <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Your Academic Journey</h1>
@@ -179,7 +178,7 @@ const Journey = () => {
                   </div>
                   
                   <div className="flex-1">
-                    <Card className="border-l-4 border-l-brand-blue">
+                    <Card className="border-l-4 border-l-blue-500">
                       <CardHeader>
                         <div className="flex justify-between items-start">
                           <div>
