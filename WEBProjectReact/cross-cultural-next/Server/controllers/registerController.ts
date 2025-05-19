@@ -1,40 +1,31 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { connectToDatabase } from "../../utils/db";
+import { Request, Response } from "express";
 import User from "../../models/User";
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Only allow POST requests
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
-
+export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Connect to the database
-    await connectToDatabase();
-
     const { firstName, lastName, email, password, country, educationalLevel } = req.body;
+    console.log("1")
 
     if (!email || !password) {
-      return res.status(400).json({
+      res.status(400).json({
         message: "Email and password are required.",
         details: {
           email: !!email,
           password: !!password,
         },
       });
+      return;
     }
-
+        console.log("2")
     const existing = await User.findOne({ email }).lean();
     if (existing) {
-      return res.status(400).json({
+      res.status(400).json({
         message: "User already exists with this email.",
         code: "USER_EXISTS",
       });
+      return;
     }
-
+    console.log("3")
     const newUser = await User.create({
       firstName,
       lastName,
@@ -44,7 +35,7 @@ export default async function handler(
       educationalLevel,
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       message: "User created successfully",
       userId: newUser._id,
       success: true,
@@ -53,25 +44,27 @@ export default async function handler(
     console.error("Registration Error:", err);
 
     if (err.name === "ValidationError") {
-      return res.status(400).json({
+      res.status(400).json({
         message: "Validation failed",
         errors: Object.values(err.errors).map((e: any) => e.message),
         success: false,
       });
+      return;
     }
 
     if (err.code === 11000) {
-      return res.status(400).json({
+      res.status(400).json({
         message: "A user with this email already exists",
         code: "DUPLICATE_KEY",
         success: false,
       });
+      return;
     }
 
-    return res.status(500).json({
+    res.status(500).json({
       message: "Internal server error during registration",
       error: err.message || "Unknown error occurred",
       success: false,
     });
   }
-}
+};

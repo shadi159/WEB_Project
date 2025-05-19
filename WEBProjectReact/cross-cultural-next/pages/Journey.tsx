@@ -1,11 +1,12 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
 import { Button } from "../app/components/ui/button";
 import { Progress } from "../app/components/ui/progress";
 import { Separator } from "../app/components/ui/separator";
 import Navbar from "../app/components/Navbar";
 import { CheckCircle, Circle, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 type JourneyStep = {
   id: number;
@@ -20,99 +21,119 @@ type JourneyStep = {
     id: number;
     title: string;
     type: "Article" | "Video" | "Checklist" | "Guide";
+    href?: string;
   }[];
   completed: boolean;
 };
 
-const Journey = () => {
-  const [journeySteps, setJourneySteps] = useState<JourneyStep[]>([
-    {
-      id: 1,
-      title: "Research & Decision Making",
-      description: "Research educational systems and make informed decisions about your academic path.",
-      tasks: [
-        { id: 1, title: "Compare educational systems", completed: true },
-        { id: 2, title: "Research potential institutions", completed: true },
-        { id: 3, title: "Identify required documentation", completed: true },
-        { id: 4, title: "Set academic and career goals", completed: false },
-      ],
-      resources: [
-        { id: 1, title: "Global Education Systems Comparison", type: "Guide" },
-        { id: 2, title: "How to Choose the Right University Abroad", type: "Article" },
-        { id: 3, title: "Student Visa Requirements by Country", type: "Checklist" },
-      ],
-      completed: false,
-    },
-    {
-      id: 2,
-      title: "Application Process",
-      description: "Complete applications for your chosen institutions and programs.",
-      tasks: [
-        { id: 1, title: "Prepare personal statement", completed: true },
-        { id: 2, title: "Gather academic transcripts", completed: true },
-        { id: 3, title: "Secure recommendation letters", completed: false },
-        { id: 4, title: "Submit applications", completed: false },
-      ],
-      resources: [
-        { id: 1, title: "Writing a Successful Personal Statement", type: "Guide" },
-        { id: 2, title: "Application Timeline Planner", type: "Checklist" },
-        { id: 3, title: "How to Request Strong Recommendation Letters", type: "Article" },
-      ],
-      completed: false,
-    },
-    {
-      id: 3,
-      title: "Pre-Departure Preparation",
-      description: "Prepare for relocation with practical and cultural considerations.",
-      tasks: [
-        { id: 1, title: "Apply for student visa", completed: false },
-        { id: 2, title: "Arrange accommodation", completed: false },
-        { id: 3, title: "Research healthcare options", completed: false },
-        { id: 4, title: "Prepare financially", completed: false },
-      ],
-      resources: [
-        { id: 1, title: "Cultural Adjustment Guide", type: "Article" },
-        { id: 2, title: "Student Accommodation Options", type: "Video" },
-        { id: 3, title: "Budgeting for International Students", type: "Guide" },
-      ],
-      completed: false,
-    },
-    {
-      id: 4,
-      title: "Arrival & Orientation",
-      description: "Navigate your arrival and orientation at your new institution.",
-      tasks: [
-        { id: 1, title: "Attend orientation events", completed: false },
-        { id: 2, title: "Complete registration", completed: false },
-        { id: 3, title: "Set up banking", completed: false },
-        { id: 4, title: "Learn campus resources", completed: false },
-      ],
-      resources: [
-        { id: 1, title: "First Week Survival Guide", type: "Checklist" },
-        { id: 2, title: "Campus Resources for International Students", type: "Guide" },
-        { id: 3, title: "Understanding Your New Academic System", type: "Article" },
-      ],
-      completed: false,
-    },
-    {
-      id: 5,
-      title: "Academic Integration",
-      description: "Adapt to your new academic environment and excel in your studies.",
-      tasks: [
-        { id: 1, title: "Understand grading system", completed: false },
-        { id: 2, title: "Learn academic expectations", completed: false },
-        { id: 3, title: "Develop study strategies", completed: false },
-        { id: 4, title: "Connect with academic support", completed: false },
-      ],
-      resources: [
-        { id: 1, title: "Academic Writing in Different Cultures", type: "Article" },
-        { id: 2, title: "Study Skills for International Students", type: "Video" },
-        { id: 3, title: "Working with Academic Advisors", type: "Guide" },
-      ],
-      completed: false,
-    },
-  ]);
+// 1) Define your defaults once
+const defaultJourneySteps: JourneyStep[] = [
+  {
+    id: 1,
+    title: "Research & Decision Making",
+    description: "Research educational systems and make informed decisions about your academic path.",
+    tasks: [
+      { id: 1, title: "Compare educational systems", completed: true },
+      { id: 2, title: "Research potential institutions", completed: true },
+      { id: 3, title: "Identify required documentation", completed: true },
+      { id: 4, title: "Set academic and career goals", completed: false },
+    ],
+    resources: [
+      { id: 1, title: "Global Education Guidebook", type: "Guide", href: "https://www.principledlearning.org/the-global-education-guidebook" },
+      { id: 2, title: "How to Choose the Right University Abroad", type: "Article", href: "https://www.mastersportal.com/articles/2099/how-to-pick-your-university-abroad.html" },
+      { id: 3, title: "Student Visa Checklist", type: "Checklist", href: "https://studee.com/guides/the-essential-student-visa-checklist" },
+    ],
+    completed: false,
+  },
+  {
+    id: 2,
+    title: "Application Process",
+    description: "Complete applications for your chosen institutions and programs.",
+    tasks: [
+      { id: 1, title: "Prepare personal statement", completed: true },
+      { id: 2, title: "Gather academic transcripts", completed: true },
+      { id: 3, title: "Secure recommendation letters", completed: false },
+      { id: 4, title: "Submit applications", completed: false },
+    ],
+    resources: [
+      { id: 1, title: "Writing a Successful Personal Statement", type: "Guide", href: "https://www.odu.edu/sites/default/files/documents/personal-statement-tips.pdf" },
+      { id: 2, title: "Application Timeline Planner", type: "Checklist", href: "https://www.scribbr.com/college-essay/applying-for-college/" },
+      { id: 3, title: "How to Request Strong Recommendation Letters", type: "Article", href: "https://www.coursera.org/articles/how-to-ask-for-a-letter-of-recommendation-template-tips" },
+    ],
+    completed: false,
+  },
+  {
+    id: 3,
+    title: "Pre-Departure Preparation",
+    description: "Prepare for relocation with practical and cultural considerations.",
+    tasks: [
+      { id: 1, title: "Apply for student visa", completed: false },
+      { id: 2, title: "Arrange accommodation", completed: false },
+      { id: 3, title: "Research healthcare options", completed: false },
+      { id: 4, title: "Prepare financially", completed: false },
+    ],
+    resources: [
+      { id: 1, title: "Cultural Adjustment Guide", type: "Article", href: "https://www.therapyinbarcelona.com/the-ultimate-guide-to-cultural-adjustment-therapy/" },
+      { id: 2, title: "Student Accommodation Options", type: "Video", href: "https://www.youtube.com/watch?v=TV-x9ifha7g" },
+      { id: 3, title: "Budgeting for International Students", type: "Guide", href: "https://www.mpowerfinancing.com/blog/budget-management-study-abroad" },
+    ],
+    completed: false,
+  },
+  {
+    id: 4,
+    title: "Arrival & Orientation",
+    description: "Navigate your arrival and orientation at your new institution.",
+    tasks: [
+      { id: 1, title: "Attend orientation events", completed: false },
+      { id: 2, title: "Complete registration", completed: false },
+      { id: 3, title: "Set up banking", completed: false },
+      { id: 4, title: "Learn campus resources", completed: false },
+    ],
+    resources: [
+      { id: 1, title: "First Week Survival Checklist", type: "Checklist", href: "https://theprepared.com/prepping-basics/guides/emergency-preparedness-checklist-prepping-beginners/" },
+      { id: 2, title: "Campus Resources for International Students", type: "Guide", href: "https://www.internationalstudent.com/resources/" },
+      { id: 3, title: "Understanding Your New Academic System", type: "Article", href: "https://www.jstor.org/stable/40279087?seq=1" },
+    ],
+    completed: false,
+  },
+  {
+    id: 5,
+    title: "Academic Integration",
+    description: "Adapt to your new academic environment and excel in your studies.",
+    tasks: [
+      { id: 1, title: "Understand grading system", completed: false },
+      { id: 2, title: "Learn academic expectations", completed: false },
+      { id: 3, title: "Develop study strategies", completed: false },
+      { id: 4, title: "Connect with academic support", completed: false },
+    ],
+    resources: [
+      { id: 1, title: "Academic Writing in Different Cultures", type: "Article", href: "https://www.humak.fi/en/blogs/academic-cross-cultural-differences-academic-writing/" },
+      { id: 2, title: "Study Skills for International Students", type: "Video", href: "https://www.youtube.com/watch?v=SLGxGJ7DOeQ" },
+      { id: 3, title: "Working with Academic Advisors", type: "Guide", href: "https://nacada.ksu.edu/portals/0/Clearinghouse/AdvisingIssues/Example_Univ_Handbook.pdf" },
+    ],
+    completed: false,
+  },
+];
 
+
+const Journey = () => {
+    const [journeySteps, setJourneySteps] = useState<JourneyStep[]>([]);
+
+  // 3) on-mount: load from storage or fall back to `defaultJourneySteps`
+  useEffect(() => {
+    const stored = localStorage.getItem("journeySteps");
+    if (stored) {
+      setJourneySteps(JSON.parse(stored));
+    } else {
+      setJourneySteps(defaultJourneySteps);
+    }
+  }, []);
+
+  // 4) persist on every change
+  useEffect(() => {
+    localStorage.setItem("journeySteps", JSON.stringify(journeySteps));
+  }, [journeySteps]);
+  
   // Calculate overall progress
   const totalTasks = journeySteps.reduce((acc, step) => acc + step.tasks.length, 0);
   const completedTasks = journeySteps.reduce(
@@ -223,16 +244,27 @@ const Journey = () => {
                             <ul className="grid gap-2 sm:grid-cols-2">
                               {step.resources.map((resource) => (
                                 <li key={resource.id}>
-                                  <Button 
-                                    variant="outline" 
-                                    className="w-full justify-between text-left font-normal"
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  className="w-full justify-between text-left font-normal"
+                                >
+                                  {/* Button will clone this Link into its root */}
+                                  <Link
+                                    href={resource.href!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex w-full justify-between items-center text-black"
                                   >
                                     <div>
                                       <span>{resource.title}</span>
-                                      <span className="block text-xs text-muted-foreground">{resource.type}</span>
+                                      <span className="block text-xs text-muted-foreground">
+                                        {resource.type}
+                                      </span>
                                     </div>
                                     <ArrowRight className="h-4 w-4" />
-                                  </Button>
+                                  </Link>
+                                </Button>
                                 </li>
                               ))}
                             </ul>
