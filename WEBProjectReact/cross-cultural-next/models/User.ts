@@ -37,6 +37,12 @@ const userSchema = new mongoose.Schema(
     trim: true,
     default: ""
     },
+    phone: {
+      type: String,
+      required: false,
+      trim: true,
+      match: [/^\+?[1-9]\d{1,14}$/, "Please enter a valid phone number"],
+    },
     educationalLevel: {
       type: String,
       required: false,
@@ -52,7 +58,7 @@ const userSchema = new mongoose.Schema(
     },
     fieldOfStudy: {
       type: String,
-      default: "",
+      default: "Design",
       enum: [
         "Computer Science", 
         "Business", 

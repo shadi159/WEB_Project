@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link  from "next/link";
 import { Button } from "../app/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
@@ -8,6 +8,33 @@ import Logo from "../app/components/Logo";
 import { BookOpen, MapPin, User, ArrowRight, CheckCircle } from "lucide-react";
 
 const Index = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [user, setUser] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
+  useEffect(() => {
+      // Check localStorage and sessionStorage when component mounts
+      const storedUser = localStorage.getItem("user");
+      const sessionFlag = sessionStorage.getItem("isLoggedIn");
+      
+      if (storedUser && sessionFlag === "true") {
+        try {
+          const userData = JSON.parse(storedUser);
+          setUser(userData);
+          setIsLoggedIn(true);
+        } catch (error) {
+          console.error("Error parsing user data:", error);
+          setIsLoggedIn(false);
+        }
+      } else {
+        setIsLoggedIn(false);
+      }
+    }, []);
+  
+    // Determine the href based on login status
+    const href = isLoggedIn ? "/Journey" : "/SignIn";
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-gray-50 sticky top-0 z-10 bg-background shadow-md">
@@ -111,7 +138,7 @@ const Index = () => {
                   </ul>
                 </CardContent>
                 <CardFooter>
-                  <Link href="/Journey" className="text-brand-blue hover:text-brand-purple font-medium inline-flex items-center gap-1">
+                  <Link  href={href} className="text-brand-blue hover:text-brand-purple font-medium inline-flex items-center gap-1">
                     Learn more <ArrowRight className="h-4 w-4" />
                   </Link>
                 </CardFooter>

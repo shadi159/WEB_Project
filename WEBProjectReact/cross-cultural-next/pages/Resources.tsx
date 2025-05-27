@@ -8,6 +8,7 @@ import { Input } from "../app/components/ui/input";
 import { Badge } from "../app/components/ui/badge";
 import Navbar from "../app/components/Navbar";
 import { BookOpen, Search, ArrowRight } from "lucide-react";
+import Chatbot from "@/app/components/Chatbot";
 
 type Resource = {
   id: number;
@@ -118,6 +119,7 @@ const Resources = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [savedResources, setSavedResources] = useState<Resource[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const toggleSaveResource = (resource: Resource) => {
     setSavedResources((prev) =>
@@ -273,25 +275,27 @@ const Resources = () => {
               </CardContent>
             </Card>
 
-            <Card className="bg-background shadow-md mt-6">
-              <CardHeader>
-                <CardTitle>Need Help?</CardTitle>
-                <CardDescription>
-                  Can't find what you're looking for?
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">
-                  Our advisors can help you find resources specific to your academic transition needs.
-                </p>
-                <Button className="w-full mt-4 bg-blue-800 hover:bg-teal-500">
-                  Contact an Advisor
-                </Button>
-              </CardContent>
-            </Card>
+          <Card className="bg-background shadow-md mt-6">
+            <CardHeader>
+              <CardTitle>Need Help?</CardTitle>
+              <CardDescription>Can't find what you're looking for?</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                Try our chatbot for tailored academic transition advice.
+              </p>
+              <Button
+                className="w-full mt-4 bg-blue-800 hover:bg-teal-500 text-white"
+                onClick={() => setChatOpen(true)}   // <— open it!
+              >
+                Contact chatbot
+              </Button>
+            </CardContent>
+          </Card>
           </div>
         </div>
       </main>
+        <Chatbot open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 };

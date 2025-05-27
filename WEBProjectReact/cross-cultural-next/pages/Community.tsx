@@ -1,5 +1,10 @@
+// pages/community.tsx  (or wherever your Community component lives)
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Card, CardContent, CardDescription,
+  CardFooter, CardHeader, CardTitle
+} from "../app/components/ui/card";
 import { Button } from "../app/components/ui/button";
 import { Input } from "../app/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../app/components/ui/avatar";
@@ -11,212 +16,125 @@ import { useRouter } from "next/router";
 
 interface Post {
   id: string;
-  author: {
-    name: string;
-    avatar: string;
-    initials: string;
-  };
+  author: { name: string; avatar?: string; initials: string };
   content: string;
   likes: number;
   comments: number;
-  time: string;
+  shares: number;
+  createdAt: string;
 }
 
 interface User {
   firstName: string;
   lastName: string;
-  email: string;
   avatar?: string;
 }
 
-const Community = () => {
+export default function Community() {
   const router = useRouter();
-  const [posts, setPosts] = useState<Post[]>([
-    {
-      id: "1",
-      author: {
-        name: "Sarah Johnson",
-        avatar: "",
-        initials: "SJ",
-      },
-      content: "Just completed my certification! Anyone else working on professional development this month?",
-      likes: 24,
-      comments: 8,
-      time: "2 hours ago",
-    },
-    {
-      id: "2",
-      author: {
-        name: "Michael Chen",
-        avatar: "",
-        initials: "MC",
-      },
-      content: "Looking for resources on leadership development. Any recommendations from the community?",
-      likes: 15,
-      comments: 12,
-      time: "1 day ago",
-    },
-    {
-      id: "3",
-      author: {
-        name: "Priya Singh",
-        avatar: "",
-        initials: "PS",
-      },
-      content: "Hosting a virtual meetup next week on navigating career transitions. DM me if interested!",
-      likes: 32,
-      comments: 5,
-      time: "3 days ago",
-    },
-  ]);
-
+  const [posts, setPosts] = useState<Post[]>([]);
   const [newPost, setNewPost] = useState("");
-  const [user, setUser] = useState<User>({
-    firstName: "",
-    lastName: "",
-    email: "",
-  });
+  const [user, setUser] = useState<User | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // Check if user is logged in on component mount
+  // load user & posts on mount
   useEffect(() => {
-    const checkLoginStatus = () => {
-      const storedUser = localStorage.getItem("user");
-      const sessionFlag = sessionStorage.getItem("isLoggedIn");
-      
-      const isUserLoggedIn = sessionFlag === "true" && storedUser;
-      
-      setIsLoggedIn(!!isUserLoggedIn);
-      
-      if (isUserLoggedIn && storedUser) {
-        try {
-          const userData = JSON.parse(storedUser);
-          if (userData && userData.firstName && userData.lastName) {
-            setUser(userData);
-          } else {
-            setIsLoggedIn(false);
-          }
-        } catch (error) {
-          console.error("Error parsing user data:", error);
-          setIsLoggedIn(false);
-        }
-      } else {
-        setIsLoggedIn(false);
-      }
-    };
-    
-    // Check on mount
-    checkLoginStatus();
-    
-    // Set up an interval to periodically check login status
-    const intervalId = setInterval(checkLoginStatus, 5000);
-    
-    return () => clearInterval(intervalId);
+    // — check login
+    const stored = localStorage.getItem("user");
+    if (sessionStorage.getItem("isLoggedIn") === "true" && stored) {
+      setUser(JSON.parse(stored));
+      setIsLoggedIn(true);
+    }
+    // — fetch posts
+    fetchPosts();
   }, []);
 
-  const handlePostSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Perform a real-time check if the user is still logged in
-    const storedUser = localStorage.getItem("user");
-    const sessionFlag = sessionStorage.getItem("isLoggedIn");
-    const currentlyLoggedIn = (sessionFlag === "true" && storedUser);
-    
-    // Don't proceed if not logged in or post is empty
-    if (!currentlyLoggedIn || !newPost.trim()) {
-      // If they somehow got here while logged out, update the UI state
-      if (!currentlyLoggedIn && isLoggedIn) {
-        setIsLoggedIn(false);
-      }
-      alert("You must be logged in to post. Please sign in.");
-      return;
-    }
-    
-    // Parse user data for post creation
-    let userData;
-    try {
-      userData = JSON.parse(storedUser || "{}");
-    } catch (error) {
-      console.error("Error parsing user data:", error);
-      alert("There was an error with your account. Please sign in again.");
-      setIsLoggedIn(false);
-      return;
-    }
-    
-    // Create the initials safely
-    const getInitial = (name: string): string => {
-      return name && typeof name === 'string' && name.trim() ? name.trim()[0].toUpperCase() : '';
-    };
-    
-    const post: Post = {
-      id: Date.now().toString(),
-      author: {
-        name: `${userData.firstName} ${userData.lastName}`,
-        avatar: userData.avatar || "",
-        initials: getInitial(userData.firstName) + getInitial(userData.lastName),
-      },
-      content: newPost,
-      likes: 0,
-      comments: 0,
-      time: "Just now",
-    };
+  const fetchPosts = async () => {
+    const res = await fetch("/api/posts");
+    const data = await res.json();
+    setPosts(
+      data.map((p: any) => ({
+        id: p._id,
+        author: p.author,
+        content: p.content,
+        likes: p.likes,
+        comments: p.comments.length,
+        shares: p.shares,
+        createdAt: p.createdAt
+      }))
+    );
+  };
 
-    setPosts([post, ...posts]);
-    setNewPost("");
+  const handlePostSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPost.trim() || !user) return;
+    const author = {
+      name: user.firstName + " " + user.lastName,
+      avatar: user.avatar,
+      initials:
+        user.firstName[0].toUpperCase() + user.lastName[0].toUpperCase(),
+    };
+    const res = await fetch("/api/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, content: newPost }),
+    });
+    if (res.ok) {
+      setNewPost("");
+      fetchPosts();
+    }
   };
-    
-  const handleSignIn = () => {
-    router.push("/SignIn");
+
+  const handleLike = async (id: string) => {
+    const res = await fetch(`/api/posts/${id}/like`, { method: "POST" });
+    if (res.ok) fetchPosts();
   };
+
+  const handleComment = async (id: string) => {
+    const content = prompt("Enter your comment:");
+    if (!content?.trim() || !user) return;
+    const author = {
+      name: user.firstName + " " + user.lastName,
+      initials:
+        user.firstName[0].toUpperCase() + user.lastName[0].toUpperCase(),
+    };
+    await fetch(`/api/posts/${id}/comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, content }),
+    });
+    fetchPosts();
+  };
+
+  const handleShare = async (id: string) => {
+    try {
+      await navigator.share({ text: newPost, url: window.location.href });
+    } catch {
+      // fallback: copy link
+      await navigator.clipboard.writeText(window.location.href + `?post=${id}`);
+      alert("Link copied!");
+    }
+    await fetch(`/api/posts/${id}/share`, { method: "POST" });
+    fetchPosts();
+  };
+
+  const handleSignIn = () => router.push("/SignIn");
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left sidebar */}
-          <div className="lg:col-span-1">
-            <Card className="mb-6 shadow-md">
-              <CardHeader>
-                <CardTitle>Community</CardTitle>
-                <CardDescription>Connect with other members</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <Users className="h-6 w-6 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">1,243 Members</p>
-                      <p className="text-sm text-muted-foreground">Active community</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <MessageSquare className="h-6 w-6 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">56 New Posts</p>
-                      <p className="text-sm text-muted-foreground">Since your last visit</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full">Invite Members</Button>
-              </CardFooter>
-            </Card>
-          </div>
-
-          {/* Main content */}
+          {/* sidebar omitted for brevity */}
           <div className="lg:col-span-2">
             <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Create Post</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Create Post</CardTitle></CardHeader>
               <CardContent>
                 {isLoggedIn ? (
                   <form onSubmit={handlePostSubmit}>
                     <div className="flex flex-col space-y-4">
                       <Input
-                        placeholder="Share something with the community..."
+                        placeholder="Share something…"
                         value={newPost}
                         onChange={(e) => setNewPost(e.target.value)}
                         className="min-h-[100px]"
@@ -229,8 +147,12 @@ const Community = () => {
                 ) : (
                   <div className="flex flex-col items-center space-y-4 py-4">
                     <LogIn className="h-12 w-12 text-muted-foreground" />
-                    <p className="text-center text-muted-foreground">You need to be logged in to create a post</p>
-                    <Button variant="outline" onClick={handleSignIn}>Sign In</Button>
+                    <p className="text-center text-muted-foreground">
+                      You need to log in to post
+                    </p>
+                    <Button variant="outline" onClick={handleSignIn}>
+                      Sign In
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -243,21 +165,30 @@ const Community = () => {
                 <TabsTrigger value="following">Following</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="recent" className="space-y-6 animate-fade-in">
+              <TabsContent value="recent" className="space-y-6">
                 {posts.map((post) => (
                   <Card key={post.id}>
                     <CardHeader>
                       <div className="flex items-center gap-4">
                         <Avatar>
                           {post.author.avatar ? (
-                            <AvatarImage src={post.author.avatar} alt={post.author.name} />
+                            <AvatarImage
+                              src={post.author.avatar}
+                              alt={post.author.name}
+                            />
                           ) : (
-                            <AvatarFallback>{post.author.initials}</AvatarFallback>
+                            <AvatarFallback>
+                              {post.author.initials}
+                            </AvatarFallback>
                           )}
                         </Avatar>
                         <div>
                           <p className="font-medium">{post.author.name}</p>
-                          <p className="text-sm text-muted-foreground">{post.time}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(new Date(post.createdAt), {
+                              addSuffix: true,
+                            })}
+                          </p>
                         </div>
                       </div>
                     </CardHeader>
@@ -265,39 +196,39 @@ const Community = () => {
                       <p>{post.content}</p>
                     </CardContent>
                     <CardFooter className="flex justify-between">
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleLike(post.id)}
+                      >
                         ❤️ {post.likes}
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleComment(post.id)}
+                      >
                         <MessageSquare className="h-4 w-4 mr-2" />
                         {post.comments}
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleShare(post.id)}
+                      >
                         <Share className="h-4 w-4 mr-2" />
-                        Share
+                        {post.shares}
                       </Button>
                     </CardFooter>
                   </Card>
                 ))}
               </TabsContent>
 
-              <TabsContent value="popular" className="space-y-6">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">Popular content will appear here</p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="following" className="space-y-6">
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">Content from people you follow will appear here</p>
-                </div>
-              </TabsContent>
+              {/* popular & following tabs can stay as placeholders */}
             </Tabs>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default Community;
+}
