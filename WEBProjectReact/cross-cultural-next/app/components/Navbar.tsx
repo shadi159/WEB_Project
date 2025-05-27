@@ -21,12 +21,15 @@ import {
 import Logo from "./Logo";
 import { BookOpen, LogOut, MapPin, User } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { Moon, Sun } from "lucide-react";
+
 
 
 const Navbar = () => {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [user, setUser] = useState({
     firstName: "",
     lastName: "",
@@ -44,6 +47,15 @@ const Navbar = () => {
     } else {
       setIsLoggedIn(false);
     }
+    const storedTheme = localStorage.getItem("theme");
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+if (storedTheme === 'dark' || (!storedTheme && systemDark)) {
+    document.documentElement.classList.add('dark');
+    setIsDarkMode(true);
+  } else {
+    document.documentElement.classList.remove('dark');
+    setIsDarkMode(false);
+  }
   }, []);
 
   // Generate initials for the avatar
@@ -86,10 +98,24 @@ const Navbar = () => {
 
   const pathname = usePathname();
   const isActive = (path: string) => pathname === path;
+
+  const toggleDarkMode = () => {
+  const newDarkMode = !isDarkMode;
+  setIsDarkMode(newDarkMode);
+  
+  if (newDarkMode) {
+    document.documentElement.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  }
+  };
+
   
 
   return (
-    <header className="bg-white border-gray-50 sticky top-0 z-10">
+    <header className="bg-background border-gray-50 sticky top-0 z-10">
       <div className="shadow-md px-0 sm:px-6 lg:px-8">
         <div className="flex items-center h-16">
           <div className="flex">
@@ -106,8 +132,8 @@ const Navbar = () => {
                   href={item.href}
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
                     isActive(item.href)
-                      ? "border-brand-blue text-gray-900"
-                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                      ? "border-brand-blue text-gray-500"
+                      : "border-transparent text-gray-500 hover:text-gray-600 hover:border-gray-300"
                   }`}
                 >
                   {item.name}
@@ -118,6 +144,15 @@ const Navbar = () => {
           <div className="flex items-center ml-auto"></div>
           {isLoggedIn ? (
              <div className="hidden md:flex md:items-center">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleDarkMode}
+                className="ml-2"
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                <span className="sr-only">Toggle dark mode</span>
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative rounded-full p-0.5 flex ml-auto">
@@ -126,7 +161,7 @@ const Navbar = () => {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="max-h-60 overflow-auto bg-gray-100">
+                <DropdownMenuContent align="end" className="max-h-60 overflow-auto bg-background-gray-100">
                   <DropdownMenuLabel>{user.firstName} {user.lastName}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
@@ -159,7 +194,7 @@ const Navbar = () => {
             </div>
           ) :(
             <div className="hidden md:flex md:items-center">
-              <Link href="/SignIn" className="text-sm font-medium text-gray-500 hover:text-gray-700">
+              <Link href="/SignIn" className="text-sm font-medium text-gray-500 hover:text-gray-600">
                 Sign In
               </Link>
               <Link href="/Register" className="ml-4 text-sm font-medium text-blue-500 hover:text-purple-500">
@@ -196,8 +231,8 @@ const Navbar = () => {
                       href={item.href}
                       className={`block px-3 py-2 rounded-md text-base font-medium ${
                         isActive(item.href)
-                          ? "bg-blue-500/10 text-brand-blue"
-                          : "text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                          ? "bg-white-500/10 text-brand-blue"
+                          : "text-secondary hover:text-gray-900 hover:bg-gray-50"
                       }`}
                       onClick={() => setIsMobileMenuOpen(false)}
                     >
@@ -214,10 +249,10 @@ const Navbar = () => {
                           </Avatar>
                         </div>
                         <div className="ml-3">
-                          <div className="text-base font-medium text-gray-800">
+                          <div className="text-base font-medium text-secondary">
                             {user.firstName} {user.lastName}
                           </div>
-                          <div className="text-sm font-medium text-gray-500">
+                          <div className="text-sm font-medium text-gray-400">
                             {user.email}
                           </div>
                         </div>
@@ -225,7 +260,7 @@ const Navbar = () => {
                       <div className="mt-3 space-y-1">
                         <Link
                           href="/Profile"
-                          className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                          className="block px-3 py-2 rounded-md text-base font-medium text-secondary hover:text-gray-900 hover:bg-gray-50"
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           Your Profile
@@ -247,7 +282,7 @@ const Navbar = () => {
                       <div className="space-y-1">
                         <Link
                           href="/SignIn"
-                          className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                          className="block px-3 py-2 rounded-md text-base font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50"
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           Sign In
@@ -259,6 +294,15 @@ const Navbar = () => {
                         >
                           Register
                         </Link>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={toggleDarkMode}
+                              className="ml-2"
+                            >
+                              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                              <span className="sr-only">Toggle dark mode</span>
+                            </Button>
                       </div>
                     </div>
                   )}

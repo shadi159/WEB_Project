@@ -176,7 +176,7 @@ const Community = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left sidebar */}
           <div className="lg:col-span-1">
-            <Card>
+            <Card className="mb-6 shadow-md">
               <CardHeader>
                 <CardTitle>Community</CardTitle>
                 <CardDescription>Connect with other members</CardDescription>

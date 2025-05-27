@@ -10,7 +10,7 @@ import { BookOpen, MapPin, User, ArrowRight, CheckCircle } from "lucide-react";
 const Index = () => {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-gray-50 sticky top-0 z-10 bg-white shadow-md">
+      <header className="border-gray-50 sticky top-0 z-10 bg-background shadow-md">
         <div >
           <div className="flex justify-between items-center py-4">
           <div className="flex items-center ml-6  ">
@@ -30,8 +30,8 @@ const Index = () => {
       
       <main className="flex-1">
         {/* Hero section */}
-        <section className="py-15 md:py-25 bg-gradient-to-b from-white to-muted/30">
-          <div className="container mx-auto px-4 bg-gray-50 rounded-xl shadow-xl">
+        <section className="py-15 md:py-25 bg-background">
+          <div className="container mx-auto px-4 bg-background rounded-xl shadow-xl">
             <div className="max-w-3xl mx-auto text-center">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
                 Navigate Your <span className="hero-gradient from-fuchsia-600 to-amber-500 bg-gradient-to-r bg-clip-text text-transparent">Global Academic Journey</span>
@@ -76,7 +76,7 @@ const Index = () => {
         </section>
         
         {/* Features section */}
-        <section className="py-16 bg-white">
+        <section className="py-16 bg-background">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto text-center mb-12">
               <h2 className="text-3xl font-bold mb-4">How We Help You Succeed</h2>
@@ -173,7 +173,7 @@ const Index = () => {
                   </ul>
                 </CardContent>
                 <CardFooter>
-                  <Link href="/community" className="text-brand-orange hover:text-brand-blue font-medium inline-flex items-center gap-1">
+                  <Link href="/Community" className="text-brand-orange hover:text-brand-blue font-medium inline-flex items-center gap-1">
                     Join community <ArrowRight className="h-4 w-4" />
                   </Link>
                 </CardFooter>
@@ -197,19 +197,19 @@ const Index = () => {
                 <TabsList className="flex space-x-4">
                   <TabsTrigger
                     value="undergrad"
-                    className="rounded-2xl bg-white data-[state=active]:bg-blue-300"
+                    className="rounded-2xl bg-background data-[state=active]:bg-blue-300"
                   >
                     Undergraduate
                   </TabsTrigger>
                   <TabsTrigger
                     value="graduate"
-                    className="rounded-2xl bg-white data-[state=active]:bg-blue-300"
+                    className="rounded-2xl bg-background data-[state=active]:bg-blue-300"
                   >
                     Graduate
                   </TabsTrigger>
                   <TabsTrigger
                     value="phd"
-                    className="rounded-2xl bg-white data-[state=active]:bg-blue-300"
+                    className="rounded-2xl bg-background data-[state=active]:bg-blue-300"
                   >
                     PhD
                   </TabsTrigger>
@@ -217,7 +217,7 @@ const Index = () => {
               </div>
               
               <TabsContent value="undergrad">
-                <div className="bg-white p-8 rounded-lg shadow-sm ">
+                <div className="bg-background p-8 rounded-lg shadow-sm ">
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="md:w-1/3 flex justify-center">
                       <div className="w-32 h-32 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -243,7 +243,7 @@ const Index = () => {
               </TabsContent>
               
               <TabsContent value="graduate">
-                <div className="bg-white p-8 rounded-lg shadow-sm">
+                <div className="bg-background p-8 rounded-lg shadow-sm">
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="md:w-1/3 flex justify-center">
                       <div className="w-32 h-32 rounded-full bg-purple-500/20 flex items-center justify-center">
@@ -269,7 +269,7 @@ const Index = () => {
               </TabsContent>
               
               <TabsContent value="phd">
-                <div className="bg-white p-8 rounded-lg shadow-sm">
+                <div className="bg-background p-8 rounded-lg shadow-sm">
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="md:w-1/3 flex justify-center">
                       <div className="w-32 h-32 rounded-full bg-orange-500/20 flex items-center justify-center">
@@ -306,7 +306,7 @@ const Index = () => {
                 Join thousands of students who have successfully navigated their cross-cultural academic transitions.
               </p>
               <Link href="/Register">
-                <Button size="lg" variant="secondary" className="bg-white text-brand-purple hover:bg-gray-100">
+                <Button size="lg" variant="secondary" className="bg-background text-brand-purple hover:bg-gray-100">
                   Get Started Today
                 </Button>
               </Link>
@@ -321,7 +321,7 @@ const Index = () => {
             <div>
               <h3 className="text-lg font-semibold mb-4 text-white">Company</h3>
               <ul className="space-y-2">
-                <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">About Us</Link></li>
+                <li><Link href="/AboutUs" className="opacity-75 hover:opacity-100 text-gray-300">About Us</Link></li>
                 <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Our Team</Link></li>
                 <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Careers</Link></li>
                 <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Contact</Link></li>

@@ -131,7 +131,7 @@ const Register = () => {
   // Use the temporary input values for display but the actual form data for submission
   return (
     <div className="min-h-screen flex flex-col justify-center items-center p-4 bg-muted/30">
-      <div className="w-full max-w-lg bg-white p-8 rounded-lg shadow-lg animate-fade-in">
+      <div className="w-full max-w-lg bg-background p-8 rounded-lg shadow-lg animate-fade-in">
         <div className="text-center">
           <Logo className="mx-auto h-12 w-auto" />
           <h1 className="mt-6 text-2xl font-bold">Create your account</h1>
@@ -210,7 +210,7 @@ const Register = () => {
                 <SelectTrigger id="educationalLevel">
                   <SelectValue placeholder="Select level" />
                 </SelectTrigger>
-                <SelectContent className="w-full bg-gray-50">
+                <SelectContent className="w-full bg-background">
                   <SelectItem value="High School">High School</SelectItem>
                   <SelectItem value="Undergraduate">Undergraduate</SelectItem>
                   <SelectItem value="Graduate">Graduate</SelectItem>

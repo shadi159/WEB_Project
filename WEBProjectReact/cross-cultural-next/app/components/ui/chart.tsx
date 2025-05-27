@@ -139,8 +139,7 @@ const ChartTooltipContent = React.forwardRef<
         return (
           <div className={cn("font-medium", labelClassName)}>
             {labelFormatter(
-              typeof value === 'string' || typeof value === 'number' ? value : '',
-              payload // Pass the second argument (payload) to labelFormatter
+              typeof value === 'string' || typeof value === 'number' ? value : ''
             )}
           </div>
         );
@@ -179,7 +178,7 @@ const ChartTooltipContent = React.forwardRef<
                 )}
               >
                 {formatter && item?.value !== undefined && item.name ? (
-                  formatter(item.value, item.name, item, index, payload) // Pass the second argument (payload) to formatter
+                  formatter(item.value, item.name, item, index)
                 ) : (
                   <>
                     {itemConfig?.icon ? (
@@ -218,9 +217,9 @@ const ChartTooltipContent = React.forwardRef<
                         </span>
                       </div>
                       {item.value && (
-                        <span className="font-mono font-medium tabular-nums text-foreground">
-                          {(Array.isArray(item.value) ? (item.value as (string | number)[]).slice().join(', ') : item.value?.toLocaleString())}
-                        </span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">
+                        {(Array.isArray(item.value) ? (item.value as (string | number)[]).slice().join(', ') : item.value?.toLocaleString())}   
+                      </span>
                       )}
                     </div>
                   </>

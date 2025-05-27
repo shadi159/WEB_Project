@@ -68,7 +68,7 @@ const SignIn = () => {
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center px-4 bg-muted/30">
-      <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-lg shadow-lg animate-fade-in">
+      <div className="w-full max-w-md space-y-8 bg-background p-8 rounded-lg shadow-lg animate-fade-in">
         <div className="text-center">
           <Logo className="mx-auto h-12 w-auto" />
           <h1 className="mt-6 text-2xl font-bold">Welcome back</h1>

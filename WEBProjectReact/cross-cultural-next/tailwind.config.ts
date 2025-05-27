@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     './app/**/*.{js,ts,jsx,tsx}',
     './pages/**/*.{js,ts,jsx,tsx}',
@@ -13,7 +14,10 @@ const config: Config = {
           DEFAULT: 'var(--color-primary)',
           dark: '#371f9b',
         },
-        secondary: 'var(--color-secondary)',
+        secondary:{
+          DEFAULT: 'var(--color-secondary)',
+          dark: '#371f9b',
+        },
         accent: 'var(--color-accent)',
         text: {
           DEFAULT: 'var(--color-text)',

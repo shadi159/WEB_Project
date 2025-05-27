@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../app/components/ui/card";
 import { Progress } from "../app/components/ui/progress";
 import Navbar from "../app/components/Navbar";
@@ -8,14 +8,35 @@ import { Button } from "../app/components/ui/button";
 
 const Dashboard = () => {
   const [progress, setProgress] = useState(42);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+  });
+
+  useEffect(() => {
+    // Get user data from localStorage when component mounts
+    const storedUser = localStorage.getItem("user");
+    const sessionFlag = sessionStorage.getItem("isLoggedIn");
+    if (storedUser && sessionFlag === "true") {
+      const userData = JSON.parse(storedUser);
+      setUser(userData);
+      setIsLoggedIn(true);
+    } else {
+      setIsLoggedIn(false);
+    }
+  }, []);
 
   return (
-    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-origin-padding  bg-background">
       <Navbar />
       
       <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
-          <h1 className="font-bold text-3xl mb-2">Welcome back, Sarah!</h1>
+          <h1 className="font-bold text-3xl mb-2">
+            {isLoggedIn ? `Welcome back, ${user.firstName}!` : "Welcome!"}
+          </h1>
           <p className="text-muted-foreground">
             Track your academic transition journey and access personalized resources.
           </p>
@@ -75,7 +96,7 @@ const Dashboard = () => {
         <div className="mt-8">
           <Tabs defaultValue="upcoming">
             <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-              <TabsList className="flex flex-wrap gap-2 bg-gray-100 rounded-md">
+              <TabsList className="flex flex-wrap gap-2 bg-secondary/25">
                 <TabsTrigger value="upcoming">Upcoming Tasks</TabsTrigger>
                 <TabsTrigger value="recommended">Recommended</TabsTrigger>
                 <TabsTrigger value="recent">Recent Activity</TabsTrigger>

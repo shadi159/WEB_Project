@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs", // Use ESNext for modern module syntax
-    "moduleResolution": "node",
+    "module": "ESNext", // Use ESNext for modern module syntax commonjs
+    "moduleResolution": "bundler",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,

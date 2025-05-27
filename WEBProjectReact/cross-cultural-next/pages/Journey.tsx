@@ -254,7 +254,7 @@ const Journey = () => {
                                     href={resource.href!}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex w-full justify-between items-center text-black"
+                                    className="flex w-full justify-between items-center text-secondary"
                                   >
                                     <div>
                                       <span>{resource.title}</span>

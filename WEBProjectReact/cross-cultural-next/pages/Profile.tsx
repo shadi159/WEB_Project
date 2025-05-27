@@ -186,7 +186,7 @@ const saveProfile = async () => {
   if (loading) return <div>Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-origin-padding bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-origin-padding bg-background">
       <Navbar />
       <main className="container py-6 px-6">
         <div className="mb-8">

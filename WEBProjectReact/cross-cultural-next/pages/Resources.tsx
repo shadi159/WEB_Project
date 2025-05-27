@@ -16,6 +16,7 @@ type Resource = {
   type: "Article" | "Video" | "Guide" | "Checklist" | "Tool";
   categories: string[];
   featured?: boolean;
+  href?: string;
 };
 
 const resourcesData: Resource[] = [
@@ -26,6 +27,7 @@ const resourcesData: Resource[] = [
     type: "Guide",
     categories: ["Academic Systems", "Cultural Differences"],
     featured: true,
+    href: "https://www.linkedin.com/pulse/understanding-different-educational-ry4jf/",
   },
   {
     id: 2,
@@ -33,6 +35,7 @@ const resourcesData: Resource[] = [
     description: "Learn about citation styles, plagiarism rules, and essay structure expectations.",
     type: "Article",
     categories: ["Academic Writing", "Study Skills"],
+    href: "https://www.researchgate.net/publication/384722151_Academic_Writing_Challenges_and_Encouragements_Perspectives_of_University_Teachers_in_Far_Western_University",
   },
   {
     id: 3,
@@ -41,6 +44,7 @@ const resourcesData: Resource[] = [
     type: "Video",
     categories: ["Cultural Adjustment", "Mental Health"],
     featured: true,
+    href:"https://www.youtube.com/watch?v=omEcU1iTDYI",
   },
   {
     id: 4,
@@ -48,6 +52,7 @@ const resourcesData: Resource[] = [
     description: "Overview of scholarships, grants, and work opportunities for students studying abroad.",
     type: "Guide",
     categories: ["Financial Planning", "Practical Resources"],
+    href: "https://studentaid.gov/understand-aid/types/international",
   },
   {
     id: 5,
@@ -56,6 +61,7 @@ const resourcesData: Resource[] = [
     type: "Checklist",
     categories: ["Visa & Immigration", "Practical Resources"],
     featured: true,
+    href: "https://immi.homeaffairs.gov.au/visas/web-evidentiary-tool",
   },
   {
     id: 6,
@@ -147,7 +153,7 @@ const Resources = () => {
   const featuredResources = resourcesData.filter((resource) => resource.featured);
 
   return (
-    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-background to-muted/30">
       <Navbar />
 
       <main className="container py-6 justify-items-end-center px-6">
@@ -162,7 +168,7 @@ const Resources = () => {
           <div className="md:col-span-2">
             <Tabs defaultValue="all">
               <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-                <TabsList className="flex flex-wrap gap-2 bg-gray-100 rounded-md">
+                <TabsList className="flex flex-wrap gap-2 bg-background/50 rounded-md">
                   <TabsTrigger value="all">All Resources</TabsTrigger>
                   <TabsTrigger value="featured">Featured</TabsTrigger>
                   <TabsTrigger value="saved">Saved</TabsTrigger>
@@ -229,7 +235,7 @@ const Resources = () => {
           </div>
 
           <div>
-            <Card className="bg-white shadow-md">
+            <Card className="bg-background shadow-md">
               <CardHeader>
                 <CardTitle>Filter by Category</CardTitle>
               </CardHeader>
@@ -249,7 +255,7 @@ const Resources = () => {
               </CardContent>
             </Card>
 
-            <Card className="bg-white shadow-md mt-6">
+            <Card className="bg-background shadow-md mt-6">
               <CardHeader>
                 <CardTitle>Resource Types</CardTitle>
               </CardHeader>
@@ -267,7 +273,7 @@ const Resources = () => {
               </CardContent>
             </Card>
 
-            <Card className="bg-white shadow-md mt-6">
+            <Card className="bg-background shadow-md mt-6">
               <CardHeader>
                 <CardTitle>Need Help?</CardTitle>
                 <CardDescription>
@@ -278,7 +284,7 @@ const Resources = () => {
                 <p className="text-sm">
                   Our advisors can help you find resources specific to your academic transition needs.
                 </p>
-                <Button className="w-full mt-4 bg-blue-500 hover:bg-purple-500">
+                <Button className="w-full mt-4 bg-blue-800 hover:bg-teal-500">
                   Contact an Advisor
                 </Button>
               </CardContent>
@@ -300,14 +306,14 @@ const ResourceCard = ({
   onToggleSave?: (r: Resource) => void;
 }) => {
   return (
-    <Card className="bg-white shadow-sm hover:shadow-lg transition-shadow duration-200">
+    <Card className="bg-background shadow-sm hover:shadow-lg transition-shadow duration-200">
       <CardHeader>
         <div className="flex justify-between items-start">
           <div>
             <CardTitle>{resource.title}</CardTitle>
             <CardDescription className="mt-1">{resource.description}</CardDescription>
           </div>
-          <Badge className="bg-blue-500 hover:bg-blue-300">{resource.type}</Badge>
+          <Badge className="bg-blue-800 hover:bg-blue-400 text-white">{resource.type}</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -321,11 +327,11 @@ const ResourceCard = ({
       </CardContent>
       <CardFooter className="flex justify-between">
         {onToggleSave && (
-          <Button variant="secondary" onClick={() => onToggleSave(resource)}>
+          <Button variant="ghost" onClick={() => onToggleSave(resource)}>
             {isSaved ? "Remove from saved" : "Save for later"}
           </Button>
         )}
-        <Button className="gap-2 bg-blue-500 hover:bg-purple-500">
+        <Button className="gap-2 bg-blue-800 hover:bg-teal-500 text-white">
           View Resource <ArrowRight className="h-4 w-4" />
         </Button>
       </CardFooter>

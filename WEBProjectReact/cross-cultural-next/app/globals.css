@@ -9,10 +9,20 @@
   --color-accent: #A259FF;
   --color-text: #333333;
   --color-text-light: #666666;
-  --color-background: #ffffff;
+  --color-background: rgb(255, 255, 255);
   --color-border: #e5e7eb;
   --font-geist-sans: 'Georgia, serif';
   --font-geist-mono: 'Courier New, monospace';
+}
+.dark {
+  --color-background: #121212;
+  --color-secondary: #cacaca;
+  --color-text: #e0e0e0;
+  --color-text-light: #666666;
+  --color-text-secondary: #b0b0b0;
+  --color-heading: #5d4e66;
+  --color-border: #374151;
+  --color-accent: #8b5cf6;
 }
 
 /* Base Styles */
@@ -24,6 +34,7 @@
     background-color: var(--color-background);
     line-height: 1.5;
   }
+
 
   h1 {
     @apply text-3xl font-bold mb-4 ;
@@ -77,12 +88,13 @@
   }
 
   .btn-secondary {
-    @apply bg-white text-secondary border-gray-300;
+    @apply bg-background text-secondary border-gray-300;
   }
 
   .btn:hover {
     @apply opacity-90 no-underline;
   }
+
 
   .hero-section {
     @apply mb-12;
