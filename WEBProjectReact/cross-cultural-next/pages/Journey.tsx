@@ -1,6 +1,12 @@
-
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../app/components/ui/card";
 import { Button } from "../app/components/ui/button";
 import { Progress } from "../app/components/ui/progress";
 import { Separator } from "../app/components/ui/separator";
@@ -26,7 +32,6 @@ type JourneyStep = {
   completed: boolean;
 };
 
-// 1) Define your defaults once
 const defaultJourneySteps: JourneyStep[] = [
   {
     id: 1,
@@ -115,11 +120,9 @@ const defaultJourneySteps: JourneyStep[] = [
   },
 ];
 
-
 const Journey = () => {
-    const [journeySteps, setJourneySteps] = useState<JourneyStep[]>([]);
+  const [journeySteps, setJourneySteps] = useState<JourneyStep[]>([]);
 
-  // 3) on-mount: load from storage or fall back to `defaultJourneySteps`
   useEffect(() => {
     const stored = localStorage.getItem("journeySteps");
     if (stored) {
@@ -129,33 +132,26 @@ const Journey = () => {
     }
   }, []);
 
-  // 4) persist on every change
   useEffect(() => {
     localStorage.setItem("journeySteps", JSON.stringify(journeySteps));
   }, [journeySteps]);
-  
-  // Calculate overall progress
+
   const totalTasks = journeySteps.reduce((acc, step) => acc + step.tasks.length, 0);
   const completedTasks = journeySteps.reduce(
-    (acc, step) => acc + step.tasks.filter((task) => task.completed).length,
+    (acc, step) => acc + step.tasks.filter((t) => t.completed).length,
     0
   );
-  const overallProgress = Math.round((completedTasks / totalTasks) * 100);
+  const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const toggleTaskCompletion = (stepId: number, taskId: number) => {
-    setJourneySteps((prevSteps) =>
-      prevSteps.map((step) => {
+    setJourneySteps((prev) =>
+      prev.map((step) => {
         if (step.id === stepId) {
-          const updatedTasks = step.tasks.map((task) =>
-            task.id === taskId ? { ...task, completed: !task.completed } : task
+          const updatedTasks = step.tasks.map((t) =>
+            t.id === taskId ? { ...t, completed: !t.completed } : t
           );
-          const allTasksCompleted = updatedTasks.every((task) => task.completed);
-          
-          return {
-            ...step,
-            tasks: updatedTasks,
-            completed: allTasksCompleted,
-          };
+          const allDone = updatedTasks.every((t) => t.completed);
+          return { ...step, tasks: updatedTasks, completed: allDone };
         }
         return step;
       })
@@ -163,12 +159,12 @@ const Journey = () => {
   };
 
   return (
-    <div className="min-h-screen bg-origin-padding  from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="container py-6 justify-items-end-center px-6">
+      <main className="container mx-auto pt-16 pb-6 px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Your Academic Journey</h1>
-          <p className="text-muted-foreground mb-4">
+          <p className="text-gray-600 mb-4">
             Track your progress through key stages of your academic transition
           </p>
           <div className="flex items-center gap-4">
@@ -178,33 +174,39 @@ const Journey = () => {
         </div>
 
         <div className="space-y-8">
-          {journeySteps.map((step, index) => {
-            const stepProgress = Math.round(
-              (step.tasks.filter((task) => task.completed).length / step.tasks.length) * 100
-            );
-            
+          {journeySteps.map((step, idx) => {
+            const stepProgress = step.tasks.length
+              ? Math.round(
+                  (step.tasks.filter((t) => t.completed).length / step.tasks.length) * 100
+                )
+              : 0;
+
             return (
               <div key={step.id} className="relative">
-                {index < journeySteps.length - 1 && (
-                  <div className="absolute left-6 top-[4.5rem] bottom-0 w-0.5 bg-muted-foreground/20 -z-10"></div>
+                {idx < journeySteps.length - 1 && (
+                  <div className="absolute left-6 top-[4.5rem] bottom-0 w-0.5 bg-gray-300/40 -z-10"></div>
                 )}
-                
                 <div className="flex gap-4 items-start">
                   <div className="mt-1.5">
                     {step.completed ? (
-                      <CheckCircle className="h-12 w-12 text-brand-blue" />
+                      <CheckCircle className="h-12 w-12 text-blue-600" />
                     ) : (
-                      <Circle className={`h-12 w-12 ${stepProgress > 0 ? "text-brand-purple" : "text-muted-foreground/40"}`} />
+                      <Circle
+                        className={`h-12 w-12 ${
+                          stepProgress > 0 ? "text-purple-500" : "text-gray-400/50"
+                        }`}
+                      />
                     )}
                   </div>
-                  
                   <div className="flex-1">
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="border-l-4 border-blue-500">
                       <CardHeader>
                         <div className="flex justify-between items-start">
                           <div>
                             <CardTitle className="text-xl">{step.title}</CardTitle>
-                            <CardDescription className="mt-1">{step.description}</CardDescription>
+                            <CardDescription className="mt-1">
+                              {step.description}
+                            </CardDescription>
                           </div>
                           <div className="text-right">
                             <span className="font-bold">{stepProgress}%</span>
@@ -212,69 +214,72 @@ const Journey = () => {
                           </div>
                         </div>
                       </CardHeader>
-                      
+
                       <CardContent>
                         <div className="space-y-4">
                           <div>
                             <h4 className="font-medium mb-2">Tasks</h4>
                             <ul className="space-y-2">
                               {step.tasks.map((task) => (
-                                <li 
-                                  key={task.id} 
+                                <li
+                                  key={task.id}
                                   className="flex items-center gap-2 cursor-pointer"
                                   onClick={() => toggleTaskCompletion(step.id, task.id)}
                                 >
                                   {task.completed ? (
-                                    <CheckCircle className="h-5 w-5 text-brand-blue" />
+                                    <CheckCircle className="h-5 w-5 text-blue-600" />
                                   ) : (
-                                    <Circle className="h-5 w-5 text-muted-foreground/40" />
+                                    <Circle className="h-5 w-5 text-gray-400/50" />
                                   )}
-                                  <span className={task.completed ? "line-through text-muted-foreground" : ""}>
+                                  <span className={task.completed ? "line-through text-gray-400" : ""}>
                                     {task.title}
                                   </span>
                                 </li>
                               ))}
                             </ul>
                           </div>
-                          
+
                           <Separator />
-                          
+
                           <div>
                             <h4 className="font-medium mb-2">Resources</h4>
                             <ul className="grid gap-2 sm:grid-cols-2">
                               {step.resources.map((resource) => (
                                 <li key={resource.id}>
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  className="w-full justify-between text-left font-normal"
-                                >
-                                  {/* Button will clone this Link into its root */}
-                                  <Link
-                                    href={resource.href!}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex w-full justify-between items-center text-secondary"
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    className="w-full justify-between text-left font-normal"
                                   >
-                                    <div>
-                                      <span>{resource.title}</span>
-                                      <span className="block text-xs text-muted-foreground">
-                                        {resource.type}
-                                      </span>
-                                    </div>
-                                    <ArrowRight className="h-4 w-4" />
-                                  </Link>
-                                </Button>
+                                    <Link
+                                      href={resource.href!}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex w-full justify-between items-center text-secondary"
+                                    >
+                                      <div>
+                                        <span>{resource.title}</span>
+                                        <span className="block text-xs text-gray-500">
+                                          {resource.type}
+                                        </span>
+                                      </div>
+                                      <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                  </Button>
                                 </li>
                               ))}
                             </ul>
                           </div>
                         </div>
                       </CardContent>
-                      
+
                       <CardFooter>
-                        <Button className="w-full bg-blue-500 hover:bg-purple-500">
-                          {step.completed ? "Review Step" : stepProgress > 0 ? "Continue Step" : "Start Step"}
+                        <Button className="w-full bg-blue-500 hover:bg-purple-500 text-white">
+                          {step.completed
+                            ? "Review Step"
+                            : stepProgress > 0
+                            ? "Continue Step"
+                            : "Start Step"}
                         </Button>
                       </CardFooter>
                     </Card>

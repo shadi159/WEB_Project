@@ -1,4 +1,4 @@
-// pages/community.tsx  (or wherever your Community component lives)
+// pages/community.tsx
 import { useState, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -9,17 +9,33 @@ import { Button } from "../app/components/ui/button";
 import { Input } from "../app/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../app/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/components/ui/tabs";
-import { MessageSquare, Users, Share, LogIn } from "lucide-react";
+import { 
+  MessageSquare, Users, Share, LogIn, ChevronDown, ChevronUp, 
+  MoreHorizontal, Edit, Trash2, Check, X 
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../app/components/ui/dropdown-menu";
 import Navbar from "../app/components/Navbar";
 import Link from "next/link";
 import { useRouter } from "next/router";
+
+interface Comment {
+  _id?: string;
+  author: { name: string; avatar?: string; initials: string };
+  content: string;
+  createdAt: string;
+}
 
 interface Post {
   id: string;
   author: { name: string; avatar?: string; initials: string };
   content: string;
   likes: number;
-  comments: number;
+  comments: Comment[];
   shares: number;
   createdAt: string;
 }
@@ -36,6 +52,14 @@ export default function Community() {
   const [newPost, setNewPost] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  
+  // Edit states
+  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editCommentContent, setEditCommentContent] = useState("");
 
   // load user & posts on mount
   useEffect(() => {
@@ -58,7 +82,7 @@ export default function Community() {
         author: p.author,
         content: p.content,
         likes: p.likes,
-        comments: p.comments.length,
+        comments: p.comments || [],
         shares: p.shares,
         createdAt: p.createdAt
       }))
@@ -91,26 +115,31 @@ export default function Community() {
   };
 
   const handleComment = async (id: string) => {
-    const content = prompt("Enter your comment:");
+    const content = commentInputs[id];
     if (!content?.trim() || !user) return;
+    
     const author = {
       name: user.firstName + " " + user.lastName,
       initials:
         user.firstName[0].toUpperCase() + user.lastName[0].toUpperCase(),
     };
-    await fetch(`/api/posts/${id}/comment`, {
+    
+    const res = await fetch(`/api/posts/${id}/comment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ author, content }),
     });
-    fetchPosts();
+    
+    if (res.ok) {
+      setCommentInputs(prev => ({ ...prev, [id]: "" }));
+      fetchPosts();
+    }
   };
 
   const handleShare = async (id: string) => {
     try {
       await navigator.share({ text: newPost, url: window.location.href });
     } catch {
-      // fallback: copy link
       await navigator.clipboard.writeText(window.location.href + `?post=${id}`);
       alert("Link copied!");
     }
@@ -118,7 +147,141 @@ export default function Community() {
     fetchPosts();
   };
 
+  // New edit/delete functions
+  const handleEditPost = (post: Post) => {
+    setEditingPost(post.id);
+    setEditPostContent(post.content);
+  };
+
+  const handleSavePost = async (postId: string) => {
+    if (!editPostContent.trim()) return;
+    
+    try {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editPostContent }),
+      });
+      
+      if (res.ok) {
+        setEditingPost(null);
+        setEditPostContent("");
+        fetchPosts();
+      } else {
+        const error = await res.json();
+        console.error('Edit failed:', error);
+        alert(`Failed to edit post: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Edit error:', error);
+      alert('Failed to edit post');
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm("Are you sure you want to delete this post?")) return;
+    
+    try {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: "DELETE",
+      });
+      
+      if (res.ok) {
+        fetchPosts();
+      } else {
+        const error = await res.json();
+        console.error('Delete failed:', error);
+        alert(`Failed to delete post: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete post');
+    }
+  };
+
+  const handleEditComment = (comment: Comment) => {
+    setEditingComment(comment._id || "");
+    setEditCommentContent(comment.content);
+  };
+
+  const handleSaveComment = async (postId: string, commentId: string) => {
+    if (!editCommentContent.trim()) return;
+    
+    try {
+      const res = await fetch(`/api/posts/${postId}/comment/${commentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editCommentContent }),
+      });
+      
+      if (res.ok) {
+        setEditingComment(null);
+        setEditCommentContent("");
+        fetchPosts();
+      } else {
+        const error = await res.json();
+        console.error('Edit comment failed:', error);
+        alert(`Failed to edit comment: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Edit comment error:', error);
+      alert('Failed to edit comment');
+    }
+  };
+
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    if (!confirm("Are you sure you want to delete this comment?")) return;
+    
+    try {
+      const res = await fetch(`/api/posts/${postId}/comment/${commentId}`, {
+        method: "DELETE",
+      });
+      
+      if (res.ok) {
+        fetchPosts();
+      } else {
+        const error = await res.json();
+        console.error('Delete comment failed:', error);
+        alert(`Failed to delete comment: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Delete comment error:', error);
+      alert('Failed to delete comment');
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingPost(null);
+    setEditingComment(null);
+    setEditPostContent("");
+    setEditCommentContent("");
+  };
+
   const handleSignIn = () => router.push("/SignIn");
+
+  const toggleComments = (postId: string) => {
+    setExpandedComments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(postId)) {
+        newSet.delete(postId);
+      } else {
+        newSet.add(postId);
+      }
+      return newSet;
+    });
+  };
+
+  const updateCommentInput = (postId: string, value: string) => {
+    setCommentInputs(prev => ({ ...prev, [postId]: value }));
+  };
+
+  const isPostOwner = (post: Post) => {
+    return user && post.author.name === `${user.firstName} ${user.lastName}`;
+  };
+
+  const isCommentOwner = (comment: Comment) => {
+    return user && comment.author.name === `${user.firstName} ${user.lastName}`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -169,56 +332,250 @@ export default function Community() {
                 {posts.map((post) => (
                   <Card key={post.id}>
                     <CardHeader>
-                      <div className="flex items-center gap-4">
-                        <Avatar>
-                          {post.author.avatar ? (
-                            <AvatarImage
-                              src={post.author.avatar}
-                              alt={post.author.name}
-                            />
-                          ) : (
-                            <AvatarFallback>
-                              {post.author.initials}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{post.author.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatDistanceToNow(new Date(post.createdAt), {
-                              addSuffix: true,
-                            })}
-                          </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Avatar>
+                            {post.author.avatar ? (
+                              <AvatarImage
+                                src={post.author.avatar}
+                                alt={post.author.name}
+                              />
+                            ) : (
+                              <AvatarFallback>
+                                {post.author.initials}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{post.author.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {formatDistanceToNow(new Date(post.createdAt), {
+                                addSuffix: true,
+                              })}
+                            </p>
+                          </div>
                         </div>
+                        
+                        {/* Post options menu */}
+                        {isLoggedIn && isPostOwner(post) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem onClick={() => handleEditPost(post)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDeletePost(post.id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <p>{post.content}</p>
+                      {editingPost === post.id ? (
+                        <div className="space-y-4">
+                          <Input
+                            value={editPostContent}
+                            onChange={(e) => setEditPostContent(e.target.value)}
+                            className="min-h-[100px]"
+                          />
+                          <div className="flex space-x-2">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleSavePost(post.id)}
+                              disabled={!editPostContent.trim()}
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              Save
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={cancelEdit}
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{post.content}</p>
+                      )}
                     </CardContent>
-                    <CardFooter className="flex justify-between">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleLike(post.id)}
-                      >
-                        ❤️ {post.likes}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleComment(post.id)}
-                      >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        {post.comments}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleShare(post.id)}
-                      >
-                        <Share className="h-4 w-4 mr-2" />
-                        {post.shares}
-                      </Button>
+                    <CardFooter className="flex flex-col space-y-4">
+                      <div className="flex justify-between w-full">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleLike(post.id)}
+                        >
+                          ❤️ {post.likes}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleComments(post.id)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          {post.comments.length}
+                          {expandedComments.has(post.id) ? (
+                            <ChevronUp className="h-4 w-4 ml-2" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 ml-2" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleShare(post.id)}
+                        >
+                          <Share className="h-4 w-4 mr-2" />
+                          {post.shares}
+                        </Button>
+                      </div>
+
+                      {/* Comments Section */}
+                      {expandedComments.has(post.id) && (
+                        <div className="w-full space-y-4 pt-4 border-t">
+                          {/* Add Comment Input */}
+                          {isLoggedIn && (
+                            <div className="flex space-x-2">
+                              <Avatar className="h-8 w-8">
+                                {user?.avatar ? (
+                                  <AvatarImage src={user.avatar} alt={user.firstName} />
+                                ) : (
+                                  <AvatarFallback className="text-xs">
+                                    {user?.firstName[0]}{user?.lastName[0]}
+                                  </AvatarFallback>
+                                )}
+                              </Avatar>
+                              <div className="flex-1 flex space-x-2">
+                                <Input
+                                  placeholder="Write a comment..."
+                                  value={commentInputs[post.id] || ""}
+                                  onChange={(e) => updateCommentInput(post.id, e.target.value)}
+                                  className="flex-1"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleComment(post.id)}
+                                  disabled={!commentInputs[post.id]?.trim()}
+                                >
+                                  Post
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Display Comments */}
+                          <div className="space-y-3">
+                            {post.comments.length === 0 ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                No comments yet. Be the first to comment!
+                              </p>
+                            ) : (
+                              post.comments.map((comment, index) => (
+                                <div key={comment._id || index} className="flex space-x-3">
+                                  <Avatar className="h-8 w-8">
+                                    {comment.author.avatar ? (
+                                      <AvatarImage
+                                        src={comment.author.avatar}
+                                        alt={comment.author.name}
+                                      />
+                                    ) : (
+                                      <AvatarFallback className="text-xs">
+                                        {comment.author.initials}
+                                      </AvatarFallback>
+                                    )}
+                                  </Avatar>
+                                  <div className="flex-1 space-y-1">
+                                    {editingComment === comment._id ? (
+                                      <div className="space-y-2">
+                                        <Input
+                                          value={editCommentContent}
+                                          onChange={(e) => setEditCommentContent(e.target.value)}
+                                        />
+                                        <div className="flex space-x-2">
+                                          <Button 
+                                            size="sm" 
+                                            onClick={() => handleSaveComment(post.id, comment._id!)}
+                                            disabled={!editCommentContent.trim()}
+                                          >
+                                            <Check className="h-4 w-4 mr-1" />
+                                            Save
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            onClick={cancelEdit}
+                                          >
+                                            <X className="h-4 w-4 mr-1" />
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="bg-muted rounded-lg px-3 py-2 relative group">
+                                        <div className="flex justify-between items-start">
+                                          <div className="flex-1">
+                                            <p className="font-medium text-sm">
+                                              {comment.author.name}
+                                            </p>
+                                            <p className="text-sm">{comment.content}</p>
+                                          </div>
+                                          
+                                          {/* Comment options */}
+                                          {isLoggedIn && isCommentOwner(comment) && (
+                                            <DropdownMenu>
+                                              <DropdownMenuTrigger asChild>
+                                                <Button 
+                                                  variant="ghost" 
+                                                  size="sm" 
+                                                  className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
+                                                >
+                                                  <MoreHorizontal className="h-3 w-3" />
+                                                </Button>
+                                              </DropdownMenuTrigger>
+                                              <DropdownMenuContent>
+                                                <DropdownMenuItem onClick={() => handleEditComment(comment)}>
+                                                  <Edit className="h-3 w-3 mr-2" />
+                                                  Edit
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem 
+                                                  onClick={() => handleDeleteComment(post.id, comment._id!)}
+                                                  className="text-destructive"
+                                                >
+                                                  <Trash2 className="h-3 w-3 mr-2" />
+                                                  Delete
+                                                </DropdownMenuItem>
+                                              </DropdownMenuContent>
+                                            </DropdownMenu>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <p className="text-xs text-muted-foreground px-3">
+                                      {formatDistanceToNow(new Date(comment.createdAt), {
+                                        addSuffix: true,
+                                      })}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </CardFooter>
                   </Card>
                 ))}
