@@ -26,6 +26,6 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "Server/*.ts"
-  ],
+, "scripts/seedEducationSystems.ts"  ],
   "exclude": ["node_modules"]
 }

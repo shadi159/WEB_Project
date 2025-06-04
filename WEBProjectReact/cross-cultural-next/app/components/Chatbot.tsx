@@ -99,9 +99,7 @@ export default function Chatbot({ open, onClose }: ChatbotProps) {
       {/* Messages container */}
       <div
         ref={containerRef}
-        className={`flex-1 overflow-y-auto p-4 space-y-3 ${
-          isMobile ? "bg-gray-50" : "bg-gray-100"
-        }`}
+        className={`flex-1 overflow-y-auto p-4 space-y-3 bg-background`}
       >
         {messages.map((m, i) => (
           <div
@@ -128,7 +126,7 @@ export default function Chatbot({ open, onClose }: ChatbotProps) {
       </div>
 
       {/* Input area */}
-      <div className="px-4 py-3 border-t bg-white flex items-center gap-2">
+      <div className="px-4 py-3 border-t bg-background flex items-center gap-2">
         <Input
           placeholder="Ask a question…"
           value={input}

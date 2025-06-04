@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from "../app/components/ui/dropdown-menu";
 import Navbar from "../app/components/Navbar";
-import Link from "next/link";
 import { useRouter } from "next/router";
 
 interface Comment {

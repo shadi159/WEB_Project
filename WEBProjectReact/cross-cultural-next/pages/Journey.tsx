@@ -18,11 +18,7 @@ type JourneyStep = {
   id: number;
   title: string;
   description: string;
-  tasks: {
-    id: number;
-    title: string;
-    completed: boolean;
-  }[];
+  tasks: { id: number; title: string; completed: boolean }[];
   resources: {
     id: number;
     title: string;
@@ -36,7 +32,8 @@ const defaultJourneySteps: JourneyStep[] = [
   {
     id: 1,
     title: "Research & Decision Making",
-    description: "Research educational systems and make informed decisions about your academic path.",
+    description:
+      "Research educational systems and make informed decisions about your academic path.",
     tasks: [
       { id: 1, title: "Compare educational systems", completed: true },
       { id: 2, title: "Research potential institutions", completed: true },
@@ -44,9 +41,24 @@ const defaultJourneySteps: JourneyStep[] = [
       { id: 4, title: "Set academic and career goals", completed: false },
     ],
     resources: [
-      { id: 1, title: "Global Education Guidebook", type: "Guide", href: "https://www.principledlearning.org/the-global-education-guidebook" },
-      { id: 2, title: "How to Choose the Right University Abroad", type: "Article", href: "https://www.mastersportal.com/articles/2099/how-to-pick-your-university-abroad.html" },
-      { id: 3, title: "Student Visa Checklist", type: "Checklist", href: "https://studee.com/guides/the-essential-student-visa-checklist" },
+      {
+        id: 1,
+        title: "Global Education Guidebook",
+        type: "Guide",
+        href: "https://www.principledlearning.org/the-global-education-guidebook",
+      },
+      {
+        id: 2,
+        title: "How to Choose the Right University Abroad",
+        type: "Article",
+        href: "https://www.mastersportal.com/articles/2099/how-to-pick-your-university-abroad.html",
+      },
+      {
+        id: 3,
+        title: "Student Visa Checklist",
+        type: "Checklist",
+        href: "https://studee.com/guides/the-essential-student-visa-checklist",
+      },
     ],
     completed: false,
   },
@@ -61,9 +73,24 @@ const defaultJourneySteps: JourneyStep[] = [
       { id: 4, title: "Submit applications", completed: false },
     ],
     resources: [
-      { id: 1, title: "Writing a Successful Personal Statement", type: "Guide", href: "https://www.odu.edu/sites/default/files/documents/personal-statement-tips.pdf" },
-      { id: 2, title: "Application Timeline Planner", type: "Checklist", href: "https://www.scribbr.com/college-essay/applying-for-college/" },
-      { id: 3, title: "How to Request Strong Recommendation Letters", type: "Article", href: "https://www.coursera.org/articles/how-to-ask-for-a-letter-of-recommendation-template-tips" },
+      {
+        id: 1,
+        title: "Writing a Successful Personal Statement",
+        type: "Guide",
+        href: "https://www.odu.edu/sites/default/files/documents/personal-statement-tips.pdf",
+      },
+      {
+        id: 2,
+        title: "Application Timeline Planner",
+        type: "Checklist",
+        href: "https://www.scribbr.com/college-essay/applying-for-college/",
+      },
+      {
+        id: 3,
+        title: "How to Request Strong Recommendation Letters",
+        type: "Article",
+        href: "https://www.coursera.org/articles/how-to-ask-for-a-letter-of-recommendation-template-tips",
+      },
     ],
     completed: false,
   },
@@ -78,9 +105,24 @@ const defaultJourneySteps: JourneyStep[] = [
       { id: 4, title: "Prepare financially", completed: false },
     ],
     resources: [
-      { id: 1, title: "Cultural Adjustment Guide", type: "Article", href: "https://www.therapyinbarcelona.com/the-ultimate-guide-to-cultural-adjustment-therapy/" },
-      { id: 2, title: "Student Accommodation Options", type: "Video", href: "https://www.youtube.com/watch?v=TV-x9ifha7g" },
-      { id: 3, title: "Budgeting for International Students", type: "Guide", href: "https://www.mpowerfinancing.com/blog/budget-management-study-abroad" },
+      {
+        id: 1,
+        title: "Cultural Adjustment Guide",
+        type: "Article",
+        href: "https://www.therapyinbarcelona.com/the-ultimate-guide-to-cultural-adjustment-therapy/",
+      },
+      {
+        id: 2,
+        title: "Student Accommodation Options",
+        type: "Video",
+        href: "https://www.youtube.com/watch?v=TV-x9ifha7g",
+      },
+      {
+        id: 3,
+        title: "Budgeting for International Students",
+        type: "Guide",
+        href: "https://www.mpowerfinancing.com/blog/budget-management-study-abroad",
+      },
     ],
     completed: false,
   },
@@ -95,9 +137,24 @@ const defaultJourneySteps: JourneyStep[] = [
       { id: 4, title: "Learn campus resources", completed: false },
     ],
     resources: [
-      { id: 1, title: "First Week Survival Checklist", type: "Checklist", href: "https://theprepared.com/prepping-basics/guides/emergency-preparedness-checklist-prepping-beginners/" },
-      { id: 2, title: "Campus Resources for International Students", type: "Guide", href: "https://www.internationalstudent.com/resources/" },
-      { id: 3, title: "Understanding Your New Academic System", type: "Article", href: "https://www.jstor.org/stable/40279087?seq=1" },
+      {
+        id: 1,
+        title: "First Week Survival Checklist",
+        type: "Checklist",
+        href: "https://theprepared.com/prepping-basics/guides/emergency-preparedness-checklist-prepping-beginners/",
+      },
+      {
+        id: 2,
+        title: "Campus Resources for International Students",
+        type: "Guide",
+        href: "https://www.internationalstudent.com/resources/",
+      },
+      {
+        id: 3,
+        title: "Understanding Your New Academic System",
+        type: "Article",
+        href: "https://www.jstor.org/stable/40279087?seq=1",
+      },
     ],
     completed: false,
   },
@@ -112,9 +169,24 @@ const defaultJourneySteps: JourneyStep[] = [
       { id: 4, title: "Connect with academic support", completed: false },
     ],
     resources: [
-      { id: 1, title: "Academic Writing in Different Cultures", type: "Article", href: "https://www.humak.fi/en/blogs/academic-cross-cultural-differences-academic-writing/" },
-      { id: 2, title: "Study Skills for International Students", type: "Video", href: "https://www.youtube.com/watch?v=SLGxGJ7DOeQ" },
-      { id: 3, title: "Working with Academic Advisors", type: "Guide", href: "https://nacada.ksu.edu/portals/0/Clearinghouse/AdvisingIssues/Example_Univ_Handbook.pdf" },
+      {
+        id: 1,
+        title: "Academic Writing in Different Cultures",
+        type: "Article",
+        href: "https://www.humak.fi/en/blogs/academic-cross-cultural-differences-academic-writing/",
+      },
+      {
+        id: 2,
+        title: "Study Skills for International Students",
+        type: "Video",
+        href: "https://www.youtube.com/watch?v=SLGxGJ7DOeQ",
+      },
+      {
+        id: 3,
+        title: "Working with Academic Advisors",
+        type: "Guide",
+        href: "https://nacada.ksu.edu/portals/0/Clearinghouse/AdvisingIssues/Example_Univ_Handbook.pdf",
+      },
     ],
     completed: false,
   },
@@ -141,7 +213,8 @@ const Journey = () => {
     (acc, step) => acc + step.tasks.filter((t) => t.completed).length,
     0
   );
-  const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const overallProgress =
+    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const toggleTaskCompletion = (stepId: number, taskId: number) => {
     setJourneySteps((prev) =>
@@ -156,6 +229,14 @@ const Journey = () => {
         return step;
       })
     );
+  };
+
+  // 1) Define a function that scrolls the step into view
+  const handleActionClick = (stepId: number) => {
+    const el = document.getElementById(`step-${stepId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   };
 
   return (
@@ -182,9 +263,13 @@ const Journey = () => {
               : 0;
 
             return (
-              <div key={step.id} className="relative">
+              // 2) Give each step’s wrapper a unique ID
+              <div key={step.id} id={`step-${step.id}`} className="relative">
                 {idx < journeySteps.length - 1 && (
-                  <div className="absolute left-6 top-[4.5rem] bottom-0 w-0.5 bg-gray-300/40 -z-10"></div>
+                  <div
+                    className="absolute left-6 top-[4.5rem] bottom-0 w-0.5 bg-gray-300/40 -z-10"
+                    aria-hidden="true"
+                  />
                 )}
                 <div className="flex gap-4 items-start">
                   <div className="mt-1.5">
@@ -231,7 +316,11 @@ const Journey = () => {
                                   ) : (
                                     <Circle className="h-5 w-5 text-gray-400/50" />
                                   )}
-                                  <span className={task.completed ? "line-through text-gray-400" : ""}>
+                                  <span
+                                    className={
+                                      task.completed ? "line-through text-gray-400" : ""
+                                    }
+                                  >
                                     {task.title}
                                   </span>
                                 </li>
@@ -274,7 +363,11 @@ const Journey = () => {
                       </CardContent>
 
                       <CardFooter>
-                        <Button className="w-full bg-blue-500 hover:bg-purple-500 text-white">
+                        {/* 3) Wire the onClick to call handleActionClick(step.id) */}
+                        <Button
+                          className="w-full bg-blue-500 hover:bg-purple-500 text-white"
+                          onClick={() => handleActionClick(step.id)}
+                        >
                           {step.completed
                             ? "Review Step"
                             : stepProgress > 0

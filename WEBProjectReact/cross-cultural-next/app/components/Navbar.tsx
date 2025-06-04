@@ -102,7 +102,7 @@ const Navbar = () => {
 
   return (
     <header className="bg-background border-gray-50 sticky top-0 z-10">
-      <div className="shadow-md px-0 sm:px-6 lg:px-8">
+      <div className="shadow-md shadow-secondary/20 px-0 sm:px-6 lg:px-8">
         <div className="flex items-center h-16">
           {/* ========== LOGO ========== */}
           <div className="flex-shrink-0 flex items-center">

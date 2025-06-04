@@ -106,11 +106,11 @@ const CompareEducation = () => {
       { us: "Regular assignments throughout semester", uk: "Fewer assignments, greater weight on final assessment" }
     ],
     commonChallenges: [
-      { us: "UK students: Adapting to continuous assessment", uk: "US students: Adjusting to independent study expectations" },
-      { us: "UK students: Understanding US credit system", uk: "US students: Understanding UK degree classification" },
-      { us: "UK students: Different terminology (e.g., 'course' vs 'module')", uk: "US students: Shorter degree programs requiring faster adaptation" },
-      { us: "UK students: More frequent testing", uk: "US students: Fewer opportunities to improve grades" },
-      { us: "UK students: Liberal arts requirements", uk: "US students: More specialized curriculum from start" }
+      { us: "students: Adapting to continuous assessment", uk: "students: Adjusting to independent study expectations" },
+      { us: "students: Understanding credit system", uk: "students: Understanding degree classification" },
+      { us: "students: Different terminology (e.g., 'course' vs 'module')", uk: "students: Shorter degree programs requiring faster adaptation" },
+      { us: "students: More frequent testing", uk: "students: Fewer opportunities to improve grades" },
+      { us: "students: Liberal arts requirements", uk: "students: More specialized curriculum from start" }
     ]
   };
   
@@ -290,7 +290,8 @@ const CompareEducation = () => {
         <div className="mt-8 text-sm text-center text-muted-foreground">
           <p>This comparison provides a general overview. For more detailed guidance specific to your academic transition, 
           <Link href="Resources" className="text-blue-500 hover:underline ml-1">explore our resources</Link> or 
-          <button className="text-blue-500 hover:underline ml-1">contact an academic advisor</button>.</p>
+          <button className="text-blue-500 hover:underline ml-1">contact an academic advisor</button>.
+          <br />Other Countries Commes soon</p>
         </div>
         
         <div className="flex justify-center mt-6">

@@ -1,8 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/components/ui/tabs";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../app/components/ui/card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../app/components/ui/tabs";
 import { Button } from "../app/components/ui/button";
 import { Input } from "../app/components/ui/input";
 import { Badge } from "../app/components/ui/badge";
@@ -24,7 +37,8 @@ const resourcesData: Resource[] = [
   {
     id: 1,
     title: "Understanding Different Academic Systems",
-    description: "Compare grading scales, teaching methods, and expectations across major educational systems.",
+    description:
+      "Compare grading scales, teaching methods, and expectations across major educational systems.",
     type: "Guide",
     categories: ["Academic Systems", "Cultural Differences"],
     featured: true,
@@ -33,7 +47,8 @@ const resourcesData: Resource[] = [
   {
     id: 2,
     title: "Writing Academic Papers in Western Universities",
-    description: "Learn about citation styles, plagiarism rules, and essay structure expectations.",
+    description:
+      "Learn about citation styles, plagiarism rules, and essay structure expectations.",
     type: "Article",
     categories: ["Academic Writing", "Study Skills"],
     href: "https://www.researchgate.net/publication/384722151_Academic_Writing_Challenges_and_Encouragements_Perspectives_of_University_Teachers_in_Far_Western_University",
@@ -41,16 +56,18 @@ const resourcesData: Resource[] = [
   {
     id: 3,
     title: "Managing Culture Shock in a New Academic Environment",
-    description: "Practical tips for adjusting to new cultural norms in your educational setting.",
+    description:
+      "Practical tips for adjusting to new cultural norms in your educational setting.",
     type: "Video",
     categories: ["Cultural Adjustment", "Mental Health"],
     featured: true,
-    href:"https://www.youtube.com/watch?v=omEcU1iTDYI",
+    href: "https://www.youtube.com/watch?v=omEcU1iTDYI",
   },
   {
     id: 4,
     title: "Financial Aid Options for International Students",
-    description: "Overview of scholarships, grants, and work opportunities for students studying abroad.",
+    description:
+      "Overview of scholarships, grants, and work opportunities for students studying abroad.",
     type: "Guide",
     categories: ["Financial Planning", "Practical Resources"],
     href: "https://studentaid.gov/understand-aid/types/international",
@@ -58,7 +75,8 @@ const resourcesData: Resource[] = [
   {
     id: 5,
     title: "Student Visa Application Checklist",
-    description: "Step-by-step guidance for preparing and submitting student visa applications.",
+    description:
+      "Step-by-step guidance for preparing and submitting student visa applications.",
     type: "Checklist",
     categories: ["Visa & Immigration", "Practical Resources"],
     featured: true,
@@ -67,51 +85,65 @@ const resourcesData: Resource[] = [
   {
     id: 6,
     title: "Housing Options for International Students",
-    description: "Compare on-campus housing, private rentals, and homestays in different countries.",
+    description:
+      "Compare on-campus housing, private rentals, and homestays in different countries.",
     type: "Guide",
     categories: ["Accommodation", "Practical Resources"],
+    href: "https://goingto.university/getting-ready-university/international-student-accommodation/",
   },
   {
     id: 7,
     title: "Language Proficiency Test Preparation",
-    description: "Strategies for improving your TOEFL, IELTS, or other language test scores.",
+    description:
+      "Strategies for improving your TOEFL, IELTS, or other language test scores.",
     type: "Video",
     categories: ["Language Skills", "Study Skills"],
+    href: "https://www.youtube.com/watch?v=8nXX1WOuvrk",
   },
   {
     id: 8,
     title: "Building a Social Network in a New Country",
-    description: "Tips for making friends and building connections in your new academic community.",
+    description:
+      "Tips for making friends and building connections in your new academic community.",
     type: "Article",
     categories: ["Social Integration", "Cultural Adjustment"],
+    href: "https://www.nordicjobsworldwide.com/blog/2021/03/how-to-create-a-social-network-in-a-new-country",
   },
   {
     id: 9,
     title: "Understanding Healthcare Systems for International Students",
-    description: "Navigate health insurance requirements and accessing medical care abroad.",
+    description:
+      "Navigate health insurance requirements and accessing medical care abroad.",
     type: "Guide",
     categories: ["Healthcare", "Practical Resources"],
+    href: "https://www.april-international.com/en/international-student-insurance/guide/healthcare-guide-for-international-students",
   },
   {
     id: 10,
     title: "Academic Calendar Comparison Tool",
-    description: "Interactive tool to compare academic year structures across different countries.",
+    description:
+      "Interactive tool to compare academic year structures across different countries.",
     type: "Tool",
     categories: ["Academic Systems", "Planning"],
+    href: "https://www.sqlbi.com/articles/comparing-different-school-terms-in-power-bi/",
   },
   {
     id: 11,
     title: "Working While Studying: Rules and Regulations",
-    description: "Understanding work permits and employment restrictions for international students.",
+    description:
+      "Understanding work permits and employment restrictions for international students.",
     type: "Article",
     categories: ["Employment", "Legal Rights"],
+    href: "https://www.cohortgo.com/en/blog/working-while-studying-rights-and-responsibilities",
   },
   {
     id: 12,
     title: "Preparing for Graduate Studies Abroad",
-    description: "Special considerations for international students pursuing master's or doctoral degrees.",
+    description:
+      "Special considerations for international students pursuing master's or doctoral degrees.",
     type: "Guide",
     categories: ["Graduate Education", "Academic Planning"],
+    href: "https://www.educations.com/articles-and-advice/masters-abroad",
   },
 ];
 
@@ -128,14 +160,16 @@ const Resources = () => {
         : [...prev, resource]
     );
   };
-  
+
   const allCategories = Array.from(
     new Set(resourcesData.flatMap((resource) => resource.categories))
   ).sort();
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
     );
   };
 
@@ -147,22 +181,23 @@ const Resources = () => {
 
     const matchesCategories =
       selectedCategories.length === 0 ||
-      selectedCategories.some((category) => resource.categories.includes(category));
+      selectedCategories.some((cat) => resource.categories.includes(cat));
 
     return matchesSearch && matchesCategories;
   });
 
-  const featuredResources = resourcesData.filter((resource) => resource.featured);
+  const featuredResources = resourcesData.filter((r) => r.featured);
 
   return (
-    <div className="min-h-screen bg-origin-padding  bg-gradient-to-b from-background to-muted/30">
+    <div className="min-h-screen bg-origin-padding bg-gradient-to-b from-background to-muted/30">
       <Navbar />
 
       <main className="container py-6 justify-items-end-center px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Resource Library</h1>
           <p className="text-muted-foreground">
-            Explore guides, articles, and tools to help navigate your academic transition.
+            Explore guides, articles, and tools to help navigate your academic
+            transition.
           </p>
         </div>
 
@@ -200,7 +235,9 @@ const Resources = () => {
                 ) : (
                   <div className="text-center py-12">
                     <BookOpen className="mx-auto h-12 w-12 text-muted-foreground/40" />
-                    <h3 className="mt-4 text-lg font-medium">No resources found</h3>
+                    <h3 className="mt-4 text-lg font-medium">
+                      No resources found
+                    </h3>
                     <p className="text-muted-foreground">
                       Try adjusting your search or category filters
                     </p>
@@ -215,7 +252,8 @@ const Resources = () => {
                     resource={resource}
                     isSaved={savedResources.some((r) => r.id === resource.id)}
                     onToggleSave={toggleSaveResource}
-                  />                ))}
+                  />
+                ))}
               </TabsContent>
 
               <TabsContent value="saved" className="space-y-4">
@@ -226,7 +264,9 @@ const Resources = () => {
                 ) : (
                   <div className="text-center py-12">
                     <BookOpen className="mx-auto h-12 w-12 text-muted-foreground/40" />
-                    <h3 className="mt-4 text-lg font-medium">No saved resources yet</h3>
+                    <h3 className="mt-4 text-lg font-medium">
+                      No saved resources yet
+                    </h3>
                     <p className="text-muted-foreground">
                       Save resources to access them quickly later
                     </p>
@@ -246,7 +286,11 @@ const Resources = () => {
                   {allCategories.map((category) => (
                     <Badge
                       key={category}
-                      variant={selectedCategories.includes(category) ? "default" : "outline"}
+                      variant={
+                        selectedCategories.includes(category)
+                          ? "default"
+                          : "outline"
+                      }
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => toggleCategory(category)}
                     >
@@ -263,39 +307,47 @@ const Resources = () => {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {["Article", "Video", "Guide", "Checklist", "Tool"].map((type) => (
-                    <li key={type} className="flex justify-between">
-                      <span>{type}s</span>
-                      <Badge variant="outline">
-                        {resourcesData.filter((r) => r.type === type).length}
-                      </Badge>
-                    </li>
-                  ))}
+                  {["Article", "Video", "Guide", "Checklist", "Tool"].map(
+                    (type) => (
+                      <li key={type} className="flex justify-between">
+                        <span>{type}s</span>
+                        <Badge variant="outline">
+                          {
+                            resourcesData.filter((r) => r.type === type)
+                              .length
+                          }
+                        </Badge>
+                      </li>
+                    )
+                  )}
                 </ul>
               </CardContent>
             </Card>
 
-          <Card className="bg-background shadow-md mt-6">
-            <CardHeader>
-              <CardTitle>Need Help?</CardTitle>
-              <CardDescription>Can't find what you're looking for?</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">
-                Try our chatbot for tailored academic transition advice.
-              </p>
-              <Button
-                className="w-full mt-4 bg-blue-800 hover:bg-teal-500 text-white"
-                onClick={() => setChatOpen(true)}   // <— open it!
-              >
-                Contact chatbot
-              </Button>
-            </CardContent>
-          </Card>
+            <Card className="bg-background shadow-md mt-6">
+              <CardHeader>
+                <CardTitle>Need Help?</CardTitle>
+                <CardDescription>
+                  Can’t find what you’re looking for?
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">
+                  Try our chatbot for tailored academic transition advice.
+                </p>
+                <Button
+                  className="w-full mt-4 bg-blue-800 hover:bg-teal-500 text-white"
+                  onClick={() => setChatOpen(true)}
+                >
+                  Contact chatbot
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </main>
-        <Chatbot open={chatOpen} onClose={() => setChatOpen(false)} />
+
+      <Chatbot open={chatOpen} onClose={() => setChatOpen(false)} />
     </div>
   );
 };
@@ -315,15 +367,23 @@ const ResourceCard = ({
         <div className="flex justify-between items-start">
           <div>
             <CardTitle>{resource.title}</CardTitle>
-            <CardDescription className="mt-1">{resource.description}</CardDescription>
+            <CardDescription className="mt-1">
+              {resource.description}
+            </CardDescription>
           </div>
-          <Badge className="bg-blue-800 hover:bg-blue-400 text-white">{resource.type}</Badge>
+          <Badge className="bg-blue-800 hover:bg-blue-400 text-white">
+            {resource.type}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-2">
           {resource.categories.map((category) => (
-            <Badge key={category} variant="outline" className="bg-muted/50">
+            <Badge
+              key={category}
+              variant="outline"
+              className="bg-muted/50"
+            >
               {category}
             </Badge>
           ))}
@@ -331,13 +391,28 @@ const ResourceCard = ({
       </CardContent>
       <CardFooter className="flex justify-between">
         {onToggleSave && (
-          <Button variant="ghost" onClick={() => onToggleSave(resource)}>
+          <Button
+            variant="ghost"
+            onClick={() => onToggleSave(resource)}
+          >
             {isSaved ? "Remove from saved" : "Save for later"}
           </Button>
         )}
-        <Button className="gap-2 bg-blue-800 hover:bg-teal-500 text-white">
-          View Resource <ArrowRight className="h-4 w-4" />
-        </Button>
+
+        {resource.href ? (
+          <Link href={resource.href} target="_blank" rel="noopener">
+            <Button className="gap-2 bg-blue-800 hover:bg-teal-500 text-white">
+              View Resource <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        ) : (
+          <Button
+            className="gap-2 bg-gray-400 cursor-not-allowed text-white"
+            disabled
+          >
+            No Link Available
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
