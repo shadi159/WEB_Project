@@ -33,6 +33,7 @@ const Navbar = () => {
     firstName: "",
     lastName: "",
     email: "",
+    role: "user",
   });
 
   useEffect(() => {
@@ -67,7 +68,7 @@ const Navbar = () => {
   const handleSignOut = () => {
     sessionStorage.removeItem("isLoggedIn");
     setIsLoggedIn(false);
-    setUser({ firstName: "", lastName: "", email: "" });
+    setUser({ firstName: "", lastName: "", email: "" , role: "user" });
     router.replace("/SignIn");
   };
 
@@ -79,6 +80,7 @@ const Navbar = () => {
   const privateNavigation = [
     { name: "Dashboard", href: "/Dashboard" },
     { name: "My Journey", href: "/Journey" },
+    { name: "Mentor", href: "/Mentor" },
   ];
 
   const navigation = isLoggedIn

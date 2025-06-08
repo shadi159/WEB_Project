@@ -58,7 +58,8 @@ export default async function handler(
     const token = jwt.sign(
       { 
         userId: user._id,
-        email: user.email 
+        email: user.email,
+        role: user.role,
       },
       JWT_SECRET,
       { expiresIn: "7d" } // Token expires in 7 days
@@ -70,6 +71,7 @@ export default async function handler(
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
+      role: user.role,
       country: user.country,
       educationalLevel: user.educationalLevel,
       preferences: user.preferences || {

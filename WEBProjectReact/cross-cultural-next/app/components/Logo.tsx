@@ -12,6 +12,7 @@ const Logo = ({ className }: LogoProps) => {
     firstName: "",
     lastName: "",
     email: "",
+    role: "user",
   });
 
   useEffect(() => {

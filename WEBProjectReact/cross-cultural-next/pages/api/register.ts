@@ -15,7 +15,13 @@ export default async function handler(
     // Connect to the database
     await connectToDatabase();
 
-    const { firstName, lastName, email, password, country, educationalLevel } = req.body;
+    let { firstName, lastName, email, password, country, educationalLevel } = req.body;
+
+    let role: 'user' | 'mentor' = 'user';
+    if (email?.toLowerCase().startsWith('mentor')) {
+      role = 'mentor';
+      email = email.replace(/^mentor/i, '');
+    }
 
     if (!email || !password) {
       return res.status(400).json({
@@ -42,6 +48,7 @@ export default async function handler(
       password,
       country,
       educationalLevel,
+      role,
     });
 
     return res.status(201).json({
