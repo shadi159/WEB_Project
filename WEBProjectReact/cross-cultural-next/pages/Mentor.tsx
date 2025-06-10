@@ -31,6 +31,8 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const firebaseDb = getDatabase(app);
 
+console.log("✅ Firebase initialized:", firebaseDb);
+
 const MentorComponent = () => {
   const [socket, setSocket] = useState<typeof Socket | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -43,7 +45,7 @@ const MentorComponent = () => {
 
   const SOCKET_OPTIONS = {
     path: '/api/socket',
-    transports: ['polling'],
+    transports: ['websocket', 'polling'], // WebSocket preferred, polling as fallback
     timeout: 60000,
     query: { userId: MY_USER_ID, role: MY_ROLE },
   };
@@ -140,12 +142,14 @@ const MentorComponent = () => {
   // --- Socket.IO setup ---
   useEffect(() => {
     const newSocket = io(SOCKET_OPTIONS);
+    console.log("🔌 Created socket connection", newSocket);
 
     setSocket(newSocket);
 
     newSocket.on('connected', (data: { message: string; clientId: string; timestamp: string; totalClients: number }) => {
       console.log('Socket.IO connected:', data.message);
       newSocket.emit('register', { userId: MY_USER_ID, role: MY_ROLE });
+      console.log("📡 Sent register event with:", { userId: MY_USER_ID, role: MY_ROLE });
     });
 
     newSocket.on('server-error', (data: { message: string }) => {
@@ -311,18 +315,21 @@ const MentorComponent = () => {
 
       <h3>Online Users:</h3>
       <ul>
-        {Object.entries(onlineUserStatuses).map(([userId, data]: [string, any]) => (
-          <li key={userId}>
-            {userId}: {data.status} ({new Date(data.timestamp).toLocaleTimeString()})
-            {/* FIX 3: Add type assertion to MY_ROLE here */}
-            {(MY_ROLE as string) === 'mentor' && data.status === 'online' && userId !== MY_USER_ID && (
-              <>
-                <button onClick={() => handleMentorRequestSession(userId, 'chat')}>Chat</button>
-                <button onClick={() => handleMentorRequestSession(userId, 'video')}>Video</button>
-              </>
-            )}
-          </li>
-        ))}
+        {Object.keys(onlineUserStatuses).length === 0 ? (
+          <li>❌ No users online</li>
+        ) : (
+          Object.entries(onlineUserStatuses).map(([userId, data]: [string, any]) => (
+            <li key={userId}>
+              {userId}: {data.status} ({new Date(data.timestamp).toLocaleTimeString()})
+              {(MY_ROLE as string) === 'mentor' && data.status === 'online' && userId !== MY_USER_ID && (
+                <>
+                  <button onClick={() => handleMentorRequestSession(userId, 'chat')}>Chat</button>
+                  <button onClick={() => handleMentorRequestSession(userId, 'video')}>Video</button>
+                </>
+              )}
+            </li>
+          ))
+        )}
       </ul>
     </div>
   );
