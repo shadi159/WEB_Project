@@ -92,6 +92,24 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip;
 
+// Helper function to format tooltip values
+const formatTooltipValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  
+  if (typeof value === "string" || typeof value === "number") {
+    return typeof value === "number" ? value.toLocaleString() : value;
+  }
+  
+  if (Array.isArray(value)) {
+    // Handle array values by converting each element to string and joining
+    return value.map(item => String(item)).join(", ");
+  }
+  
+  return String(value);
+};
+
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
@@ -178,7 +196,13 @@ const ChartTooltipContent = React.forwardRef<
                 )}
               >
                 {formatter && item?.value !== undefined && item.name ? (
-                  formatter(item.value, item.name, item, index)
+                  (() => {
+                    const value = item.value;
+                    const formatterValue = Array.isArray(value) 
+                      ? value.slice() as (string | number)[]
+                      : value as string | number;
+                    return formatter(formatterValue, item.name, item, index);
+                  })()
                 ) : (
                   <>
                     {itemConfig?.icon ? (
@@ -217,9 +241,9 @@ const ChartTooltipContent = React.forwardRef<
                         </span>
                       </div>
                       {item.value && (
-                      <span className="font-mono font-medium tabular-nums text-foreground">
-                        {(Array.isArray(item.value) ? (item.value as (string | number)[]).slice().join(', ') : item.value?.toLocaleString())}   
-                      </span>
+                        <span className="font-mono font-medium tabular-nums text-foreground">
+                          {formatTooltipValue(item.value)}
+                        </span>
                       )}
                     </div>
                   </>
