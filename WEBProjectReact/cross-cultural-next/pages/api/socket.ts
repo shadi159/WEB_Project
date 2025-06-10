@@ -1,4 +1,4 @@
-// pages/api/socket.ts
+// pages/api/socket.ts - Modified for Vercel compatibility
 import { Server } from 'socket.io';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { Server as NetServer } from 'http';
@@ -16,9 +16,8 @@ interface NextApiResponseWithSocket extends NextApiResponse {
   socket: SocketWithIO;
 }
 
-// Map to store connected clients by their role/ID for targeted signaling
+// Use in-memory storage (note: this won't persist across function invocations on Vercel)
 const connectedClients = new Map<string, { userId: string, role: 'user' | 'mentor', socketId: string }>();
-// Map to store active paired sessions, including their type (chat or video)
 const pairedSessions = new Map<string, { peerSocketId: string; type: 'chat' | 'video' }>();
 
 export default function SocketHandler(
@@ -28,12 +27,16 @@ export default function SocketHandler(
   if (!res.socket.server.io) {
     console.log('New Socket.io server...');
     const io = new Server(res.socket.server, {
-      path: '/api/socket', // Crucial: This path must match the client's connection path
+      path: '/api/socket',
       cors: {
-        origin: ['http://localhost:3000', 'http://localhost:3001'], // Allow your Next.js client origins
+        origin: process.env.NODE_ENV === 'production' 
+          ? ['https://web-project-1ai7g4748-shadis-projects-924eb319.vercel.app'] // Replace with your actual domain
+          : ['http://localhost:3000', 'http://localhost:3001'],
         methods: ['GET', 'POST'],
         credentials: true,
       },
+      // Force polling transport for Vercel compatibility
+      transports: ['polling'],
       pingTimeout: 60000,
       pingInterval: 25000,
     });
@@ -43,7 +46,7 @@ export default function SocketHandler(
     io.on('connection', (socket) => {
       console.log(`✅ Client connected: ${socket.id}`);
       socket.emit('connected', {
-        message: 'Successfully connected',
+        message: 'Successfully connected via polling',
         clientId: socket.id,
         timestamp: new Date().toISOString(),
         totalClients: io.engine.clientsCount,
@@ -54,15 +57,14 @@ export default function SocketHandler(
         socket.data.role = role;
         connectedClients.set(socket.id, { userId, role, socketId: socket.id });
         console.log(`Client ${socket.id} registered as ${role} (User ID: ${userId})`);
-        io.emit('client-list-updated', Array.from(connectedClients.values())); // Optional: for debugging or UI
+        io.emit('client-list-updated', Array.from(connectedClients.values()));
       });
 
-      // --- Signaling for Video Calls ---
+      // Rest of your socket handlers remain the same...
       socket.on('signal', (data) => {
         const targetSocketId = data.targetId;
         const signalData = data.signalData;
 
-        // Ensure there's an active video session pairing for signaling
         const session = pairedSessions.get(socket.id);
         if (session && session.peerSocketId === targetSocketId && session.type === 'video') {
           console.log(`Forwarding signal from ${socket.id} to ${targetSocketId}`);
@@ -73,7 +75,6 @@ export default function SocketHandler(
         }
       });
 
-      // --- Mentor initiates a session request (can be chat or video) ---
       socket.on('mentor-request-session', ({ targetUserId }) => {
         if (socket.data.role !== 'mentor') {
           socket.emit('server-error', { message: 'Only mentors can initiate sessions.' });
@@ -91,7 +92,6 @@ export default function SocketHandler(
         }
 
         if (targetSocket) {
-            // Notify the user about the incoming session request
             targetSocket.emit('incoming-session-request', { fromMentorId: socket.data.userId, mentorSocketId: socket.id });
             console.log(`Session request sent from mentor ${socket.id} to user ${targetSocket.id}`);
         } else {
@@ -100,7 +100,6 @@ export default function SocketHandler(
         }
       });
 
-      // --- User accepts a session request (specifying type) ---
       socket.on('user-accept-session', ({ mentorSocketId, sessionType }) => {
         if (socket.data.role !== 'user') {
             socket.emit('server-error', { message: 'Only users can accept sessions.' });
@@ -109,20 +108,17 @@ export default function SocketHandler(
 
         const mentorSocket = io.sockets.sockets.get(mentorSocketId);
         if (mentorSocket) {
-            // Establish pairing for the session
             pairedSessions.set(socket.id, { peerSocketId: mentorSocketId, type: sessionType });
             pairedSessions.set(mentorSocketId, { peerSocketId: socket.id, type: sessionType });
 
             console.log(`User ${socket.id} accepted session from mentor ${mentorSocketId} as type: ${sessionType}`);
 
-            // Notify both parties about the accepted session and its type
             socket.emit('session-accepted', { mentorSocketId: mentorSocketId, sessionType: sessionType });
             mentorSocket.emit('user-accepted-session', { userSocketId: socket.id, sessionType: sessionType });
 
-            // Trigger specific actions based on session type
             if (sessionType === 'video') {
-                socket.emit('start-peer-as-receiver'); // User starts as receiver
-                mentorSocket.emit('start-peer-as-initiator'); // Mentor starts as initiator
+                socket.emit('start-peer-as-receiver');
+                mentorSocket.emit('start-peer-as-initiator');
             } else if (sessionType === 'chat') {
                 socket.emit('start-chat-session');
                 mentorSocket.emit('start-chat-session');
@@ -134,7 +130,6 @@ export default function SocketHandler(
         }
       });
 
-      // --- Chat Messaging ---
       socket.on('sendChatMessage', ({ targetSocketId, message, fromUserId }) => {
         const session = pairedSessions.get(socket.id);
         if (session && session.peerSocketId === targetSocketId && session.type === 'chat') {
@@ -146,7 +141,6 @@ export default function SocketHandler(
         }
       });
 
-      // --- Session Ended by either party (generalizing from call-ended) ---
       socket.on('end-session', () => {
         const session = pairedSessions.get(socket.id);
         if (session) {
@@ -157,7 +151,6 @@ export default function SocketHandler(
         } else {
           console.log(`Session ended by ${socket.id}, but no active paired session found.`);
         }
-        // Clean up peer connections on client side (done by client upon 'session-ended-by-peer' or local 'end-session' call)
       });
 
       socket.on('ping', () => {
@@ -168,7 +161,6 @@ export default function SocketHandler(
         console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
         connectedClients.delete(socket.id);
 
-        // If this client was in a session, end it for the other peer
         const session = pairedSessions.get(socket.id);
         if (session) {
           io.to(session.peerSocketId).emit('peer-disconnected', {
@@ -180,13 +172,11 @@ export default function SocketHandler(
           pairedSessions.delete(session.peerSocketId);
           console.log(`Session ended due to disconnect of ${socket.id}. Notified ${session.peerSocketId}`);
         }
-        io.emit('client-list-updated', Array.from(connectedClients.values())); // Update UI
+        io.emit('client-list-updated', Array.from(connectedClients.values()));
       });
 
       socket.on('error', (error) => {
         console.error(`Socket error for client ${socket.id}:`, error);
-        // This error typically means something went wrong internally with the socket.
-        // The client-side will also handle 'connect_error' for connection issues.
         socket.emit('server-error', {
           message: error.message,
           timestamp: new Date().toISOString(),

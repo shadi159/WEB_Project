@@ -267,174 +267,176 @@ export default function Mentor() {
 
 
   const connectSocket = useCallback(() => {
-    if (!mountedRef.current) return;
+  if (!mountedRef.current) return;
 
-    if (socketRef.current?.connected) {
-      console.log('Socket already connected');
-      return;
-    }
+  if (socketRef.current?.connected) {
+    console.log('Socket already connected');
+    return;
+  }
 
-    // Only attempt to connect if currentUserId and currentUserRole are determined
-    if (!currentUserId || !currentUserRole) {
-      console.log('User ID or Role not set yet, cannot connect socket.');
-      setError('User role/ID not determined. Please ensure you are logged in.');
-      return;
-    }
+  // Only attempt to connect if currentUserId and currentUserRole are determined
+  if (!currentUserId || !currentUserRole) {
+    console.log('User ID or Role not set yet, cannot connect socket.');
+    setError('User role/ID not determined. Please ensure you are logged in.');
+    return;
+  }
 
-    try {
-      setConnectionState(prev => ({ ...prev, socket: 'connecting' }));
-      setError(null);
+  try {
+    setConnectionState(prev => ({ ...prev, socket: 'connecting' }));
+    setError(null);
 
-      console.log('Connecting to Socket.IO...');
-      const socket = _io({
-        path: '/api/socket',
-        transports: ['websocket'],
-        upgrade: true,
-        rememberUpgrade: true,
-        timeout: 20000,
-        forceNew: true,
-        autoConnect: true,
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-      });
+    console.log('Connecting to Socket.IO...');
+    const socket = _io({
+      path: '/api/socket',
+      // Force polling transport for Vercel compatibility
+      transports: ['polling'],
+      upgrade: false, // Disable transport upgrades
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+    });
 
-      socketRef.current = socket;
+    socketRef.current = socket;
 
-      socket.on('connect', () => {
-        console.log('Socket.IO connected:', socket.id);
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, socket: 'connected' }));
-          setError(null);
-          // Register the user with the server, sending their actual role and ID
-          socket.emit('register', { userId: currentUserId, role: currentUserRole });
-        }
-      });
-
-      socket.on('connected', (data: any) => {
-        console.log('Server confirmed connection:', data);
-      });
-
-      socket.on('incoming-session-request', ({ fromMentorId, mentorSocketId }: { fromMentorId: string, mentorSocketId: string }) => {
-        if (currentUserRole === 'user' && mountedRef.current) {
-          console.log(`Incoming session request from mentor ${fromMentorId}`);
-          setIncomingSessionRequest({ fromMentorId, mentorSocketId });
-        }
-      });
-
-      socket.on('session-accepted', (data: { mentorSocketId: string, sessionType: 'chat' | 'video' }) => {
-        if (mountedRef.current) {
-          console.log(`Session accepted, type: ${data.sessionType}`);
-          setIsSessionActive(true);
-          setActiveSessionType(data.sessionType);
-          setIncomingSessionRequest(null);
-          setRemotePeerSocketId(data.mentorSocketId);
-        }
-      });
-
-      socket.on('user-accepted-session', ({ userSocketId, sessionType }: { userSocketId: string, sessionType: 'chat' | 'video' }) => {
-        if (currentUserRole === 'mentor' && mountedRef.current) {
-          console.log(`User (socket: ${userSocketId}) accepted the session as type: ${sessionType}.`);
-          setIsSessionActive(true);
-          setActiveSessionType(sessionType);
-          setRemotePeerSocketId(userSocketId);
-        }
-      });
-
-      socket.on('start-peer-as-initiator', () => {
-        if (currentUserRole === 'mentor' && stream && mountedRef.current) {
-          console.log('Server instructing mentor to start peer as initiator');
-          startPeer(true);
-        }
-      });
-
-      socket.on('start-peer-as-receiver', () => {
-        if (currentUserRole === 'user' && stream && mountedRef.current) {
-          console.log('Server instructing user to start peer as receiver');
-          startPeer(false);
-        }
-      });
-
-      socket.on('signal', (data: any) => {
-        if (!mountedRef.current || !peerRef.current) return;
-        console.log('Received peer signal');
-        try {
-          peerRef.current.signal(data);
-        } catch (err: any) {
-          console.error('Error handling signal:', err);
-          if (mountedRef.current) setError(`Signaling error: ${err.message}`);
-        }
-      });
-
-      socket.on('start-chat-session', () => {
-        console.log('Server instructing to start chat session');
-        if (mountedRef.current) {
-          setIsSessionActive(true);
-          setActiveSessionType('chat');
-        }
-      });
-
-      socket.on('receiveChatMessage', (messageData: ChatMessage) => {
-        console.log('Received chat message:', messageData);
-        if (mountedRef.current) {
-          setChatMessages(prev => [...prev, messageData]);
-        }
-      });
-
-      socket.on('session-ended-by-peer', () => {
-        console.log('Session ended by peer');
-        if (mountedRef.current) {
-          endSession();
-        }
-      });
-
-      socket.on('peer-disconnected', (data: { clientId: string, reason: string }) => {
-        console.log('Peer disconnected:', data.clientId, 'Reason:', data.reason);
-        if (mountedRef.current) {
-          setError(`Peer disconnected: ${data.clientId} (${data.reason}).`);
-          endSession();
-        }
-      });
-
-      socket.on('pong', () => {
-      });
-
-      socket.on('disconnect', (reason: string) => {
-        console.log('Socket disconnected:', reason);
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
-          if (reason === 'io server disconnect') {
-            setError('Server disconnected the connection. Please try reconnecting.');
-          } else if (reason !== 'io client disconnect') {
-            setError(`Socket unexpectedly disconnected: ${reason}. Attempting to reconnect...`);
-          }
-          endSession();
-        }
-      });
-
-      socket.on('server-error', (data: { message: string }) => {
-        console.error('Server error received:', data);
-        if (mountedRef.current) {
-          setError(`Server error: ${data.message}`);
-        }
-      });
-
-      socket.on('connect_error', (error: Error) => {
-        console.error('Socket connection error:', error);
-        if (mountedRef.current) {
-          setError(`Socket connection failed: ${error.message}. Please ensure the Next.js server is running.`);
-          setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
-        }
-      });
-
-    } catch (err: any) {
-      console.error('Error creating socket:', err);
+    socket.on('connect', () => {
+      console.log('Socket.IO connected via polling:', socket.id);
       if (mountedRef.current) {
-        setError(`Failed to create socket connection: ${err.message}`);
+        setConnectionState(prev => ({ ...prev, socket: 'connected' }));
+        setError(null);
+        // Register the user with the server, sending their actual role and ID
+        socket.emit('register', { userId: currentUserId, role: currentUserRole });
+      }
+    });
+
+    socket.on('connected', (data: any) => {
+      console.log('Server confirmed connection:', data);
+    });
+
+    // Rest of your socket event handlers remain the same...
+    socket.on('incoming-session-request', ({ fromMentorId, mentorSocketId }: { fromMentorId: string, mentorSocketId: string }) => {
+      if (currentUserRole === 'user' && mountedRef.current) {
+        console.log(`Incoming session request from mentor ${fromMentorId}`);
+        setIncomingSessionRequest({ fromMentorId, mentorSocketId });
+      }
+    });
+
+    socket.on('session-accepted', (data: { mentorSocketId: string, sessionType: 'chat' | 'video' }) => {
+      if (mountedRef.current) {
+        console.log(`Session accepted, type: ${data.sessionType}`);
+        setIsSessionActive(true);
+        setActiveSessionType(data.sessionType);
+        setIncomingSessionRequest(null);
+        setRemotePeerSocketId(data.mentorSocketId);
+      }
+    });
+
+    socket.on('user-accepted-session', ({ userSocketId, sessionType }: { userSocketId: string, sessionType: 'chat' | 'video' }) => {
+      if (currentUserRole === 'mentor' && mountedRef.current) {
+        console.log(`User (socket: ${userSocketId}) accepted the session as type: ${sessionType}.`);
+        setIsSessionActive(true);
+        setActiveSessionType(sessionType);
+        setRemotePeerSocketId(userSocketId);
+      }
+    });
+
+    socket.on('start-peer-as-initiator', () => {
+      if (currentUserRole === 'mentor' && stream && mountedRef.current) {
+        console.log('Server instructing mentor to start peer as initiator');
+        startPeer(true);
+      }
+    });
+
+    socket.on('start-peer-as-receiver', () => {
+      if (currentUserRole === 'user' && stream && mountedRef.current) {
+        console.log('Server instructing user to start peer as receiver');
+        startPeer(false);
+      }
+    });
+
+    socket.on('signal', (data: any) => {
+      if (!mountedRef.current || !peerRef.current) return;
+      console.log('Received peer signal');
+      try {
+        peerRef.current.signal(data);
+      } catch (err: any) {
+        console.error('Error handling signal:', err);
+        if (mountedRef.current) setError(`Signaling error: ${err.message}`);
+      }
+    });
+
+    socket.on('start-chat-session', () => {
+      console.log('Server instructing to start chat session');
+      if (mountedRef.current) {
+        setIsSessionActive(true);
+        setActiveSessionType('chat');
+      }
+    });
+
+    socket.on('receiveChatMessage', (messageData: ChatMessage) => {
+      console.log('Received chat message:', messageData);
+      if (mountedRef.current) {
+        setChatMessages(prev => [...prev, messageData]);
+      }
+    });
+
+    socket.on('session-ended-by-peer', () => {
+      console.log('Session ended by peer');
+      if (mountedRef.current) {
+        endSession();
+      }
+    });
+
+    socket.on('peer-disconnected', (data: { clientId: string, reason: string }) => {
+      console.log('Peer disconnected:', data.clientId, 'Reason:', data.reason);
+      if (mountedRef.current) {
+        setError(`Peer disconnected: ${data.clientId} (${data.reason}).`);
+        endSession();
+      }
+    });
+
+    socket.on('pong', () => {
+      // Ping/pong for connection health
+    });
+
+    socket.on('disconnect', (reason: string) => {
+      console.log('Socket disconnected:', reason);
+      if (mountedRef.current) {
+        setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
+        if (reason === 'io server disconnect') {
+          setError('Server disconnected the connection. Please try reconnecting.');
+        } else if (reason !== 'io client disconnect') {
+          setError(`Socket unexpectedly disconnected: ${reason}. Attempting to reconnect...`);
+        }
+        endSession();
+      }
+    });
+
+    socket.on('server-error', (data: { message: string }) => {
+      console.error('Server error received:', data);
+      if (mountedRef.current) {
+        setError(`Server error: ${data.message}`);
+      }
+    });
+
+    socket.on('connect_error', (error: Error) => {
+      console.error('Socket connection error:', error);
+      if (mountedRef.current) {
+        setError(`Socket connection failed: ${error.message}. Please ensure the server is running.`);
         setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
       }
+    });
+
+  } catch (err: any) {
+    console.error('Error creating socket:', err);
+    if (mountedRef.current) {
+      setError(`Failed to create socket connection: ${err.message}`);
+      setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
     }
-  }, [stream, currentUserId, currentUserRole, cleanupSession, startPeer, endSession]);
+  }
+}, [stream, currentUserId, currentUserRole, cleanupSession, startPeer, endSession]);
 
 
   useEffect(() => {
