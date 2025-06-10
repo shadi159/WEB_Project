@@ -43,9 +43,11 @@ const MentorComponent = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
+  const isProd = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+
   const SOCKET_OPTIONS = {
     path: '/api/socket',
-    transports: ['websocket', 'polling'], // WebSocket preferred, polling as fallback
+    transports: isProd ? ['polling'] : ['websocket', 'polling'],
     timeout: 60000,
     query: { userId: MY_USER_ID, role: MY_ROLE },
   };
