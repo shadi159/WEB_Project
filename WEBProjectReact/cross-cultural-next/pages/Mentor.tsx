@@ -4,7 +4,7 @@
 import Navbar from '@/app/components/Navbar';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import SimplePeer from 'simple-peer';
-import _io from 'socket.io-client';
+import io from 'socket.io-client';
 import { getCurrentUser } from '@/utils/auth'; // <--- Import your actual client-side auth utility
 
 // Define a type for the user object returned by getCurrentUser
@@ -18,7 +18,7 @@ interface AuthenticatedUser {
   // Add other properties you might need from the user object
 }
 
-type SocketType = ReturnType<typeof _io>;
+type SocketType = ReturnType<typeof io>;
 
 interface ConnectionState {
   socket: 'disconnected' | 'connecting' | 'connected';
@@ -286,7 +286,7 @@ export default function Mentor() {
       setError(null);
 
       console.log('Connecting to Socket.IO...');
-      const socket = _io({
+      const socket = io({
         path: '/api/socket',
         // Force polling transport for Vercel compatibility
         transports: ['polling'],
