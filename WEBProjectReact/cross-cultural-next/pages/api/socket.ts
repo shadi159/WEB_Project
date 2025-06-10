@@ -326,6 +326,7 @@ export default async function SocketHandler(
             { status: 'offline', lastSeen: new Date() },
             { new: true }
           );
+          console.log('✅ LiveUser updated:', liveUser);
 
           if (liveUser) {
             console.log(`User ${liveUser.userId} marked offline.`);
@@ -368,6 +369,7 @@ export default async function SocketHandler(
           }
         } catch (error) {
           console.error('Error on disconnect handler:', error);
+          console.error('❌ Failed to update LiveUser:', error);
         }
       });
 
