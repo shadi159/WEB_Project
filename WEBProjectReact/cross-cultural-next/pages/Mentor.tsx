@@ -41,9 +41,13 @@ const MentorComponent = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  const SOCKET_URL = process.env.NODE_ENV === 'production'
-    ? 'https://web-project-1gle5rfyc-shadis-projects-924eb319.vercel.app'
-    : 'http://localhost:3000';
+  const SOCKET_OPTIONS = {
+    path: '/api/socket',
+    transports: ['polling'],
+    timeout: 60000,
+    query: { userId: MY_USER_ID, role: MY_ROLE },
+  };
+
 
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
@@ -135,12 +139,7 @@ const MentorComponent = () => {
 
   // --- Socket.IO setup ---
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
-      path: '/api/socket',
-      transports: ['polling'],
-      timeout: 60000,
-      query: { userId: MY_USER_ID, role: MY_ROLE }
-    });
+    const newSocket = io(SOCKET_OPTIONS);
 
     setSocket(newSocket);
 
@@ -188,7 +187,7 @@ const MentorComponent = () => {
     return () => {
       newSocket.disconnect();
     };
-  }, [SOCKET_URL, MY_USER_ID, MY_ROLE, endCurrentSession, setupFirebaseSessionListeners]);
+  }, [MY_USER_ID, MY_ROLE, endCurrentSession, setupFirebaseSessionListeners]);
 
   // --- Firebase Realtime Database Listeners ---
   useEffect(() => {
