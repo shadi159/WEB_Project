@@ -1,799 +1,332 @@
 // pages/Mentor.tsx
-'use client';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
-import Navbar from '@/app/components/Navbar';
-import { useEffect, useRef, useState, useCallback } from 'react';
-import SimplePeer from 'simple-peer';
 import io from 'socket.io-client';
-import { getCurrentUser } from '@/utils/auth'; // <--- Import your actual client-side auth utility
+import type { Socket } from 'socket.io-client';
 
-// Define a type for the user object returned by getCurrentUser
-// This should match the structure of the user object you store in localStorage
-interface AuthenticatedUser {
-  _id: string; // Mongoose ID
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: 'user' | 'mentor' | 'admin'; // This is crucial for determining the role
-  // Add other properties you might need from the user object
+import { initializeApp, getApps } from 'firebase/app';
+import { getDatabase, ref, push, onValue, onChildAdded, off, serverTimestamp } from 'firebase/database';
+
+import SimplePeer from 'simple-peer';
+
+interface ClientInfo {
+  userId: string;
+  role: 'user' | 'mentor';
+  socketId: string;
 }
 
-type SocketType = ReturnType<typeof io>;
+const MY_USER_ID = 'user_abc';
+const MY_ROLE: 'user' | 'mentor' = 'user'; // Still a const
 
-interface ConnectionState {
-  socket: 'disconnected' | 'connecting' | 'connected';
-  peer: 'disconnected' | 'connecting' | 'connected';
-}
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
 
-interface ChatMessage {
-  from: string;
-  message: string;
-  timestamp: string;
-}
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const firebaseDb = getDatabase(app);
 
-export default function Mentor() {
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [remote, setRemote] = useState<MediaStream | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>({
-    socket: 'disconnected',
-    peer: 'disconnected'
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [isSessionActive, setIsSessionActive] = useState(false);
-  const [targetUserId, setTargetUserId] = useState('');
-  const [currentUserRole, setCurrentUserRole] = useState<'user' | 'mentor' | 'admin' | null>(null); // Updated type to include 'admin'
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+const MentorComponent = () => {
+  const [socket, setSocket] = useState<typeof Socket | null>(null);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const [onlineUserStatuses, setOnlineUserStatuses] = useState<any>({});
+  const [activeFirebaseSessionPath, setActiveFirebaseSessionPath] = useState<string | null>(null);
+  const [peerConnection, setPeerConnection] = useState<SimplePeer.Instance | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  // New states for session type and chat
-  const [activeSessionType, setActiveSessionType] = useState<'none' | 'chat' | 'video'>('none');
-  const [incomingSessionRequest, setIncomingSessionRequest] = useState<{ fromMentorId: string, mentorSocketId: string } | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [currentChatMessage, setCurrentChatMessage] = useState('');
-  const [remotePeerSocketId, setRemotePeerSocketId] = useState<string | null>(null);
+  const SOCKET_URL = process.env.NODE_ENV === 'production'
+    ? 'https://web-project-1gle5rfyc-shadis-projects-924eb319.vercel.app'
+    : 'http://localhost:3000';
 
-
-  const peerRef = useRef<SimplePeer.Instance | null>(null);
-  const socketRef = useRef<SocketType | null>(null);
-  const mountedRef = useRef(true);
-  const chatMessagesEndRef = useRef<HTMLDivElement>(null); // For auto-scrolling chat
-
-  // --- ACTUAL AUTHENTICATION INTEGRATION ---
-  useEffect(() => {
-    // Attempt to get the current user from localStorage using your utility function
-    const user = getCurrentUser() as AuthenticatedUser | null; // Cast to your AuthenticatedUser type
-
-    if (user) {
-      setCurrentUserId(user._id); // Use the Mongoose _id as the userId
-      setCurrentUserRole(user.role); // Set the role from the authenticated user object
-      console.log(`Authenticated user loaded: Role - ${user.role}, ID - ${user._id}, Email - ${user.email}`);
-      setError(null); // Clear any previous auth errors
-    } else {
-      setCurrentUserId(null);
-      setCurrentUserRole(null);
-      console.log('No authenticated user found in localStorage.');
-      // You might want to show a login prompt or redirect if auth is required
-      setError('Please log in to access this page.');
-    }
-  }, []); // Empty dependency array means this runs once on component mount
-  // --- END ACTUAL AUTHENTICATION INTEGRATION ---
-
-
-  const cleanupSession = useCallback(() => {
-    console.log('Cleaning up session...');
-
-    if (peerRef.current) {
-      try {
-        peerRef.current.destroy();
-      } catch (err) {
-        console.warn('Error destroying peer:', err);
-      }
-      peerRef.current = null;
-    }
-
-    if (stream) {
-      stream.getTracks().forEach(track => {
-        try {
-          track.stop();
-        } catch (err) {
-          console.warn('Error stopping track:', err);
-        }
-      });
-    }
-
-    setConnectionState(prev => ({ ...prev, peer: 'disconnected' }));
-    setIsSessionActive(false);
-    setActiveSessionType('none');
-    setRemote(null);
-    setIncomingSessionRequest(null);
-    setChatMessages([]);
-    setCurrentChatMessage('');
-    setRemotePeerSocketId(null);
-  }, [stream]);
-
-
-  const cleanupSocket = useCallback(() => {
-    if (socketRef.current) {
-      try {
-        socketRef.current.disconnect();
-      } catch (err) {
-        console.warn('Error disconnecting socket:', err);
-      }
-      socketRef.current = null;
-    }
-    setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
-  }, []);
-
-
-  useEffect(() => {
-    let mediaStream: MediaStream | null = null;
-
-    const getUserMedia = async () => {
-      try {
-        console.log('Requesting user media...');
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user'
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true
-          }
-        });
-
-        if (mountedRef.current) {
-          setStream(mediaStream);
-          console.log('Got user media successfully');
-          setError(null);
-        }
-      } catch (err: any) {
-        console.error('Error getting user media:', err);
-        if (mountedRef.current) {
-          setError(`Failed to access camera/microphone: ${err.message}. Please allow permissions and refresh.`);
-        }
-      }
-    };
-
-    getUserMedia();
-
-    return () => {
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
-  const endSession = useCallback(() => {
-    console.log('Ending session...');
-
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('end-session');
-    }
-
-    cleanupSession();
-    setError(null);
-  }, [cleanupSession]);
-
-
-  const startPeer = useCallback((initiator: boolean) => {
-    if (!stream || !socketRef.current?.connected) {
-      console.error('Cannot start peer - missing stream or socket');
-      setError('Cannot start video: camera/microphone not available or not connected to signaling server.');
-      return;
-    }
-
-    if (!remotePeerSocketId) {
-        console.error('Cannot start peer - no remote peer socket ID');
-        setError('Cannot start video: No active session peer detected.');
-        return;
-    }
-
-    console.log(`Starting peer as ${initiator ? 'initiator' : 'receiver'} with remote peer: ${remotePeerSocketId}`);
-
-    if (peerRef.current) {
-      peerRef.current.destroy();
-    }
-
+  const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
-      const peer = new SimplePeer({
-        initiator,
-        trickle: false,
-        stream,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-          ]
-        }
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
 
-      peerRef.current = peer;
-      setConnectionState(prev => ({ ...prev, peer: 'connecting' }));
-      setError(null);
+      const peer = new SimplePeer({
+        initiator: initiator,
+        trickle: false,
+        stream: stream
+      });
 
       peer.on('signal', (data) => {
-        console.log('Sending peer signal');
-        if (socketRef.current?.connected && remotePeerSocketId) {
-          socketRef.current.emit('signal', { signalData: data, targetId: remotePeerSocketId });
-        } else {
-           console.warn('No target socket ID found for signaling or socket disconnected.');
-           setError('Failed to send video signal: No active peer found or server connection lost.');
-        }
+        push(ref(firebaseDb, `${sessionPath}/signals`), {
+          from: MY_USER_ID,
+          signal: JSON.stringify(data),
+          timestamp: serverTimestamp()
+        });
       });
 
       peer.on('stream', (remoteStream) => {
-        console.log('Received remote stream');
-        if (mountedRef.current) {
-          setRemote(remoteStream);
-          setConnectionState(prev => ({ ...prev, peer: 'connected' }));
-          setIsSessionActive(true);
-          setActiveSessionType('video');
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
         }
       });
 
-      peer.on('connect', () => {
-        console.log('Peer connection established');
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, peer: 'connected' }));
-          setIsSessionActive(true);
-          setActiveSessionType('video');
-        }
-      });
+      peer.on('error', (err) => console.error('Peer error:', err));
+      peer.on('connect', () => console.log('Peer connected!'));
 
-      peer.on('error', (err: any) => {
-        console.error('Peer error:', err);
-        if (mountedRef.current) {
-          setError(`Video call error: ${err.message}. Connection might be unstable.`);
-          setConnectionState(prev => ({ ...prev, peer: 'disconnected' }));
-          endSession();
-        }
-      });
-
-      peer.on('close', () => {
-        console.log('Peer connection closed');
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, peer: 'disconnected' }));
-          endSession();
-        }
-      });
-
-    } catch (err: any) {
-      console.error('Error creating peer:', err);
-      setError(`Failed to establish video connection: ${err.message}`);
-      endSession();
+      setPeerConnection(peer);
+    } catch (err) {
+      console.error('Failed to get media stream:', err);
     }
-  }, [stream, remotePeerSocketId, endSession]);
+  }, [firebaseDb, MY_USER_ID]);
 
+  const endCurrentSession = useCallback(() => {
+    console.log('Ending current session...');
+    if (activeFirebaseSessionPath) {
+      off(ref(firebaseDb, `${activeFirebaseSessionPath}/messages`));
+      off(ref(firebaseDb, `${activeFirebaseSessionPath}/signals`));
+      off(ref(firebaseDb, activeFirebaseSessionPath));
 
-  const connectSocket = useCallback(() => {
-    if (!mountedRef.current) return;
-
-    if (socketRef.current?.connected) {
-      console.log('Socket already connected');
-      return;
+      setActiveFirebaseSessionPath(null);
+      setChatMessages([]);
+      if (peerConnection) {
+        peerConnection.destroy();
+        setPeerConnection(null);
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     }
+  }, [activeFirebaseSessionPath, peerConnection, firebaseDb]);
 
-    // Only attempt to connect if currentUserId and currentUserRole are determined
-    if (!currentUserId || !currentUserRole) {
-      console.log('User ID or Role not set yet, cannot connect socket.');
-      setError('User role/ID not determined. Please ensure you are logged in.');
-      return;
-    }
+  const setupFirebaseSessionListeners = useCallback((path: string, sessionType: 'chat' | 'video') => {
+    console.log(`Setting up Firebase listeners for session path: ${path}, type: ${sessionType}`);
+    onChildAdded(ref(firebaseDb, `${path}/messages`), (snapshot) => {
+      const message = snapshot.val();
+      setChatMessages((prev) => [...prev, message]);
+      console.log('New chat message:', message);
+    });
 
-    try {
-      setConnectionState(prev => ({ ...prev, socket: 'connecting' }));
-      setError(null);
-
-      console.log('Connecting to Socket.IO...');
-      const socket = io({
-        path: '/api/socket',
-        // Force polling transport for Vercel compatibility
-        transports: ['polling'],
-        upgrade: false, // Disable transport upgrades
-        timeout: 20000,
-        forceNew: true,
-        autoConnect: true,
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-        // pingInterval: 10000, // Removed this line
-      });
-
-      socketRef.current = socket;
-
-      socket.on('connect', () => {
-        console.log('Socket.IO connected via polling:', socket.id);
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, socket: 'connected' }));
-          setError(null);
-          // Register the user with the server, sending their actual role and ID
-          socket.emit('register', { userId: currentUserId, role: currentUserRole });
+    if (sessionType === 'video') {
+      console.log('Setting up WebRTC signal listener for video session.');
+      onChildAdded(ref(firebaseDb, `${path}/signals`), (snapshot) => {
+        const signal = JSON.parse(snapshot.val().signal);
+        console.log('Received WebRTC signal:', signal);
+        if (peerConnection) {
+          peerConnection.signal(signal);
         }
       });
-
-      socket.on('connected', (data: any) => {
-        console.log('Server confirmed connection:', data);
-      });
-
-      // Rest of your socket event handlers remain the same...
-      socket.on('incoming-session-request', ({ fromMentorId, mentorSocketId }: { fromMentorId: string, mentorSocketId: string }) => {
-        if (currentUserRole === 'user' && mountedRef.current) {
-          console.log(`Incoming session request from mentor ${fromMentorId}`);
-          setIncomingSessionRequest({ fromMentorId, mentorSocketId });
-        }
-      });
-
-      socket.on('session-accepted', (data: { mentorSocketId: string, sessionType: 'chat' | 'video' }) => {
-        if (mountedRef.current) {
-          console.log(`Session accepted, type: ${data.sessionType}`);
-          setIsSessionActive(true);
-          setActiveSessionType(data.sessionType);
-          setIncomingSessionRequest(null);
-          setRemotePeerSocketId(data.mentorSocketId);
-        }
-      });
-
-      socket.on('user-accepted-session', ({ userSocketId, sessionType }: { userSocketId: string, sessionType: 'chat' | 'video' }) => {
-        if (currentUserRole === 'mentor' && mountedRef.current) {
-          console.log(`User (socket: ${userSocketId}) accepted the session as type: ${sessionType}.`);
-          setIsSessionActive(true);
-          setActiveSessionType(sessionType);
-          setRemotePeerSocketId(userSocketId);
-        }
-      });
-
-      socket.on('start-peer-as-initiator', () => {
-        if (currentUserRole === 'mentor' && stream && mountedRef.current) {
-          console.log('Server instructing mentor to start peer as initiator');
-          startPeer(true);
-        }
-      });
-
-      socket.on('start-peer-as-receiver', () => {
-        if (currentUserRole === 'user' && stream && mountedRef.current) {
-          console.log('Server instructing user to start peer as receiver');
-          startPeer(false);
-        }
-      });
-
-      socket.on('signal', (data: any) => {
-        if (!mountedRef.current || !peerRef.current) return;
-        console.log('Received peer signal');
-        try {
-          peerRef.current.signal(data);
-        } catch (err: any) {
-          console.error('Error handling signal:', err);
-          if (mountedRef.current) setError(`Signaling error: ${err.message}`);
-        }
-      });
-
-      socket.on('start-chat-session', () => {
-        console.log('Server instructing to start chat session');
-        if (mountedRef.current) {
-          setIsSessionActive(true);
-          setActiveSessionType('chat');
-        }
-      });
-
-      socket.on('receiveChatMessage', (messageData: ChatMessage) => {
-        console.log('Received chat message:', messageData);
-        if (mountedRef.current) {
-          setChatMessages(prev => [...prev, messageData]);
-        }
-      });
-
-      socket.on('session-ended-by-peer', () => {
-        console.log('Session ended by peer');
-        if (mountedRef.current) {
-          endSession();
-        }
-      });
-
-      socket.on('peer-disconnected', (data: { clientId: string, reason: string }) => {
-        console.log('Peer disconnected:', data.clientId, 'Reason:', data.reason);
-        if (mountedRef.current) {
-          setError(`Peer disconnected: ${data.clientId} (${data.reason}).`);
-          endSession();
-        }
-      });
-
-      socket.on('pong', () => {
-        // Ping/pong for connection health
-      });
-
-      socket.on('disconnect', (reason: string) => {
-        console.log('Socket disconnected:', reason);
-        if (mountedRef.current) {
-          setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
-          if (reason === 'io server disconnect') {
-            setError('Server disconnected the connection. Please try reconnecting.');
-          } else if (reason !== 'io client disconnect') {
-            setError(`Socket unexpectedly disconnected: ${reason}. Attempting to reconnect...`);
-          }
-          endSession();
-        }
-      });
-
-      socket.on('server-error', (data: { message: string }) => {
-        console.error('Server error received:', data);
-        if (mountedRef.current) {
-          setError(`Server error: ${data.message}`);
-        }
-      });
-
-      socket.on('connect_error', (error: Error) => {
-        console.error('Socket connection error:', error);
-        if (mountedRef.current) {
-          setError(`Socket connection failed: ${error.message}. Please ensure the server is running.`);
-          setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
-        }
-      });
-
-    } catch (err: any) {
-      console.error('Error creating socket:', err);
-      if (mountedRef.current) {
-        setError(`Failed to create socket connection: ${err.message}`);
-        setConnectionState(prev => ({ ...prev, socket: 'disconnected' }));
+      // FIX 1: Add type assertion to MY_ROLE here
+      if ((MY_ROLE as string) === 'mentor') {
+        startVideoCall(true, path);
+      } else {
+        startVideoCall(false, path);
       }
     }
-  }, [stream, currentUserId, currentUserRole, cleanupSession, startPeer, endSession]);
 
-
-  useEffect(() => {
-    // Connect socket only if user ID and role are available and socket is disconnected
-    if (stream && currentUserId && currentUserRole && connectionState.socket === 'disconnected') {
-      const timeout = setTimeout(() => {
-        if (mountedRef.current) {
-          connectSocket();
-        }
-      }, 1000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [stream, currentUserId, currentUserRole, connectionState.socket, connectSocket]);
-
-
-  const startSessionRequest = useCallback(() => {
-    if (currentUserRole !== 'mentor') {
-      setError('Only mentors can initiate a session.');
-      return;
-    }
-    if (connectionState.socket !== 'connected') {
-      setError('Not connected to signaling server. Cannot initiate session.');
-      return;
-    }
-    if (!targetUserId) {
-      setError('Please enter a target user ID to request a session.');
-      return;
-    }
-    if (isSessionActive || incomingSessionRequest) {
-      setError('There is already an active session or pending request.');
-      return;
-    }
-
-    console.log(`Mentor ${currentUserId} attempting to request session with user ID: ${targetUserId}`);
-    setError(null);
-
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('mentor-request-session', { targetUserId });
-      setConnectionState(prev => ({ ...prev, peer: 'connecting' }));
-    } else {
-      setError('Socket not connected to send session request.');
-    }
-  }, [connectionState.socket, currentUserRole, targetUserId, currentUserId, isSessionActive, incomingSessionRequest]);
-
-
-  const acceptSession = useCallback((type: 'chat' | 'video') => {
-    if (!incomingSessionRequest || currentUserRole !== 'user') {
-      setError('No incoming session request to accept, or you are not a user.');
-      return;
-    }
-    if (isSessionActive) {
-        setError('Cannot accept: another session is already active.');
-        return;
-    }
-    if (type === 'video' && !stream) {
-        setError('Cannot accept video call: camera/microphone not available.');
-        return;
-    }
-
-    console.log(`User accepting session as ${type}`);
-    socketRef.current?.emit('user-accept-session', {
-      mentorSocketId: incomingSessionRequest.mentorSocketId,
-      sessionType: type,
+    onValue(ref(firebaseDb, path), (snapshot) => {
+      const sessionData = snapshot.val();
+      if (sessionData && sessionData.status === 'ended') {
+        console.log('Session ended from Firebase RTDB update.');
+        endCurrentSession();
+      }
     });
-    setIncomingSessionRequest(null);
-    setError(null);
-  }, [incomingSessionRequest, currentUserRole, isSessionActive, stream]);
+  }, [firebaseDb, peerConnection, MY_ROLE, endCurrentSession, startVideoCall]);
 
-
-  const sendChatMessage = useCallback(() => {
-    if (!currentChatMessage.trim()) return;
-    if (!socketRef.current?.connected) {
-      setError('Not connected to chat server.');
-      return;
-    }
-    if (activeSessionType !== 'chat') {
-        setError('Not in an active chat session.');
-        return;
-    }
-    if (!remotePeerSocketId) {
-        setError('No active chat partner found.');
-        return;
-    }
-
-    const messagePayload = {
-      targetSocketId: remotePeerSocketId,
-      message: currentChatMessage,
-      fromUserId: currentUserId,
-    };
-    console.log('Sending chat message:', messagePayload);
-
-    socketRef.current.emit('sendChatMessage', messagePayload);
-    setChatMessages(prev => [...prev, { from: currentUserId || 'You', message: currentChatMessage, timestamp: new Date().toLocaleTimeString() }]);
-    setCurrentChatMessage('');
-  }, [currentChatMessage, socketRef, activeSessionType, remotePeerSocketId, currentUserId]);
-
-
-  // Auto-scroll chat to bottom
+  // --- Socket.IO setup ---
   useEffect(() => {
-    if (chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages]);
+    const newSocket = io(SOCKET_URL, {
+      path: '/api/socket',
+      transports: ['polling'],
+      timeout: 60000,
+      query: { userId: MY_USER_ID, role: MY_ROLE }
+    });
 
+    setSocket(newSocket);
 
-  useEffect(() => {
-    mountedRef.current = true;
+    newSocket.on('connected', (data: { message: string; clientId: string; timestamp: string; totalClients: number }) => {
+      console.log('Socket.IO connected:', data.message);
+      newSocket.emit('register', { userId: MY_USER_ID, role: MY_ROLE });
+    });
+
+    newSocket.on('server-error', (data: { message: string }) => {
+      console.error('Socket.IO Server Error:', data.message);
+      alert(`Server Error: ${data.message}`);
+    });
+
+    newSocket.on('incoming-session-request', (data: any) => {
+      console.log('Incoming session request:', data);
+      setIncomingRequests(prev => [...prev, data]);
+    });
+
+    newSocket.on('session-accepted', (data: { firebaseSessionPath: string; sessionType: 'chat' | 'video' }) => {
+      console.log('Session accepted:', data);
+      setActiveFirebaseSessionPath(data.firebaseSessionPath);
+      setupFirebaseSessionListeners(data.firebaseSessionPath, data.sessionType);
+    });
+
+    newSocket.on('user-accepted-session', (data: { firebaseSessionPath: string; sessionType: 'chat' | 'video' }) => {
+      console.log('User accepted session:', data);
+      setActiveFirebaseSessionPath(data.firebaseSessionPath);
+      setupFirebaseSessionListeners(data.firebaseSessionPath, data.sessionType);
+    });
+
+    newSocket.on('session-ended-by-peer', () => {
+      console.log('Session ended by peer');
+      endCurrentSession();
+    });
+
+    newSocket.on('peer-disconnected', (data: any) => {
+      console.log('Peer disconnected:', data);
+      endCurrentSession();
+    });
+
+    newSocket.on('disconnect', (reason: string) => {
+      console.log(`Socket.IO disconnected: ${reason}`);
+    });
+
     return () => {
-      mountedRef.current = false;
-      cleanupSession();
-      cleanupSocket();
+      newSocket.disconnect();
     };
-  }, [cleanupSession, cleanupSocket]);
+  }, [SOCKET_URL, MY_USER_ID, MY_ROLE, endCurrentSession, setupFirebaseSessionListeners]);
 
+  // --- Firebase Realtime Database Listeners ---
+  useEffect(() => {
+    const userStatusesRef = ref(firebaseDb, 'user_statuses');
+    onValue(userStatusesRef, (snapshot) => {
+      setOnlineUserStatuses(snapshot.val() || {});
+      console.log('Online user statuses updated:', snapshot.val());
+    });
+
+    const userRequestsRef = ref(firebaseDb, `user_notifications/${MY_USER_ID}/requests`);
+    onChildAdded(userRequestsRef, (snapshot) => {
+      const request = { id: snapshot.key, ...snapshot.val() };
+      console.log('New incoming request from Firebase:', request);
+      setIncomingRequests(prev => [...prev, request]);
+    });
+
+    const userResponsesRef = ref(firebaseDb, `user_notifications/${MY_USER_ID}/responses`);
+    onChildAdded(userResponsesRef, (snapshot) => {
+      const response = snapshot.val();
+      console.log('New response from Firebase:', response);
+      if (response.type === 'session_accepted') {
+        setActiveFirebaseSessionPath(response.firebaseSessionPath);
+        setupFirebaseSessionListeners(response.firebaseSessionPath, response.sessionType);
+      } else if (response.type === 'session_ended') {
+        console.log('Session ended via Firebase notification:', response);
+        endCurrentSession();
+      }
+    });
+
+    return () => {
+      off(userStatusesRef);
+      off(userRequestsRef);
+      off(userResponsesRef);
+    };
+  }, [MY_USER_ID, endCurrentSession, setupFirebaseSessionListeners]);
+
+
+  const handleMentorRequestSession = (targetUserId: string, type: 'chat' | 'video') => {
+    if (socket) {
+      socket.emit('mentor-request-session', { targetUserId, sessionType: type });
+    }
+  };
+
+  const handleUserAcceptSession = (mentorSocketIoId: string, sessionType: 'chat' | 'video', requestId: string) => {
+    if (socket) {
+      socket.emit('user-accept-session', { mentorSocketIoId, sessionType, requestId });
+      setIncomingRequests(prev => prev.filter(req => req.id !== requestId));
+    }
+  };
+
+  const handleSendChatMessage = (message: string) => {
+    if (activeFirebaseSessionPath) {
+      push(ref(firebaseDb, `${activeFirebaseSessionPath}/messages`), {
+        from: MY_USER_ID,
+        message: message,
+        timestamp: serverTimestamp(),
+      });
+    } else {
+      alert('No active session to send chat message.');
+    }
+  };
+
+  const handleEndSession = () => {
+    if (socket) {
+      socket.emit('end-session');
+    }
+  };
 
   return (
-    <div className="w-full bg-background min-h-screen p-4">
-      <Navbar />
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Session Center ({currentUserRole})</h1>
+    <div>
+      <h1>Mentor/User Dashboard</h1>
+      {/* FIX 2: Add type assertion to MY_ROLE here */}
+      {(MY_ROLE as string) === 'mentor' && (
+        <button onClick={() => handleMentorRequestSession('user_def', 'chat')}>Request Chat with User DEF</button>
+      )}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              {error}
+      {/* This condition `MY_ROLE === 'user'` is fine as is, but if it flags, you can add `(MY_ROLE as string) === 'user'` */}
+      {MY_ROLE === 'user' && incomingRequests.length > 0 && (
+        <div>
+          <h2>Incoming Session Requests:</h2>
+          {incomingRequests.map((req) => (
+            <div key={req.id}>
+              <p>From Mentor ID: {req.fromMentorId} ({req.sessionType})</p>
+              <button onClick={() => handleUserAcceptSession(req.mentorSocketIoId, req.sessionType, req.id)}>Accept {req.sessionType}</button>
             </div>
-          </div>
-        )}
-
-        <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
-          <h3 className="text-lg font-semibold mb-3">Connection Status</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                connectionState.socket === 'connected' ? 'bg-green-500' :
-                connectionState.socket === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-              }`} />
-              <span className="text-sm">
-                Server: <span className="font-medium capitalize">{connectionState.socket}</span>
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${
-                connectionState.peer === 'connected' ? 'bg-green-500' :
-                connectionState.peer === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-              }`} />
-              <span className="text-sm">
-                Peer: <span className="font-medium capitalize">{connectionState.peer}</span>
-              </span>
-            </div>
-          </div>
-          <p className="text-sm mt-2">Active Session: <span className="font-medium capitalize">{activeSessionType}</span></p>
+          ))}
         </div>
+      )}
 
-        {/* Incoming Session Request UI (for User) */}
-        {incomingSessionRequest && currentUserRole === 'user' && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg mb-6 text-center">
-            <p className="font-semibold text-lg mb-3">Incoming session request from Mentor: {incomingSessionRequest.fromMentorId}</p>
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => acceptSession('chat')}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-              >
-                Accept Chat
-              </button>
-              <button
-                onClick={() => acceptSession('video')}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
-              >
-                Accept Video Call
-              </button>
-            </div>
+      {activeFirebaseSessionPath && (
+        <div>
+          <h2>Active Session (Firebase Path: {activeFirebaseSessionPath})</h2>
+          <button onClick={handleEndSession}>End Session</button>
+          <h3>Chat:</h3>
+          <div>
+            {chatMessages.map((msg, index) => (
+              <p key={index}>
+                <strong>{msg.from}:</strong> {msg.message} ({(new Date(msg.timestamp)).toLocaleTimeString()})
+              </p>
+            ))}
           </div>
-        )}
+          <input
+            type="text"
+            placeholder="Type message"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSendChatMessage((e.target as HTMLInputElement).value);
+                (e.target as HTMLInputElement).value = '';
+              }
+            }}
+          />
 
-        {/* Video Call UI */}
-        {activeSessionType === 'video' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 border-b">
-                <h3 className="text-lg font-semibold">Your Video (Role: {currentUserRole}, ID: {currentUserId})</h3>
-              </div>
-              <div className="relative aspect-video bg-gray-900">
-                <video
-                  className="w-full h-full object-cover"
-                  playsInline
-                  muted
-                  autoPlay
-                  ref={(el) => {
-                    if (el && stream) {
-                      el.srcObject = stream;
-                    }
-                  }}
-                />
-                {!stream && (
-                  <div className="absolute inset-0 flex items-center justify-center text-white">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                      <p>Loading camera...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 border-b">
-                <h3 className="text-lg font-semibold">Remote Video</h3>
-              </div>
-              <div className="relative aspect-video bg-gray-900">
-                <video
-                  className="w-full h-full object-cover"
-                  playsInline
-                  autoPlay
-                  ref={(el) => {
-                    if (el && remote) {
-                      el.srcObject = remote;
-                    }
-                  }}
-                />
-                {!remote && (
-                  <div className="absolute inset-0 flex items-center justify-center text-white">
-                    <div className="text-center">
-                      {isSessionActive ? (
-                        <>
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                          <p>Connecting to remote peer...</p>
-                        </>
-                      ) : (
-                        <p>Waiting for video call to start</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* Video elements for WebRTC */}
+          <div>
+            <h3>Video Streams</h3>
+            <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '300px' }}></video>
+            <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '300px' }}></video>
           </div>
-        )}
-
-        {/* Chat UI */}
-        {activeSessionType === 'chat' && (
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden p-4 mb-6">
-            <h3 className="text-lg font-semibold mb-3">Chat Session</h3>
-            <div className="h-80 overflow-y-auto border rounded-lg p-3 mb-4 bg-gray-50 flex flex-col space-y-2">
-              {chatMessages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.from === currentUserId ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`rounded-lg px-3 py-1 text-sm ${
-                    msg.from === currentUserId
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-300 text-gray-800'
-                  }`}>
-                    <span className="font-semibold mr-1">{msg.from === currentUserId ? 'You' : msg.from}:</span>
-                    {msg.message}
-                    <span className="ml-2 text-xs opacity-75">{msg.timestamp}</span>
-                  </div>
-                </div>
-              ))}
-              <div ref={chatMessagesEndRef} />
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                placeholder="Type your message..."
-                className="flex-grow px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={currentChatMessage}
-                onChange={(e) => setCurrentChatMessage(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    sendChatMessage();
-                  }
-                }}
-              />
-              <button
-                onClick={sendChatMessage}
-                className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
-                disabled={!currentChatMessage.trim()}
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        )}
-
-
-        <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            {/* Only show "Request Session" if current user is a mentor, not active, and no pending request */}
-            {currentUserRole === 'mentor' && !isSessionActive && !incomingSessionRequest && (
-                <div className="flex flex-col space-y-2">
-                    <input
-                        type="text"
-                        placeholder="Target User ID (e.g., user456)"
-                        value={targetUserId}
-                        onChange={(e) => setTargetUserId(e.target.value)}
-                        className="px-4 py-2 border rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                        onClick={startSessionRequest}
-                        disabled={connectionState.socket !== 'connected' || !targetUserId || connectionState.peer === 'connecting'}
-                        className="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center space-x-2"
-                    >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                        </svg>
-                        <span>Request Session</span>
-                    </button>
-                </div>
-            )}
-
-            {/* Only show "Waiting for mentor" if current user is a user, not active, and no pending request */}
-            {currentUserRole === 'user' && !isSessionActive && !incomingSessionRequest && (
-                   <p className="text-lg text-gray-600">Waiting for a mentor to request a session...</p>
-            )}
-
-            {isSessionActive && (
-                <button
-                    onClick={endSession}
-                    className="px-8 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors duration-200 flex items-center justify-center space-x-2"
-                >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 6.707 6.293a1 1 0 00-1.414 1.414L8.586 11l-3.293 3.293a1 1 0 001.414 1.414L10 12.414l3.293 3.293a1 1 0 001.414-1.414L11.414 11l3.293-3.293z" clipRule="evenodd" />
-                    </svg>
-                    <span>End Session</span>
-                </button>
-            )}
-
-          <button
-            onClick={connectSocket}
-            disabled={connectionState.socket === 'connecting' || !currentUserId || !currentUserRole}
-            className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center space-x-2"
-          >
-            {connectionState.socket === 'connecting' ? 'Connecting...' : 'Reconnect Signaling'}
-          </button>
         </div>
+      )}
 
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-8 bg-gray-50 rounded-lg p-4">
-            <h4 className="text-sm font-semibold mb-2">Debug Info</h4>
-            <div className="text-xs space-y-1">
-              <p>Stream: {stream ? 'Available' : 'Not available'}</p>
-              <p>Remote: {remote ? 'Available' : 'Not available'}</p>
-              <p>Socket: {connectionState.socket}</p>
-              <p>Peer: {connectionState.peer}</p>
-              <p>Active Session Type: {activeSessionType}</p>
-              <p>Current Role: {currentUserRole || 'N/A'}</p>
-              <p>Current User ID: {currentUserId || 'N/A'}</p>
-              <p>Socket ID: {socketRef.current?.id || 'Not connected'}</p>
-              <p>Target User ID: {targetUserId || 'N/A'}</p>
-              <p>Incoming Request: {incomingSessionRequest ? `From ${incomingSessionRequest.fromMentorId}` : 'None'}</p>
-            </div>
-          </div>
-        )}
-      </div>
+      <h3>Online Users:</h3>
+      <ul>
+        {Object.entries(onlineUserStatuses).map(([userId, data]: [string, any]) => (
+          <li key={userId}>
+            {userId}: {data.status} ({new Date(data.timestamp).toLocaleTimeString()})
+            {/* FIX 3: Add type assertion to MY_ROLE here */}
+            {(MY_ROLE as string) === 'mentor' && data.status === 'online' && userId !== MY_USER_ID && (
+              <>
+                <button onClick={() => handleMentorRequestSession(userId, 'chat')}>Chat</button>
+                <button onClick={() => handleMentorRequestSession(userId, 'video')}>Video</button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
-}
+};
+
+export default MentorComponent;

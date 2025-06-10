@@ -1,10 +1,23 @@
-// pages/api/socket.ts - Modified for Vercel compatibility with Redis Adapter
+// pages/api/socket.ts - Modified for Vercel with MongoDB state and Firebase RTDB
 import { Server } from 'socket.io';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { Server as NetServer } from 'http';
 import type { Socket as NetSocket } from 'net';
-import { createClient } from 'redis'; // Import createClient from 'redis'
-import { createAdapter } from '@socket.io/redis-adapter'; // Import createAdapter
+import mongoose from 'mongoose';
+import * as admin from 'firebase-admin'; // Firebase Admin SDK
+import LiveUser from '../../models/LiveUser';
+import ActiveSession from '../../models/ActiveSession';
+
+// Ensure Mongoose is connected
+const connectMongo = async () => {
+  if (mongoose.connections[0].readyState) return;
+  try {
+    await mongoose.connect(process.env.MONGODB_URI!, {});
+    console.log('MongoDB connected successfully');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+  }
+};
 
 interface SocketServer extends NetServer {
   io?: Server | undefined;
@@ -18,70 +31,61 @@ interface NextApiResponseWithSocket extends NextApiResponse {
   socket: SocketWithIO;
 }
 
-// NOTE: connectedClients and pairedSessions will now primarily be managed by the Redis Adapter.
-// You might still use local maps for immediate lookup within a single function invocation,
-// but for state that needs to be shared across instances, Redis is crucial.
-// For simplicity and direct state sharing, we will rely heavily on Redis's pub/sub and state management.
+// Initialize Firebase Admin SDK globally
+let firebaseAdminApp: admin.app.App | null = null;
+const getFirebaseAdmin = () => {
+  if (!firebaseAdminApp) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
 
-// Initialize Redis clients globally to avoid re-creating on every invocation
-// For Vercel, ensure these clients are connected only once per function instance lifecycle.
-let pubClient: ReturnType<typeof createClient> | null = null;
-let subClient: ReturnType<typeof createClient> | null = null;
+      if (!serviceAccount || Object.keys(serviceAccount).length === 0) {
+        console.error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is empty or malformed.');
+        return null;
+      }
 
-async function initializeRedisClients() {
-  if (!process.env.REDIS_URL) {
-    console.error('REDIS_URL environment variable is not set!');
-    return;
+      firebaseAdminApp = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: process.env.FIREBASE_DATABASE_URL,
+      });
+      console.log('Firebase Admin SDK initialized.');
+    } catch (error) {
+      console.error('Error initializing Firebase Admin SDK:', error);
+      return null;
+    }
   }
-
-  if (!pubClient || !pubClient.isReady) { // Check if client exists and is ready
-    pubClient = createClient({ url: process.env.REDIS_URL });
-    pubClient.on('error', (err) => console.error('Redis Publisher Error:', err));
-    await pubClient.connect();
-    console.log('Redis Publisher connected.');
-  }
-
-  if (!subClient || !subClient.isReady) { // Check if client exists and is ready
-    subClient = pubClient.duplicate(); // Duplicate for subscriber
-    subClient.on('error', (err) => console.error('Redis Subscriber Error:', err));
-    await subClient.connect();
-    console.log('Redis Subscriber connected.');
-  }
-}
+  return firebaseAdminApp;
+};
 
 export default async function SocketHandler(
   req: NextApiRequest,
   res: NextApiResponseWithSocket
 ) {
+  // Ensure MongoDB is connected
+  await connectMongo();
+  const firebaseApp = getFirebaseAdmin();
+
+  if (!firebaseApp) {
+    res.status(500).end('Internal Server Error: Firebase Admin SDK not configured');
+    return;
+  }
+
+  const db = firebaseApp.database(); // Get Realtime Database reference
+
   if (!res.socket.server.io) {
     console.log('New Socket.io server...');
-
-    // Initialize Redis clients
-    await initializeRedisClients();
-
-    if (!pubClient || !subClient) {
-      console.error('Failed to initialize Redis clients. Cannot start Socket.IO server.');
-      res.status(500).end('Internal Server Error: Redis not connected');
-      return;
-    }
-
     const io = new Server(res.socket.server, {
       path: '/api/socket',
       cors: {
         origin: process.env.NODE_ENV === 'production'
-          ? ['https://web-project-1ai7g4748-shadis-projects-924eb319.vercel.app'] 
+          ? ['https://web-project-1gle5rfyc-shadis-projects-924eb319.vercel.app', 'https://your-custom-domain.com']
           : ['http://localhost:3000', 'http://localhost:3001'],
         methods: ['GET', 'POST'],
         credentials: true,
       },
-      transports: ['polling'], // Continue to force polling for Vercel
+      transports: ['polling'], // Crucial for Vercel
       pingTimeout: 60000,
       pingInterval: 25000,
     });
-
-    // Use the Redis adapter
-    io.adapter(createAdapter(pubClient, subClient));
-    console.log('Socket.io server initialized with Redis adapter.');
 
     res.socket.server.io = io;
 
@@ -91,40 +95,42 @@ export default async function SocketHandler(
         message: 'Successfully connected via polling',
         clientId: socket.id,
         timestamp: new Date().toISOString(),
-        totalClients: io.engine.clientsCount, // This count is now global across instances
+        totalClients: io.engine.clientsCount,
       });
 
       socket.on('register', async ({ userId, role }) => {
         socket.data.userId = userId;
         socket.data.role = role;
-        // Store user details in Redis hash for global access
-        await pubClient?.hSet('socket_users', socket.id, JSON.stringify({ userId, role, socketId: socket.id }));
-        console.log(`Client ${socket.id} registered as ${role} (User ID: ${userId})`);
 
-        // Emit to all connected clients (across instances) that client list updated
-        // You might need a more sophisticated way to get all connected client info from Redis
-        // For now, this will emit, but client-side will need to fetch actual list if needed.
-        io.emit('client-list-updated', { message: 'Client registered', socketId: socket.id, userId, role });
-      });
+        try {
+          await LiveUser.findOneAndUpdate(
+            { userId: userId },
+            {
+              socketIoId: socket.id,
+              role: role,
+              status: 'online',
+              lastSeen: new Date(),
+            },
+            { upsert: true, new: true }
+          );
+          console.log(`Client ${socket.id} registered as ${role} (User ID: ${userId})`);
 
-      socket.on('signal', async (data) => {
-        const targetSocketId = data.targetId;
-        const signalData = data.signalData;
+          // Notify clients of user status change via Firebase RTDB
+          // Clients will listen on a 'user_statuses' path.
+          db.ref(`user_statuses/${userId}`).set({
+            status: 'online',
+            socketIoId: socket.id,
+            timestamp: admin.database.ServerValue.TIMESTAMP,
+          });
 
-        // Retrieve session data from Redis
-        const sessionJson = await pubClient?.hGet('paired_sessions', socket.id);
-        const session = sessionJson ? JSON.parse(sessionJson) : null;
-
-        if (session && session.peerSocketId === targetSocketId && session.type === 'video') {
-          console.log(`Forwarding signal from ${socket.id} to ${targetSocketId}`);
-          io.to(targetSocketId).emit('signal', signalData);
-        } else {
-          console.warn(`Attempted to send signal to non-paired peer or invalid target for video call: ${targetSocketId}`);
-          socket.emit('server-error', { message: 'Invalid signaling target or no active video call.' });
+        } catch (error) {
+          console.error('Error registering client in MongoDB:', error);
+          socket.emit('server-error', { message: 'Failed to register user.' });
         }
       });
 
-      socket.on('mentor-request-session', async ({ targetUserId }) => {
+      // Mentor requests a session (via Socket.IO, then server triggers Firebase)
+      socket.on('mentor-request-session', async ({ targetUserId, sessionType }) => {
         if (socket.data.role !== 'mentor') {
           socket.emit('server-error', { message: 'Only mentors can initiate sessions.' });
           return;
@@ -132,91 +138,176 @@ export default async function SocketHandler(
 
         console.log(`Mentor ${socket.data.userId} (socket: ${socket.id}) requesting session with user ID: ${targetUserId}`);
 
-        // Find target user's socket ID(s) from Redis
-        let targetSocketId: string | null = null;
-        const allClientsData = await pubClient?.hGetAll('socket_users') || {};
-        for (const sId in allClientsData) {
-            const clientData = JSON.parse(allClientsData[sId]);
-            if (clientData.userId === targetUserId && clientData.role === 'user') {
-                targetSocketId = sId;
-                break;
-            }
-        }
+        try {
+          const targetUser = await LiveUser.findOne({ userId: targetUserId, role: 'user', status: 'online' });
 
-        if (targetSocketId) {
-            // Check if the target is already in a session
-            const targetSessionJson = await pubClient?.hGet('paired_sessions', targetSocketId);
-            if (targetSessionJson) {
-                socket.emit('server-error', { message: 'Target user is already in a session.' });
-                console.warn(`Mentor ${socket.id} tried to request session with busy user ${targetUserId}`);
-                return;
+          if (targetUser) {
+            // Check if target user is already in a session
+            const existingSession = await ActiveSession.findOne({
+              $or: [
+                { userUserId: targetUserId, status: 'active' },
+                { mentorUserId: targetUserId, status: 'active' }
+              ]
+            });
+
+            if (existingSession) {
+              socket.emit('server-error', { message: 'Target user is already in an active session.' });
+              return;
             }
 
-            io.to(targetSocketId).emit('incoming-session-request', { fromMentorId: socket.data.userId, mentorSocketId: socket.id });
-            console.log(`Session request sent from mentor ${socket.id} to user ${targetSocketId}`);
-        } else {
+            // Push a notification to the target user's Firebase path
+            const notificationPath = `user_notifications/${targetUserId}/requests`;
+            db.ref(notificationPath).push({
+              type: 'session_request',
+              fromMentorId: socket.data.userId,
+              mentorSocketIoId: socket.id,
+              sessionType: sessionType,
+              timestamp: admin.database.ServerValue.TIMESTAMP,
+              status: 'pending' // So client can accept/reject
+            });
+            console.log(`Session request sent from mentor ${socket.data.userId} to user ${targetUserId} via Firebase path ${notificationPath}`);
+          } else {
             socket.emit('server-error', { message: 'Target user not found or not online.' });
-            console.warn(`Mentor ${socket.id} failed to find user ${targetUserId}`);
+            console.warn(`Mentor ${socket.data.userId} failed to find user ${targetUserId}`);
+          }
+        } catch (error) {
+          console.error('Error in mentor-request-session:', error);
+          socket.emit('server-error', { message: 'Internal server error during session request.' });
         }
       });
 
-      socket.on('user-accept-session', async ({ mentorSocketId, sessionType }) => {
+      // User accepts a session (via Socket.IO, then server updates MongoDB & triggers Firebase)
+      socket.on('user-accept-session', async ({ mentorSocketIoId, sessionType, requestId }) => {
         if (socket.data.role !== 'user') {
-            socket.emit('server-error', { message: 'Only users can accept sessions.' });
-            return;
+          socket.emit('server-error', { message: 'Only users can accept sessions.' });
+          return;
         }
 
-        // Check if mentorSocketId is a valid connected client
-        const mentorClientData = await pubClient?.hGet('socket_users', mentorSocketId);
-        if (!mentorClientData) {
-            socket.emit('server-error', { message: 'Mentor is not online or invalid.' });
+        try {
+          const mentorLiveUser = await LiveUser.findOne({ socketIoId: mentorSocketIoId, status: 'online' });
+          const userLiveUser = await LiveUser.findOne({ socketIoId: socket.id, status: 'online' });
+
+          if (!mentorLiveUser || !userLiveUser) {
+            socket.emit('server-error', { message: 'Mentor or user not found or offline.' });
             return;
-        }
+          }
 
-        // Store session in Redis
-        await pubClient?.hSet('paired_sessions', socket.id, JSON.stringify({ peerSocketId: mentorSocketId, type: sessionType }));
-        await pubClient?.hSet('paired_sessions', mentorSocketId, JSON.stringify({ peerSocketId: socket.id, type: sessionType }));
+          // Generate a unique path for this session in Firebase RTDB
+          const firebaseSessionPath = `live_sessions/${userLiveUser.userId}_${mentorLiveUser.userId}_${Date.now()}`;
 
-        console.log(`User ${socket.id} accepted session from mentor ${mentorSocketId} as type: ${sessionType}`);
+          // Save active session details to MongoDB
+          await ActiveSession.create({
+            sessionId: `${userLiveUser.userId}_${mentorLiveUser.userId}_${Date.now()}`,
+            mentorUserId: mentorLiveUser.userId,
+            mentorSocketIoId: mentorLiveUser.socketIoId,
+            userUserId: userLiveUser.userId,
+            userSocketIoId: userLiveUser.socketIoId,
+            sessionType: sessionType,
+            firebaseSessionPath: firebaseSessionPath,
+            status: 'active',
+          });
 
-        socket.emit('session-accepted', { mentorSocketId: mentorSocketId, sessionType: sessionType });
-        io.to(mentorSocketId).emit('user-accepted-session', { userSocketId: socket.id, sessionType: sessionType });
+          console.log(`User ${socket.id} accepted session from mentor ${mentorSocketIoId} as type: ${sessionType}. Firebase Path: ${firebaseSessionPath}`);
 
-        if (sessionType === 'video') {
-            socket.emit('start-peer-as-receiver');
-            io.to(mentorSocketId).emit('start-peer-as-initiator');
-        } else if (sessionType === 'chat') {
-            socket.emit('start-chat-session');
-            io.to(mentorSocketId).emit('start-chat-session');
+          // Update the request status in Firebase (if you stored it there)
+          if (requestId) {
+            db.ref(`user_notifications/${userLiveUser.userId}/requests/${requestId}`).update({ status: 'accepted' });
+          }
+
+          // Notify both parties of acceptance and session path via Firebase notifications
+          db.ref(`user_notifications/${userLiveUser.userId}/responses`).push({
+            type: 'session_accepted',
+            peerUserId: mentorLiveUser.userId,
+            sessionType: sessionType,
+            firebaseSessionPath: firebaseSessionPath,
+            timestamp: admin.database.ServerValue.TIMESTAMP,
+          });
+          db.ref(`user_notifications/${mentorLiveUser.userId}/responses`).push({
+            type: 'session_accepted',
+            peerUserId: userLiveUser.userId,
+            sessionType: sessionType,
+            firebaseSessionPath: firebaseSessionPath,
+            timestamp: admin.database.ServerValue.TIMESTAMP,
+          });
+
+          // Also set up initial session data in Firebase RTDB
+          await db.ref(firebaseSessionPath).set({
+            mentorId: mentorLiveUser.userId,
+            userId: userLiveUser.userId,
+            sessionType: sessionType,
+            status: 'active',
+            messages: [], // Initialize for chat
+            signals: [], // Initialize for WebRTC signals
+            createdAt: admin.database.ServerValue.TIMESTAMP,
+          });
+
+        } catch (error) {
+          console.error('Error in user-accept-session:', error);
+          socket.emit('server-error', { message: 'Internal server error during session acceptance.' });
         }
       });
 
-      socket.on('sendChatMessage', async ({ targetSocketId, message, fromUserId }) => {
-        const sessionJson = await pubClient?.hGet('paired_sessions', socket.id);
-        const session = sessionJson ? JSON.parse(sessionJson) : null;
-
-        if (session && session.peerSocketId === targetSocketId && session.type === 'chat') {
-          console.log(`Forwarding chat message from ${fromUserId} (${socket.id}) to ${targetSocketId}: ${message}`);
-          io.to(targetSocketId).emit('receiveChatMessage', { from: fromUserId, message, timestamp: new Date().toLocaleTimeString() });
-        } else {
-          console.warn(`Attempted to send chat message to non-paired peer or non-chat session: ${targetSocketId}`);
-          socket.emit('server-error', { message: 'You are not in an active chat session with this user.' });
-        }
-      });
-
+      // End session (via Socket.IO, then server updates MongoDB & triggers Firebase)
       socket.on('end-session', async () => {
-        const sessionJson = await pubClient?.hGet('paired_sessions', socket.id);
-        const session = sessionJson ? JSON.parse(sessionJson) : null;
+        try {
+          // Find the active session involving this socket
+          const session = await ActiveSession.findOneAndUpdate(
+            {
+              $or: [{ userSocketIoId: socket.id }, { mentorSocketIoId: socket.id }],
+              status: 'active'
+            },
+            { status: 'ended', endTime: new Date() },
+            { new: true }
+          );
 
-        if (session) {
-          io.to(session.peerSocketId).emit('session-ended-by-peer');
-          await pubClient?.hDel('paired_sessions', socket.id);
-          await pubClient?.hDel('paired_sessions', session.peerSocketId);
-          console.log(`Session ended by ${socket.id}. Notified ${session.peerSocketId}`);
-        } else {
-          console.log(`Session ended by ${socket.id}, but no active paired session found.`);
+          if (session) {
+            console.log(`Session ended by ${socket.data.userId}. Session ID: ${session.sessionId}`);
+
+            // Update session status in Firebase RTDB
+            await db.ref(session.firebaseSessionPath).update({
+              status: 'ended',
+              endedBy: socket.data.userId,
+              endTime: admin.database.ServerValue.TIMESTAMP,
+            });
+
+            // Notify both parties of session end via Firebase notifications
+            const otherPeerUserId = session.userUserId === socket.data.userId ? session.mentorUserId : session.userUserId;
+            db.ref(`user_notifications/${socket.data.userId}/responses`).push({
+              type: 'session_ended',
+              peerUserId: otherPeerUserId,
+              sessionId: session.sessionId,
+              timestamp: admin.database.ServerValue.TIMESTAMP,
+            });
+            db.ref(`user_notifications/${otherPeerUserId}/responses`).push({
+              type: 'session_ended',
+              peerUserId: socket.data.userId,
+              sessionId: session.sessionId,
+              timestamp: admin.database.ServerValue.TIMESTAMP,
+              reason: 'peer_disconnected'
+            });
+
+          } else {
+            console.log(`Session ended by ${socket.id}, but no active paired session found.`);
+          }
+        } catch (error) {
+          console.error('Error ending session:', error);
+          socket.emit('server-error', { message: 'Internal server error during session end.' });
         }
       });
+
+      // NOTE: Chat messages and WebRTC signals will primarily be handled client-side by Firebase SDK.
+      // The server will only be involved if you need to log, moderate, or do complex routing.
+      // For simplicity, we'll assume clients send/receive directly via Firebase Realtime Database.
+      // Example of client-side chat send:
+      // firebase.database().ref(`${session.firebaseSessionPath}/messages`).push({
+      //   from: MY_USER_ID,
+      //   message: 'Hello',
+      //   timestamp: firebase.database.ServerValue.TIMESTAMP
+      // });
+      // Example of client-side chat receive:
+      // firebase.database().ref(`${session.firebaseSessionPath}/messages`).on('child_added', (snapshot) => {
+      //   setMessages((prev) => [...prev, snapshot.val()]);
+      // });
 
       socket.on('ping', () => {
         socket.emit('pong');
@@ -224,24 +315,55 @@ export default async function SocketHandler(
 
       socket.on('disconnect', async (reason) => {
         console.log(`Client disconnected: ${socket.id}, Reason: ${reason}`);
-        // Remove client from Redis
-        await pubClient?.hDel('socket_users', socket.id);
+        try {
+          const liveUser = await LiveUser.findOneAndUpdate(
+            { socketIoId: socket.id },
+            { status: 'offline', lastSeen: new Date() },
+            { new: true }
+          );
 
-        const sessionJson = await pubClient?.hGet('paired_sessions', socket.id);
-        const session = sessionJson ? JSON.parse(sessionJson) : null;
+          if (liveUser) {
+            console.log(`User ${liveUser.userId} marked offline.`);
+            // Update user status in Firebase RTDB
+            db.ref(`user_statuses/${liveUser.userId}`).update({
+              status: 'offline',
+              timestamp: admin.database.ServerValue.TIMESTAMP,
+            });
 
-        if (session) {
-          io.to(session.peerSocketId).emit('peer-disconnected', {
-            clientId: socket.id,
-            reason,
-            timestamp: new Date().toISOString()
-          });
-          await pubClient?.hDel('paired_sessions', socket.id);
-          await pubClient?.hDel('paired_sessions', session.peerSocketId);
-          console.log(`Session ended due to disconnect of ${socket.id}. Notified ${session.peerSocketId}`);
+            // Check if this user was in an active session and end it
+            const session = await ActiveSession.findOneAndUpdate(
+              {
+                $or: [{ userSocketIoId: socket.id }, { mentorSocketIoId: socket.id }],
+                status: 'active'
+              },
+              { status: 'ended', endTime: new Date() },
+              { new: true }
+            );
+
+            if (session) {
+              console.log(`Session ${session.sessionId} ended due to disconnect of ${socket.id}.`);
+              // Update session status in Firebase RTDB
+              await db.ref(session.firebaseSessionPath).update({
+                status: 'ended',
+                endedBy: liveUser.userId,
+                endTime: admin.database.ServerValue.TIMESTAMP,
+                reason: 'peer_disconnected',
+              });
+
+              // Notify the other peer directly via Firebase notifications
+              const otherPeerUserId = session.userUserId === liveUser.userId ? session.mentorUserId : session.userUserId;
+              db.ref(`user_notifications/${otherPeerUserId}/responses`).push({
+                type: 'session_ended',
+                peerUserId: liveUser.userId,
+                sessionId: session.sessionId,
+                reason: 'peer_disconnected',
+                timestamp: admin.database.ServerValue.TIMESTAMP,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error on disconnect handler:', error);
         }
-        // Emit update (clients will need to refetch full list from Redis if necessary)
-        io.emit('client-list-updated', { message: 'Client disconnected', socketId: socket.id, reason });
       });
 
       socket.on('error', (error) => {
