@@ -71,18 +71,23 @@ export default async function SocketHandler(
 
   const db = firebaseApp.database(); // Get Realtime Database reference
 
-  if (!res.socket.server.io) {
-    console.log('New Socket.io server...');
+    if (!res.socket.server.io) {
+    console.log('Initializing new Socket.IO server...');
     const io = new Server(res.socket.server, {
       path: '/api/socket',
       cors: {
-        origin: process.env.NODE_ENV === 'production'
-          ? ['https://web-project-1gle5rfyc-shadis-projects-924eb319.vercel.app', 'https://your-custom-domain.com']
-          : ['http://localhost:3000', 'http://localhost:3001'],
+        origin: (origin, callback) => {
+          // Allow undefined (for same-origin) and all Vercel subdomains
+          if (!origin || origin.endsWith('.vercel.app') || origin === 'http://localhost:3000') {
+            callback(null, true);
+          } else {
+            callback(new Error(`Blocked by CORS: ${origin}`));
+          }
+        },
         methods: ['GET', 'POST'],
         credentials: true,
       },
-      transports: ['polling'], // Crucial for Vercel
+      transports: ['polling'],
       pingTimeout: 60000,
       pingInterval: 25000,
     });
