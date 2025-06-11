@@ -47,7 +47,7 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-fallback-secret-key-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 
 export default async function handler(
   req: NextApiRequest,
