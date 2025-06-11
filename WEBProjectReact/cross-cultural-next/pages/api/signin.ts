@@ -1,4 +1,4 @@
-// pages/api/signin.ts - Enhanced version with better error handling
+// pages/api/signin.ts - Fixed version with explicit password selection
 import type { NextApiRequest, NextApiResponse } from "next";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -89,9 +89,14 @@ export default async function handler(
       });
     }
 
-    // Find the user in the database
+    // Find the user in the database - EXPLICITLY SELECT PASSWORD
     console.log("🔍 Searching for user with email:", email);
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+    
+    // Alternative approach - explicitly include all fields
+    // const user = await User.findOne({ email: email.toLowerCase().trim() }, 
+    //   '+password firstName lastName email role country educationalLevel preferences'
+    // );
     
     if (!user) {
       console.log("❌ User not found");
@@ -103,13 +108,15 @@ export default async function handler(
     }
 
     console.log("✅ User found:", user._id);
+    console.log("🔐 Password field exists:", !!user.password);
+    console.log("🔐 Password length:", user.password ? user.password.length : 0);
 
     // Verify password exists
     if (!user.password) {
       console.log("❌ User has no password set");
       return res.status(401).json({
-        message: "Invalid credentials",
-        code: "INVALID_CREDENTIALS", 
+        message: "Account setup incomplete. Please contact support.",
+        code: "NO_PASSWORD_SET", 
         success: false,
       });
     }
