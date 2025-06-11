@@ -189,8 +189,8 @@ export default async function handler(
     try {
       const jwt = require('jsonwebtoken');
       const testPayload = { userId: 'test123', email: 'test@example.com' };
-      const token = jwt.sign(testPayload, process.env.JWT_SECRET || 'fallback', { expiresIn: '1h' });
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback');
+      const token = jwt.sign(testPayload, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '1h' });
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
       
       testResults.tests.jwtOperations = {
         success: true,
