@@ -29,7 +29,7 @@ interface UserDetails {
   lastName: string;
   role: string;
   id: string;
-  email?: string; // Made email optional since it might not always be available
+  email?: string;
 }
 
 const firebaseConfig = {
@@ -62,6 +62,7 @@ const MentorComponent = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isInVideoCall, setIsInVideoCall] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
+  const [processedRequests, setProcessedRequests] = useState<Set<string>>(new Set());
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -212,31 +213,17 @@ const MentorComponent = () => {
           timestamp: serverTimestamp(),
         });
 
-        // Remove user when they disconnect
-        onValue(ref(firebaseDb, '.info/connected'), (snap) => {
-          if (!snap.val()) {
-            set(userStatusRef, {
-              status: 'offline',
-              role: myRole,
-              displayName: myUserDetails.displayName,
-              firstName: myUserDetails.firstName,
-              lastName: myUserDetails.lastName,
-              timestamp: serverTimestamp(),
-            });
-          }
-        });
-
         setIsOnline(true);
       } else {
         setIsOnline(false);
       }
     };
 
-    onValue(connectedRef, handleConnectedChange);
+    const unsubscribe = onValue(connectedRef, handleConnectedChange);
 
     // Cleanup function
     return () => {
-      off(connectedRef, 'value', handleConnectedChange);
+      unsubscribe();
       if (myUserId) {
         set(ref(firebaseDb, `user_statuses/${myUserId}`), {
           status: 'offline',
@@ -345,18 +332,22 @@ const MentorComponent = () => {
   const setupFirebaseSessionListeners = useCallback((path: string, sessionType: 'chat' | 'video') => {
     console.log(`Setting up Firebase listeners for session: ${path}, type: ${sessionType}`);
     
+    // Clear existing messages
+    setChatMessages([]);
+    
     // Listen for new messages
     const messagesRef = ref(firebaseDb, `${path}/messages`);
-    onChildAdded(messagesRef, (snapshot) => {
+    const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
       const message = snapshot.val();
       console.log('New message received:', message);
       setChatMessages((prev) => [...prev, message]);
     });
 
     // Listen for WebRTC signals if video call
+    let signalsUnsubscribe: (() => void) | null = null;
     if (sessionType === 'video') {
       const signalsRef = ref(firebaseDb, `${path}/signals`);
-      onChildAdded(signalsRef, (snapshot) => {
+      signalsUnsubscribe = onChildAdded(signalsRef, (snapshot) => {
         const signalData = snapshot.val();
         if (signalData.from !== myUserId && peerConnection) {
           try {
@@ -375,16 +366,23 @@ const MentorComponent = () => {
 
     // Listen for session status changes
     const sessionRef = ref(firebaseDb, path);
-    onValue(sessionRef, (snapshot) => {
+    const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
       const sessionData = snapshot.val();
       if (sessionData?.status === 'ended') {
         console.log('Session ended by peer');
         endCurrentSession();
       }
     });
+
+    // Return cleanup function
+    return () => {
+      messagesUnsubscribe();
+      if (signalsUnsubscribe) signalsUnsubscribe();
+      sessionUnsubscribe();
+    };
   }, [myUserId, myRole, peerConnection, startVideoCall, endCurrentSession]);
 
-  // Listen for user statuses and notifications
+  // Listen for user statuses and notifications with proper cleanup
   useEffect(() => {
     if (!myUserId) return;
 
@@ -394,7 +392,11 @@ const MentorComponent = () => {
     const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
     const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-    onValue(statusesRef, async (snapshot) => {
+    // Clear existing requests on mount
+    setIncomingRequests([]);
+    setProcessedRequests(new Set());
+
+    const statusesUnsubscribe = onValue(statusesRef, async (snapshot) => {
       const statuses = snapshot.val() || {};
       console.log('User statuses updated:', statuses);
       
@@ -410,19 +412,36 @@ const MentorComponent = () => {
       setOnlineUserStatuses(statuses);
     });
 
-    onChildAdded(requestsRef, async (snap) => {
-      const request = { id: snap.key, ...snap.val() };
-      console.log('New request received:', request);
+    // Use onValue instead of onChildAdded to get all existing requests first
+    const requestsUnsubscribe = onValue(requestsRef, async (snapshot) => {
+      const requests = snapshot.val() || {};
+      console.log('All requests:', requests);
       
-      // Fetch details for the mentor who sent the request
-      if (request.fromMentorId && !userDetailsCache[request.fromMentorId]) {
-        await fetchUserDetails([request.fromMentorId]);
+      const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({
+        id,
+        ...data
+      }));
+
+      // Filter out processed requests and only show pending ones
+      const pendingRequests = requestsArray.filter(req => 
+        req.status === 'pending' && !processedRequests.has(req.id)
+      );
+
+      if (pendingRequests.length > 0) {
+        // Fetch details for mentors who sent requests
+        const mentorIds = pendingRequests
+          .map(req => req.fromMentorId)
+          .filter(id => id && !userDetailsCache[id]);
+        
+        if (mentorIds.length > 0) {
+          await fetchUserDetails(mentorIds);
+        }
       }
-      
-      setIncomingRequests((prev) => [...prev, request]);
+
+      setIncomingRequests(pendingRequests);
     });
 
-    onChildAdded(responsesRef, (snap) => {
+    const responsesUnsubscribe = onChildAdded(responsesRef, (snap) => {
       const response = snap.val();
       console.log('New response received:', response);
       
@@ -435,11 +454,11 @@ const MentorComponent = () => {
     });
 
     return () => {
-      off(statusesRef);
-      off(requestsRef);
-      off(responsesRef);
+      statusesUnsubscribe();
+      requestsUnsubscribe();
+      responsesUnsubscribe();
     };
-  }, [myUserId, setupFirebaseSessionListeners, endCurrentSession, userDetailsCache, fetchUserDetails]);
+  }, [myUserId, setupFirebaseSessionListeners, endCurrentSession, userDetailsCache, fetchUserDetails, processedRequests]);
 
   const handleMentorRequestSession = async (targetUserId: string, sessionType: 'chat' | 'video') => {
     if (!myUserId || myRole !== 'mentor') {
@@ -449,15 +468,28 @@ const MentorComponent = () => {
     
     console.log(`Requesting ${sessionType} session with user: ${targetUserId}`);
     
-    // Send notification directly via Firebase
-    const notificationPath = `user_notifications/${targetUserId}/requests`;
-    await push(ref(firebaseDb, notificationPath), {
-      type: 'session_request',
-      fromMentorId: myUserId,
-      sessionType: sessionType,
-      timestamp: serverTimestamp(),
-      status: 'pending'
-    });
+    try {
+      // Send notification directly via Firebase
+      const notificationPath = `user_notifications/${targetUserId}/requests`;
+      await push(ref(firebaseDb, notificationPath), {
+        type: 'session_request',
+        fromMentorId: myUserId,
+        sessionType: sessionType,
+        timestamp: serverTimestamp(),
+        status: 'pending'
+      });
+      
+      alert(`${sessionType} request sent successfully!`);
+      
+      // Clear the input
+      const input = document.getElementById('targetUserId') as HTMLInputElement;
+      if (input) {
+        input.value = '';
+      }
+    } catch (error) {
+      console.error('Error sending request:', error);
+      alert('Failed to send request. Please try again.');
+    }
   };
 
   const handleUserAcceptSession = async (fromMentorId: string, sessionType: 'chat' | 'video', requestId: string) => {
@@ -468,39 +500,50 @@ const MentorComponent = () => {
     
     console.log(`Accepting ${sessionType} session from mentor: ${fromMentorId}`);
     
-    // Generate session details
-    const sessionId = `${myUserId}_${fromMentorId}_${Date.now()}`;
-    const firebaseSessionPath = `live_sessions/${sessionId}`;
+    try {
+      // Mark this request as processed to prevent duplicates
+      setProcessedRequests(prev => new Set([...prev, requestId]));
+      
+      // Generate session details
+      const sessionId = `${myUserId}_${fromMentorId}_${Date.now()}`;
+      const firebaseSessionPath = `live_sessions/${sessionId}`;
 
-    // Initialize session in Firebase RTDB
-    await set(ref(firebaseDb, firebaseSessionPath), {
-      mentorId: fromMentorId,
-      userId: myUserId,
-      sessionType: sessionType,
-      status: 'active',
-      createdAt: serverTimestamp(),
-    });
+      // Initialize session in Firebase RTDB
+      await set(ref(firebaseDb, firebaseSessionPath), {
+        mentorId: fromMentorId,
+        userId: myUserId,
+        sessionType: sessionType,
+        status: 'active',
+        createdAt: serverTimestamp(),
+      });
 
-    // Notify both parties via Firebase
-    await push(ref(firebaseDb, `user_notifications/${myUserId}/responses`), {
-      type: 'session_accepted',
-      peerUserId: fromMentorId,
-      sessionType: sessionType,
-      firebaseSessionPath: firebaseSessionPath,
-      timestamp: serverTimestamp(),
-    });
+      // Notify both parties via Firebase
+      await push(ref(firebaseDb, `user_notifications/${myUserId}/responses`), {
+        type: 'session_accepted',
+        peerUserId: fromMentorId,
+        sessionType: sessionType,
+        firebaseSessionPath: firebaseSessionPath,
+        timestamp: serverTimestamp(),
+      });
 
-    await push(ref(firebaseDb, `user_notifications/${fromMentorId}/responses`), {
-      type: 'session_accepted',
-      peerUserId: myUserId,
-      sessionType: sessionType,
-      firebaseSessionPath: firebaseSessionPath,
-      timestamp: serverTimestamp(),
-    });
+      await push(ref(firebaseDb, `user_notifications/${fromMentorId}/responses`), {
+        type: 'session_accepted',
+        peerUserId: myUserId,
+        sessionType: sessionType,
+        firebaseSessionPath: firebaseSessionPath,
+        timestamp: serverTimestamp(),
+      });
 
-    // Remove the request
-    await remove(ref(firebaseDb, `user_notifications/${myUserId}/requests/${requestId}`));
-    setIncomingRequests((prev) => prev.filter((r) => r.id !== requestId));
+      // Remove the request and update status
+      await set(ref(firebaseDb, `user_notifications/${myUserId}/requests/${requestId}/status`), 'accepted');
+      
+      // Remove from local state
+      setIncomingRequests((prev) => prev.filter((r) => r.id !== requestId));
+      
+    } catch (error) {
+      console.error('Error accepting session:', error);
+      alert('Failed to accept session. Please try again.');
+    }
   };
 
   const handleSendChatMessage = (msg: string) => {
@@ -770,6 +813,12 @@ const MentorComponent = () => {
                 {myRole === 'mentor' && data.status === 'online' && uid !== myUserId && data.role === 'user' && (
                   <div>
                     <button 
+                      onClick={() => handleMentorRequestSession(uid, 'chat')}
+                      style={{ padding: '5px 10px', marginRight: '5px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
+                    >
+                      Chat
+                    </button>
+                    <button 
                       onClick={() => handleMentorRequestSession(uid, 'video')}
                       style={{ padding: '5px 10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
                     >
@@ -817,9 +866,28 @@ const MentorComponent = () => {
         >
           Load as John Smith (User)
         </button>
+        
+        {/* Debug Section */}
+        <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '3px' }}>
+          <h4>Debug Info:</h4>
+          <p><strong>Processed Requests:</strong> {processedRequests.size}</p>
+          <p><strong>Incoming Requests Count:</strong> {incomingRequests.length}</p>
+          <button 
+            onClick={() => {
+              setIncomingRequests([]);
+              setProcessedRequests(new Set());
+              console.log('Cleared all requests');
+            }}
+            style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
+          >
+            Clear All Requests
+          </button>
+        </div>
+        
         <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
           <p><strong>For real MongoDB users:</strong> Enter the ObjectId in the User ID field above.</p>
           <p>The system will automatically fetch and display the user's first name and role.</p>
+          <p><strong>Note:</strong> If you see duplicate requests, click "Clear All Requests" above.</p>
         </div>
       </div>
     </div>
