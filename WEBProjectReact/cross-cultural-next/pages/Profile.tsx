@@ -1,4 +1,4 @@
-// pages/Profile.tsx
+// pages/Profile.tsx - Enhanced with debugging and better error handling
 "use client";
 
 import { useEffect, useState } from "react";
@@ -54,56 +54,178 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [fieldOptions, setFieldOptions] = useState<string[]>([]);
   const [levelOptions, setLevelOptions] = useState<string[]>([]);
+  const [debugInfo, setDebugInfo] = useState<any>({});
 
+  // Enhanced token validation
+  const validateToken = (token: string | null): boolean => {
+    if (!token) {
+      console.log("❌ No token found");
+      return false;
+    }
 
-  // Fetch user data on mount
- useEffect(() => {
-  const token = localStorage.getItem("token");
-
-  // Redirect if no token
-  if (!token) {
-    toast({ title: "Please sign in", description: "Redirecting..." });
-    router.push("/SignIn");
-    return;
-  }
-
-  const fetchData = async () => {
     try {
-      // Fetch profile
-      const profileRes = await fetch("/api/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Basic JWT format check
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.log("❌ Invalid JWT format");
+        return false;
+      }
 
-      if (profileRes.status === 401) throw new Error("Unauthorized");
+      // Decode payload to check expiration
+      const payload = JSON.parse(atob(parts[1]));
+      const currentTime = Date.now() / 1000;
+      
+      if (payload.exp && payload.exp < currentTime) {
+        console.log("❌ Token expired");
+        return false;
+      }
 
-      const profileData = await profileRes.json();
-      setProfile(profileData.user);
-
-      // Fetch dropdown options
-      // In Profile.tsx useEffect
-      const [fieldsRes, levelsRes] = await Promise.all([
-        fetch(`/api/fields/fieldOfStudy?nocache=${Date.now()}`), // Cache busting
-        fetch(`/api/fields/educationalLevels?nocache=${Date.now()}`),
-      ]);
-
-      const fieldsData = await fieldsRes.json();
-      const levelsData = await levelsRes.json();
-
-      // ✅ Check array format to avoid silent failure
-      setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map(f => f.name) : []);
-      setLevelOptions(Array.isArray(levelsData) ? levelsData.map(l => l.level) : []);
-    } catch (err: any) {
-      console.error("Profile fetch error:", err);
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-      router.push("/SignIn");
-    } finally {
-      setLoading(false);
+      console.log("✅ Token is valid");
+      setDebugInfo((prev: any) => ({ ...prev, tokenValid: true, tokenPayload: payload }));
+      return true;
+    } catch (error) {
+      console.log("❌ Token validation error:", error);
+      return false;
     }
   };
 
-  fetchData();
-}, [router, toast]);
+  // Enhanced fetch with better error handling
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem("token");
+    
+    if (!validateToken(token)) {
+      throw new Error("INVALID_TOKEN");
+    }
 
+    console.log(`🌐 Fetching: ${url}`);
+    console.log(`🎫 Using token: ${token?.substring(0, 20)}...`);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+
+    console.log(`📊 Response status: ${response.status}`);
+    
+    if (response.status === 401) {
+      console.log("❌ 401 Unauthorized - clearing auth data");
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      sessionStorage.removeItem("isLoggedIn");
+      throw new Error("UNAUTHORIZED");
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`❌ HTTP Error ${response.status}:`, errorText);
+      throw new Error(`HTTP_${response.status}: ${errorText}`);
+    }
+
+    return response;
+  };
+
+  // Fetch user data on mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
+    
+    console.log("🔄 Profile component mounted");
+    console.log("🎫 Token exists:", !!token);
+    console.log("👤 User data exists:", !!user);
+
+    // Set initial debug info
+    setDebugInfo({
+      tokenExists: !!token,
+      userExists: !!user,
+      timestamp: new Date().toISOString()
+    });
+
+    // Redirect if no token
+    if (!token) {
+      console.log("❌ No token found - redirecting to signin");
+      toast({ title: "Please sign in", description: "Redirecting..." });
+      router.push("/SignIn");
+      return;
+    }
+
+    // Validate token before proceeding
+    if (!validateToken(token)) {
+      console.log("❌ Invalid token - redirecting to signin");
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      toast({ title: "Session expired", description: "Please sign in again" });
+      router.push("/SignIn");
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        console.log("📥 Starting profile fetch...");
+        
+        // Fetch profile with enhanced error handling
+        const profileRes = await fetchWithAuth("/api/profile");
+        const profileData = await profileRes.json();
+        
+        console.log("✅ Profile data received:", profileData);
+        setProfile(profileData.user);
+
+        // Update debug info
+        setDebugInfo((prev: any) => ({ 
+          ...prev, 
+          profileLoaded: true,
+          userId: profileData.user?._id 
+        }));
+
+        // Fetch dropdown options
+        try {
+          console.log("📥 Fetching dropdown options...");
+          const [fieldsRes, levelsRes] = await Promise.all([
+            fetch(`/api/fields/fieldOfStudy?nocache=${Date.now()}`),
+            fetch(`/api/fields/educationalLevels?nocache=${Date.now()}`),
+          ]);
+
+          const fieldsData = await fieldsRes.json();
+          const levelsData = await levelsRes.json();
+
+          console.log("📋 Fields data:", fieldsData);
+          console.log("📋 Levels data:", levelsData);
+
+          // Check array format to avoid silent failure
+          setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map(f => f.name) : []);
+          setLevelOptions(Array.isArray(levelsData) ? levelsData.map(l => l.level) : []);
+          
+          setDebugInfo((prev: any) => ({ 
+            ...prev, 
+            dropdownsLoaded: true,
+            fieldCount: fieldsData?.length || 0,
+            levelCount: levelsData?.length || 0
+          }));
+        } catch (dropdownError) {
+          console.warn("⚠️ Failed to load dropdown options:", dropdownError);
+          // Continue without dropdowns - not critical
+        }
+
+      } catch (err: any) {
+        console.error("❌ Profile fetch error:", err);
+        
+        if (err.message === "INVALID_TOKEN" || err.message === "UNAUTHORIZED") {
+          toast({ title: "Session expired", description: "Please sign in again", variant: "destructive" });
+          router.push("/SignIn");
+        } else {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+          setDebugInfo((prev: any) => ({ ...prev, error: err.message }));
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [router, toast]);
 
   // Handlers
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -129,61 +251,76 @@ export default function Profile() {
     );
   };
 
-const saveProfile = async () => {
-  if (!profile) return;
-  setSaving(true);
-  try {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast({ title: "Error", description: "Session expired. Please sign in again.", variant: "destructive" });
-      router.push("/SignIn");
-      return;
-    }
-
-    // 1. Initial save request
-    const saveRes = await fetch("/api/profile", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(profile),
-    });
+  const saveProfile = async () => {
+    if (!profile) return;
+    setSaving(true);
     
-    if (!saveRes.ok) {
-      const errorData = await saveRes.json();
-      throw new Error(errorData.message || "Failed to update profile");
-    }
+    try {
+      console.log("💾 Saving profile:", profile);
+      
+      const response = await fetchWithAuth("/api/profile", {
+        method: "PUT",
+        body: JSON.stringify(profile),
+      });
+      
+      const data = await response.json();
+      console.log("✅ Profile saved:", data);
 
-    // 2. Force refresh with cache-busting
-    const refreshRes = await fetch(`/api/profile?ts=${Date.now()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    
-    if (!refreshRes.ok) {
-      console.warn("Refresh failed, using original response data");
-      const saveData = await saveRes.json();
-      setProfile(saveData.user);
-    } else {
+      // Force refresh with cache-busting
+      const refreshRes = await fetchWithAuth(`/api/profile?ts=${Date.now()}`);
       const refreshData = await refreshRes.json();
+      
       setProfile(refreshData.user);
+      setIsEditing(false);
+      toast({ title: "Saved", description: "Profile updated successfully" });
+      
+    } catch (err: any) {
+      console.error("❌ Save error:", err);
+      
+      if (err.message === "INVALID_TOKEN" || err.message === "UNAUTHORIZED") {
+        toast({ title: "Session expired", description: "Please sign in again", variant: "destructive" });
+        router.push("/SignIn");
+      } else {
+        toast({
+          title: "Error",
+          description: err.message || "Failed to save changes",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setSaving(false);
     }
+  };
 
-    setIsEditing(false);
-    toast({ title: "Saved", description: "Profile updated successfully" });
-  } catch (err: any) {
-    console.error("Save error:", err);
-    toast({
-      title: "Error",
-      description: err.message || "Failed to save changes",
-      variant: "destructive",
-    });
-  } finally {
-    setSaving(false);
+  // Show loading with debug info
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-origin-padding bg-background">
+        <Navbar />
+        <main className="container py-6 px-6">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Loading Profile...</h1>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            
+            {/* Debug Info Card */}
+            <Card className="max-w-md mx-auto">
+              <CardHeader>
+                <CardTitle className="text-sm">Debug Information</CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-left space-y-1">
+                <p>Token exists: {debugInfo.tokenExists ? '✅' : '❌'}</p>
+                <p>Token valid: {debugInfo.tokenValid ? '✅' : '❌'}</p>
+                <p>User data exists: {debugInfo.userExists ? '✅' : '❌'}</p>
+                <p>Profile loaded: {debugInfo.profileLoaded ? '✅' : '⏳'}</p>
+                <p>Dropdowns loaded: {debugInfo.dropdownsLoaded ? '✅' : '⏳'}</p>
+                {debugInfo.error && <p className="text-red-500">Error: {debugInfo.error}</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
   }
-};
-
-  if (loading) return <div>Loading...</div>;
 
   return (
     <div className="min-h-screen bg-origin-padding bg-background">
@@ -193,6 +330,24 @@ const saveProfile = async () => {
           <h1 className="font-bold text-3xl mb-2">User Profile</h1>
           <p className="text-muted-foreground">Manage your personal information and preferences</p>
         </div>
+        
+        {/* Debug Info Toggle (only in development) */}
+        {process.env.NODE_ENV === 'development' && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-sm">Debug Information</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs space-y-1">
+              <p>User ID: {profile?._id || 'Not loaded'}</p>
+              <p>Token valid: {debugInfo.tokenValid ? '✅' : '❌'}</p>
+              <p>Profile loaded: {debugInfo.profileLoaded ? '✅' : '❌'}</p>
+              <p>Field options: {fieldOptions.length}</p>
+              <p>Level options: {levelOptions.length}</p>
+              {debugInfo.error && <p className="text-red-500">Last error: {debugInfo.error}</p>}
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid gap-6 md:grid-cols-3">
           {/* Profile Card */}
           <div className="md:col-span-1">
@@ -201,7 +356,7 @@ const saveProfile = async () => {
                 <Avatar className="w-24 h-24 mx-auto">
                   <AvatarImage src="" />
                   <AvatarFallback className="text-3xl bg-purple-500 text-white">
-                    {profile?.firstName.charAt(0)}{profile?.lastName.charAt(0)}
+                    {profile?.firstName?.charAt(0)}{profile?.lastName?.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
                 <CardTitle className="mt-4">{profile?.firstName} {profile?.lastName}</CardTitle>
@@ -211,19 +366,19 @@ const saveProfile = async () => {
                 <div className="space-y-4 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">From:</span>
-                    <span className="font-medium">{profile?.country}</span>
+                    <span className="font-medium">{profile?.country || 'Not set'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Destination:</span>
-                    <span className="font-medium">{profile?.destination}</span>
+                    <span className="font-medium">{profile?.destination || 'Not set'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Education Level:</span>
-                    <span className="font-medium">{profile?.educationalLevel}</span>
+                    <span className="font-medium">{profile?.educationalLevel || 'Not set'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Field:</span>
-                    <span className="font-medium">{profile?.fieldOfStudy}</span>
+                    <span className="font-medium">{profile?.fieldOfStudy || 'Not set'}</span>
                   </div>
                 </div>
               </CardContent>
@@ -239,6 +394,7 @@ const saveProfile = async () => {
               </CardFooter>
             </Card>
           </div>
+          
           {/* Edit Form */}
           <div className="md:col-span-2">
             <Tabs defaultValue="personal">
@@ -327,7 +483,7 @@ const saveProfile = async () => {
                         rows={4}
                       />
                     </div>
-                      <div className="mt-6">
+                    <div className="mt-6">
                       <h3 className="font-medium mb-2">Education System Comparison</h3>
                       <Button
                         className="w-full"
@@ -343,6 +499,7 @@ const saveProfile = async () => {
                     </div>
                   </CardContent>
                 </TabsContent>
+                
                 {/* Academic Tab */}
                 <TabsContent value="academic" className="m-0">
                   <CardHeader>
@@ -380,7 +537,7 @@ const saveProfile = async () => {
                           <SelectValue placeholder="Select field" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60 overflow-auto bg-gray-50">
-                            {fieldOptions.map((field) => (
+                          {fieldOptions.map((field) => (
                             <SelectItem key={field} value={field}>
                               {field}
                             </SelectItem>
@@ -389,9 +546,9 @@ const saveProfile = async () => {
                       </Select>
                     </div>
                     <Separator />
-                    {/* Documents Section (if needed) */}
                   </CardContent>
                 </TabsContent>
+                
                 {/* Preferences Tab */}
                 <TabsContent value="preferences" className="m-0">
                   <CardHeader>
@@ -399,7 +556,6 @@ const saveProfile = async () => {
                     <CardDescription>Manage your notification and content preferences</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/** Preference toggles **/}
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <h4 className="font-medium">Email Notifications</h4>
@@ -407,7 +563,7 @@ const saveProfile = async () => {
                       </div>
                       <Switch
                         disabled={!isEditing}
-                        checked={profile?.preferences.emailNotifications}
+                        checked={profile?.preferences?.emailNotifications}
                         onCheckedChange={() => handlePrefChange("emailNotifications")}
                       />
                     </div>
@@ -419,7 +575,7 @@ const saveProfile = async () => {
                       </div>
                       <Switch
                         disabled={!isEditing}
-                        checked={profile?.preferences.appNotifications}
+                        checked={profile?.preferences?.appNotifications}
                         onCheckedChange={() => handlePrefChange("appNotifications")}
                       />
                     </div>
@@ -431,7 +587,7 @@ const saveProfile = async () => {
                       </div>
                       <Switch
                         disabled={!isEditing}
-                        checked={profile?.preferences.resourceRecommendations}
+                        checked={profile?.preferences?.resourceRecommendations}
                         onCheckedChange={() => handlePrefChange("resourceRecommendations")}
                       />
                     </div>
@@ -443,12 +599,13 @@ const saveProfile = async () => {
                       </div>
                       <Switch
                         disabled={!isEditing}
-                        checked={profile?.preferences.peerConnections}
+                        checked={profile?.preferences?.peerConnections}
                         onCheckedChange={() => handlePrefChange("peerConnections")}
                       />
                     </div>
                   </CardContent>
                 </TabsContent>
+                
                 {/* Save/Cancel Footer */}
                 {isEditing && (
                   <CardFooter className="flex justify-end gap-2 border-t pt-6">
