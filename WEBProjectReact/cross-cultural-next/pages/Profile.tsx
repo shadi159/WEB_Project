@@ -252,45 +252,62 @@ export default function Profile() {
   };
 
   const saveProfile = async () => {
-    if (!profile) return;
-    setSaving(true);
+  if (!profile) return;
+  setSaving(true);
+  
+  try {
+    console.log("💾 Saving profile:", profile);
     
-    try {
-      console.log("💾 Saving profile:", profile);
-      
-      const response = await fetchWithAuth("/api/profile", {
-        method: "PUT",
-        body: JSON.stringify(profile),
-      });
-      
-      const data = await response.json();
-      console.log("✅ Profile saved:", data);
+    // 🔧 FIX: Only send specific profile fields (password not included in UserProfile interface)
+    const profilePayload = {
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      email: profile.email,
+      phone: profile.phone,
+      country: profile.country,
+      destination: profile.destination,
+      educationalLevel: profile.educationalLevel,
+      fieldOfStudy: profile.fieldOfStudy,
+      bio: profile.bio,
+      preferences: profile.preferences
+      // ✅ Password is not included in UserProfile interface, so it won't be sent
+    };
+    
+    console.log("📤 Sending payload (without password):", profilePayload);
+    
+    const response = await fetchWithAuth("/api/profile", {
+      method: "PUT",
+      body: JSON.stringify(profilePayload), // Use profilePayload instead of profile
+    });
+    
+    const data = await response.json();
+    console.log("✅ Profile saved:", data);
 
-      // Force refresh with cache-busting
-      const refreshRes = await fetchWithAuth(`/api/profile?ts=${Date.now()}`);
-      const refreshData = await refreshRes.json();
-      
-      setProfile(refreshData.user);
-      setIsEditing(false);
-      toast({ title: "Saved", description: "Profile updated successfully" });
-      
-    } catch (err: any) {
-      console.error("❌ Save error:", err);
-      
-      if (err.message === "INVALID_TOKEN" || err.message === "UNAUTHORIZED") {
-        toast({ title: "Session expired", description: "Please sign in again", variant: "destructive" });
-        router.push("/SignIn");
-      } else {
-        toast({
-          title: "Error",
-          description: err.message || "Failed to save changes",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setSaving(false);
+    // Force refresh with cache-busting
+    const refreshRes = await fetchWithAuth(`/api/profile?ts=${Date.now()}`);
+    const refreshData = await refreshRes.json();
+    
+    setProfile(refreshData.user);
+    setIsEditing(false);
+    toast({ title: "Saved", description: "Profile updated successfully" });
+    
+  } catch (err: any) {
+    console.error("❌ Save error:", err);
+    
+    if (err.message === "INVALID_TOKEN" || err.message === "UNAUTHORIZED") {
+      toast({ title: "Session expired", description: "Please sign in again", variant: "destructive" });
+      router.push("/SignIn");
+    } else {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to save changes",
+        variant: "destructive",
+      });
     }
-  };
+  } finally {
+    setSaving(false);
+  }
+};
 
   // Show loading with debug info
   if (loading) {
