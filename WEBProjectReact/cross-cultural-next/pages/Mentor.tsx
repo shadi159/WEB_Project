@@ -1,10 +1,8 @@
+// pages/Mentor.tsx - Vercel-compatible version using Firebase only
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import io from 'socket.io-client';
-import type { Socket } from 'socket.io-client';
 import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase, ref, push, onValue, onChildAdded, off, serverTimestamp } from 'firebase/database';
+import { getDatabase, ref, push, onValue, onChildAdded, off, serverTimestamp, set, remove } from 'firebase/database';
 import SimplePeer from 'simple-peer';
-// import DebugPanel from '../components/DebugPanel'; // Uncomment when you create the component
 
 interface SessionAcceptedPayload {
   firebaseSessionPath: string;
@@ -21,7 +19,6 @@ interface IncomingRequest {
   id: string;
   type: string;
   fromMentorId: string;
-  mentorSocketIoId: string;
   sessionType: 'chat' | 'video';
   timestamp: any;
   status: string;
@@ -44,15 +41,14 @@ const firebaseDb = getDatabase(app);
 const MentorComponent = () => {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<'user' | 'mentor' | null>(null);
-  const [socket, setSocket] = useState<ReturnType<typeof io> | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [onlineUserStatuses, setOnlineUserStatuses] = useState<any>({});
   const [activeFirebaseSessionPath, setActiveFirebaseSessionPath] = useState<string | null>(null);
   const [peerConnection, setPeerConnection] = useState<SimplePeer.Instance | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isInVideoCall, setIsInVideoCall] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -70,7 +66,7 @@ const MentorComponent = () => {
         // For testing purposes, create a mock user
         const mockUser = {
           _id: `user_${Math.random().toString(36).substr(2, 9)}`,
-          role: 'user' as const // Change to 'mentor' for testing mentor functionality
+          role: 'user' as const
         };
         localStorage.setItem("user", JSON.stringify(mockUser));
         setMyUserId(mockUser._id);
@@ -82,16 +78,53 @@ const MentorComponent = () => {
     }
   }, []);
 
-  const isProd = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+  // Set user online status in Firebase
+  useEffect(() => {
+    if (!myUserId) return;
 
-  const SOCKET_OPTIONS = {
-    path: '/api/socket',
-    transports: isProd ? ['polling'] : ['websocket', 'polling'] as any,
-    timeout: 60000,
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-  };
+    const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
+    const connectedRef = ref(firebaseDb, '.info/connected');
+
+    const handleConnectedChange = (snapshot: any) => {
+      if (snapshot.val() === true) {
+        // User is online
+        set(userStatusRef, {
+          status: 'online',
+          role: myRole,
+          timestamp: serverTimestamp(),
+        });
+
+        // Remove user when they disconnect
+        onValue(ref(firebaseDb, '.info/connected'), (snap) => {
+          if (!snap.val()) {
+            set(userStatusRef, {
+              status: 'offline',
+              role: myRole,
+              timestamp: serverTimestamp(),
+            });
+          }
+        });
+
+        setIsOnline(true);
+      } else {
+        setIsOnline(false);
+      }
+    };
+
+    onValue(connectedRef, handleConnectedChange);
+
+    // Cleanup function
+    return () => {
+      off(connectedRef, 'value', handleConnectedChange);
+      if (myUserId) {
+        set(ref(firebaseDb, `user_statuses/${myUserId}`), {
+          status: 'offline',
+          role: myRole,
+          timestamp: serverTimestamp(),
+        });
+      }
+    };
+  }, [myUserId, myRole]);
 
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
@@ -154,6 +187,9 @@ const MentorComponent = () => {
   const endCurrentSession = useCallback(() => {
     console.log('Ending current session');
     if (activeFirebaseSessionPath) {
+      // Update session status to ended
+      set(ref(firebaseDb, `${activeFirebaseSessionPath}/status`), 'ended');
+      
       // Clean up Firebase listeners
       off(ref(firebaseDb, `${activeFirebaseSessionPath}/messages`));
       off(ref(firebaseDb, `${activeFirebaseSessionPath}/signals`));
@@ -179,13 +215,8 @@ const MentorComponent = () => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
       }
-
-      // Notify server to end session
-      if (socket) {
-        socket.emit('end-session');
-      }
     }
-  }, [activeFirebaseSessionPath, peerConnection, socket]);
+  }, [activeFirebaseSessionPath, peerConnection]);
 
   const setupFirebaseSessionListeners = useCallback((path: string, sessionType: 'chat' | 'video') => {
     console.log(`Setting up Firebase listeners for session: ${path}, type: ${sessionType}`);
@@ -229,62 +260,7 @@ const MentorComponent = () => {
     });
   }, [myUserId, myRole, peerConnection, startVideoCall, endCurrentSession]);
 
-  // Socket.IO connection setup
-  useEffect(() => {
-    if (!myUserId || !myRole) return;
-
-    console.log(`Connecting socket for user: ${myUserId}, role: ${myRole}`);
-    const newSocket = io(SOCKET_OPTIONS);
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('Socket connected:', newSocket.id);
-      setIsConnected(true);
-      newSocket.emit('register', { userId: myUserId, role: myRole });
-    });
-
-    newSocket.on('disconnect', (reason: string) => {
-      console.log('Socket disconnected:', reason);
-      setIsConnected(false);
-    });
-
-    newSocket.on('connected', (data: any) => {
-      console.log('Socket.IO connected:', data);
-    });
-
-    newSocket.on('server-error', (data: any) => {
-      console.error('Server error:', data);
-      alert(`Server Error: ${data.message}`);
-    });
-
-    newSocket.on('incoming-session-request', (data: any) => {
-      console.log('Incoming session request:', data);
-      setIncomingRequests((prev) => [...prev, data]);
-    });
-
-    newSocket.on('session-accepted', ({ firebaseSessionPath, sessionType }: SessionAcceptedPayload) => {
-      console.log('Session accepted:', { firebaseSessionPath, sessionType });
-      setActiveFirebaseSessionPath(firebaseSessionPath);
-      setupFirebaseSessionListeners(firebaseSessionPath, sessionType);
-    });
-
-    newSocket.on('session-ended-by-peer', () => {
-      console.log('Session ended by peer');
-      endCurrentSession();
-    });
-
-    newSocket.on('peer-disconnected', () => {
-      console.log('Peer disconnected');
-      endCurrentSession();
-    });
-
-    return () => {
-      console.log('Cleaning up socket connection');
-      newSocket.disconnect();
-    };
-  }, [myUserId, myRole, setupFirebaseSessionListeners, endCurrentSession]);
-
-  // Firebase listeners for user statuses and notifications
+  // Listen for user statuses and notifications
   useEffect(() => {
     if (!myUserId) return;
 
@@ -325,24 +301,65 @@ const MentorComponent = () => {
     };
   }, [myUserId, setupFirebaseSessionListeners, endCurrentSession]);
 
-  const handleMentorRequestSession = (targetUserId: string, type: 'chat' | 'video') => {
-    if (!socket || !isConnected) {
-      alert('Not connected to server');
+  const handleMentorRequestSession = async (targetUserId: string, sessionType: 'chat' | 'video') => {
+    if (!myUserId || myRole !== 'mentor') {
+      alert('Only mentors can request sessions');
       return;
     }
     
-    console.log(`Requesting ${type} session with user: ${targetUserId}`);
-    socket.emit('mentor-request-session', { targetUserId, sessionType: type });
+    console.log(`Requesting ${sessionType} session with user: ${targetUserId}`);
+    
+    // Send notification directly via Firebase
+    const notificationPath = `user_notifications/${targetUserId}/requests`;
+    await push(ref(firebaseDb, notificationPath), {
+      type: 'session_request',
+      fromMentorId: myUserId,
+      sessionType: sessionType,
+      timestamp: serverTimestamp(),
+      status: 'pending'
+    });
   };
 
-  const handleUserAcceptSession = (mentorSocketIoId: string, sessionType: 'chat' | 'video', requestId: string) => {
-    if (!socket || !isConnected) {
-      alert('Not connected to server');
+  const handleUserAcceptSession = async (fromMentorId: string, sessionType: 'chat' | 'video', requestId: string) => {
+    if (!myUserId || myRole !== 'user') {
+      alert('Only users can accept sessions');
       return;
     }
     
-    console.log(`Accepting ${sessionType} session from mentor: ${mentorSocketIoId}`);
-    socket.emit('user-accept-session', { mentorSocketIoId, sessionType, requestId });
+    console.log(`Accepting ${sessionType} session from mentor: ${fromMentorId}`);
+    
+    // Generate session details
+    const sessionId = `${myUserId}_${fromMentorId}_${Date.now()}`;
+    const firebaseSessionPath = `live_sessions/${sessionId}`;
+
+    // Initialize session in Firebase RTDB
+    await set(ref(firebaseDb, firebaseSessionPath), {
+      mentorId: fromMentorId,
+      userId: myUserId,
+      sessionType: sessionType,
+      status: 'active',
+      createdAt: serverTimestamp(),
+    });
+
+    // Notify both parties via Firebase
+    await push(ref(firebaseDb, `user_notifications/${myUserId}/responses`), {
+      type: 'session_accepted',
+      peerUserId: fromMentorId,
+      sessionType: sessionType,
+      firebaseSessionPath: firebaseSessionPath,
+      timestamp: serverTimestamp(),
+    });
+
+    await push(ref(firebaseDb, `user_notifications/${fromMentorId}/responses`), {
+      type: 'session_accepted',
+      peerUserId: myUserId,
+      sessionType: sessionType,
+      firebaseSessionPath: firebaseSessionPath,
+      timestamp: serverTimestamp(),
+    });
+
+    // Remove the request
+    await remove(ref(firebaseDb, `user_notifications/${myUserId}/requests/${requestId}`));
     setIncomingRequests((prev) => prev.filter((r) => r.id !== requestId));
   };
 
@@ -375,12 +392,13 @@ const MentorComponent = () => {
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>Mentor/User Dashboard</h1>
+      <h1>Mentor/User Dashboard (Firebase Only)</h1>
       
       <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
         <p><strong>User ID:</strong> {myUserId}</p>
         <p><strong>Role:</strong> {myRole}</p>
-        <p><strong>Connection Status:</strong> {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
+        <p><strong>Firebase Status:</strong> {isOnline ? '🟢 Connected' : '🔴 Disconnected'}</p>
+        <p><em>This version works on Vercel using Firebase only (no Socket.IO)</em></p>
       </div>
 
       {/* Mentor Controls */}
@@ -429,7 +447,7 @@ const MentorComponent = () => {
               <p><strong>From Mentor:</strong> {req.fromMentorId}</p>
               <p><strong>Session Type:</strong> {req.sessionType}</p>
               <button 
-                onClick={() => handleUserAcceptSession(req.mentorSocketIoId, req.sessionType, req.id)}
+                onClick={() => handleUserAcceptSession(req.fromMentorId, req.sessionType, req.id)}
                 style={{ padding: '8px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}
               >
                 Accept {req.sessionType}
@@ -569,6 +587,32 @@ const MentorComponent = () => {
             ))}
           </ul>
         )}
+      </div>
+
+      {/* Test Users Helper */}
+      <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ffc107', borderRadius: '5px', backgroundColor: '#fff3cd' }}>
+        <h3>Testing Helper:</h3>
+        <p>To test the system:</p>
+        <button 
+          onClick={() => {
+            const mentor = { _id: 'mentor_123', role: 'mentor' };
+            localStorage.setItem('user', JSON.stringify(mentor));
+            window.location.reload();
+          }}
+          style={{ padding: '5px 10px', marginRight: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px' }}
+        >
+          Load as Mentor (mentor_123)
+        </button>
+        <button 
+          onClick={() => {
+            const user = { _id: 'user_456', role: 'user' };
+            localStorage.setItem('user', JSON.stringify(user));
+            window.location.reload();
+          }}
+          style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}
+        >
+          Load as User (user_456)
+        </button>
       </div>
     </div>
   );
