@@ -1,4 +1,3 @@
-// pages/Mentor.tsx - Vercel-compatible version using Firebase only
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, onValue, onChildAdded, off, serverTimestamp, set, remove } from 'firebase/database';
@@ -24,6 +23,15 @@ interface IncomingRequest {
   status: string;
 }
 
+interface UserDetails {
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  id: string;
+  email?: string; // Made email optional since it might not always be available
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -41,9 +49,14 @@ const firebaseDb = getDatabase(app);
 const MentorComponent = () => {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<'user' | 'mentor' | null>(null);
+  const [myUserDetails, setMyUserDetails] = useState<UserDetails | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [onlineUserStatuses, setOnlineUserStatuses] = useState<any>({});
+  const [userDetailsCache, setUserDetailsCache] = useState<{[key: string]: UserDetails}>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserDetails[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [activeFirebaseSessionPath, setActiveFirebaseSessionPath] = useState<string | null>(null);
   const [peerConnection, setPeerConnection] = useState<SimplePeer.Instance | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -53,44 +66,149 @@ const MentorComponent = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Initialize user data from localStorage
-  useEffect(() => {
+  // Fetch user details from your MongoDB
+  const fetchUserDetails = useCallback(async (userIds: string[]) => {
     try {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        console.log('Loaded user from localStorage:', parsedUser);
-        setMyUserId(parsedUser._id || parsedUser.id);
-        setMyRole(parsedUser.role as 'user' | 'mentor');
-      } else {
-        // For testing purposes, create a mock user
-        const mockUser = {
-          _id: `user_${Math.random().toString(36).substr(2, 9)}`,
-          role: 'user' as const
-        };
-        localStorage.setItem("user", JSON.stringify(mockUser));
-        setMyUserId(mockUser._id);
-        setMyRole(mockUser.role);
-        console.log('Created mock user:', mockUser);
+      const response = await fetch(`/api/get-user-details?userIds=${userIds.join(',')}`);
+      const data = await response.json();
+      
+      if (data.users) {
+        setUserDetailsCache(prev => ({ ...prev, ...data.users }));
+        return data.users;
       }
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('Error fetching user details:', error);
+    }
+    return {};
+  }, []);
+
+  // Search for users by name
+  const searchUsers = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/search-users?query=${encodeURIComponent(query)}&role=user`);
+      const data = await response.json();
+      
+      if (data.users) {
+        setSearchResults(data.users);
+        setShowSearchResults(true);
+        
+        // Update cache with search results
+        const newCache = data.users.reduce((acc: any, user: UserDetails) => {
+          acc[user.id] = user;
+          return acc;
+        }, {});
+        setUserDetailsCache(prev => ({ ...prev, ...newCache }));
+      }
+    } catch (error) {
+      console.error('Error searching users:', error);
     }
   }, []);
 
-  // Set user online status in Firebase
+  // Debounced search
   useEffect(() => {
-    if (!myUserId) return;
+    const timeoutId = setTimeout(() => {
+      if (searchQuery) {
+        searchUsers(searchQuery);
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchUsers]);
+
+  // Get display name for a user ID
+  const getUserDisplayName = useCallback((userId: string): string => {
+    const userDetails = userDetailsCache[userId];
+    if (userDetails) {
+      return `${userDetails.displayName} (${userDetails.role})`;
+    }
+    return userId; // Fallback to ID if name not found
+  }, [userDetailsCache]);
+
+  const handleSelectUser = (user: UserDetails) => {
+    const input = document.getElementById('targetUserId') as HTMLInputElement;
+    if (input) {
+      input.value = user.id;
+      input.setAttribute('data-display-name', user.displayName);
+    }
+    setShowSearchResults(false);
+    setSearchQuery('');
+  };
+
+  // Initialize user data from localStorage and fetch details
+  useEffect(() => {
+    const initializeUser = async () => {
+      try {
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          console.log('Loaded user from localStorage:', parsedUser);
+          const userId = parsedUser._id || parsedUser.id;
+          setMyUserId(userId);
+          setMyRole(parsedUser.role as 'user' | 'mentor');
+          
+          // Fetch current user details from database
+          const userDetails = await fetchUserDetails([userId]);
+          if (userDetails[userId]) {
+            setMyUserDetails(userDetails[userId]);
+          }
+        } else {
+          // For testing purposes, create a mock user
+          const mockUser = {
+            _id: `user_${Math.random().toString(36).substr(2, 9)}`,
+            role: 'user' as const,
+            firstName: 'Test',
+            lastName: 'User'
+          };
+          localStorage.setItem("user", JSON.stringify(mockUser));
+          setMyUserId(mockUser._id);
+          setMyRole(mockUser.role);
+          
+          // Set mock user details
+          const mockDetails: UserDetails = {
+            displayName: `${mockUser.firstName} ${mockUser.lastName}`,
+            firstName: mockUser.firstName,
+            lastName: mockUser.lastName,
+            role: mockUser.role,
+            id: mockUser._id
+          };
+          setMyUserDetails(mockDetails);
+          setUserDetailsCache(prev => ({ ...prev, [mockUser._id]: mockDetails }));
+          
+          console.log('Created mock user:', mockUser);
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    initializeUser();
+  }, [fetchUserDetails]);
+
+  // Set user online status in Firebase with user details
+  useEffect(() => {
+    if (!myUserId || !myUserDetails) return;
 
     const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
     const connectedRef = ref(firebaseDb, '.info/connected');
 
     const handleConnectedChange = (snapshot: any) => {
       if (snapshot.val() === true) {
-        // User is online
+        // User is online - include display name and role
         set(userStatusRef, {
           status: 'online',
           role: myRole,
+          displayName: myUserDetails.displayName,
+          firstName: myUserDetails.firstName,
+          lastName: myUserDetails.lastName,
           timestamp: serverTimestamp(),
         });
 
@@ -100,6 +218,9 @@ const MentorComponent = () => {
             set(userStatusRef, {
               status: 'offline',
               role: myRole,
+              displayName: myUserDetails.displayName,
+              firstName: myUserDetails.firstName,
+              lastName: myUserDetails.lastName,
               timestamp: serverTimestamp(),
             });
           }
@@ -120,11 +241,14 @@ const MentorComponent = () => {
         set(ref(firebaseDb, `user_statuses/${myUserId}`), {
           status: 'offline',
           role: myRole,
+          displayName: myUserDetails.displayName,
+          firstName: myUserDetails.firstName,
+          lastName: myUserDetails.lastName,
           timestamp: serverTimestamp(),
         });
       }
     };
-  }, [myUserId, myRole]);
+  }, [myUserId, myRole, myUserDetails]);
 
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
@@ -270,15 +394,31 @@ const MentorComponent = () => {
     const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
     const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-    onValue(statusesRef, (snapshot) => {
+    onValue(statusesRef, async (snapshot) => {
       const statuses = snapshot.val() || {};
       console.log('User statuses updated:', statuses);
+      
+      // Fetch user details for any new users we haven't seen before
+      const unknownUserIds = Object.keys(statuses).filter(uid => 
+        uid !== myUserId && !userDetailsCache[uid] && !uid.startsWith('user_') && !uid.startsWith('mentor_')
+      );
+      
+      if (unknownUserIds.length > 0) {
+        await fetchUserDetails(unknownUserIds);
+      }
+      
       setOnlineUserStatuses(statuses);
     });
 
-    onChildAdded(requestsRef, (snap) => {
+    onChildAdded(requestsRef, async (snap) => {
       const request = { id: snap.key, ...snap.val() };
       console.log('New request received:', request);
+      
+      // Fetch details for the mentor who sent the request
+      if (request.fromMentorId && !userDetailsCache[request.fromMentorId]) {
+        await fetchUserDetails([request.fromMentorId]);
+      }
+      
       setIncomingRequests((prev) => [...prev, request]);
     });
 
@@ -299,7 +439,7 @@ const MentorComponent = () => {
       off(requestsRef);
       off(responsesRef);
     };
-  }, [myUserId, setupFirebaseSessionListeners, endCurrentSession]);
+  }, [myUserId, setupFirebaseSessionListeners, endCurrentSession, userDetailsCache, fetchUserDetails]);
 
   const handleMentorRequestSession = async (targetUserId: string, sessionType: 'chat' | 'video') => {
     if (!myUserId || myRole !== 'mentor') {
@@ -395,7 +535,7 @@ const MentorComponent = () => {
       <h1>Mentor/User Dashboard (Firebase Only)</h1>
       
       <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
-        <p><strong>User ID:</strong> {myUserId}</p>
+        <p><strong>User:</strong> {myUserDetails ? myUserDetails.displayName : myUserId}</p>
         <p><strong>Role:</strong> {myRole}</p>
         <p><strong>Firebase Status:</strong> {isOnline ? '🟢 Connected' : '🔴 Disconnected'}</p>
         <p><em>This version works on Vercel using Firebase only (no Socket.IO)</em></p>
@@ -405,13 +545,71 @@ const MentorComponent = () => {
       {myRole === 'mentor' && (
         <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #007bff', borderRadius: '5px' }}>
           <h2>Mentor Controls</h2>
-          <div style={{ marginBottom: '10px' }}>
+          
+          {/* User Search */}
+          <div style={{ marginBottom: '15px', position: 'relative' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+              Search for users by name:
+            </label>
             <input 
               type="text" 
-              placeholder="Enter User ID" 
-              id="targetUserId"
-              style={{ padding: '8px', marginRight: '10px', width: '200px' }}
+              placeholder="Type user's first name or last name..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ padding: '8px', width: '300px', marginBottom: '5px' }}
             />
+            
+            {/* Search Results Dropdown */}
+            {showSearchResults && searchResults.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: 'white',
+                border: '1px solid #ccc',
+                borderRadius: '3px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+              }}>
+                {searchResults.map((user) => (
+                  <div
+                    key={user.id}
+                    onClick={() => handleSelectUser(user)}
+                    style={{
+                      padding: '10px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #eee'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                  >
+                    <div style={{ fontWeight: 'bold' }}>{user.displayName}</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>
+                      {user.role}{user.email ? ` • ${user.email}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Manual ID Input */}
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+              Or enter User ID directly:
+            </label>
+            <input 
+              type="text" 
+              placeholder="Enter User ID (ObjectId)" 
+              id="targetUserId"
+              style={{ padding: '8px', marginRight: '10px', width: '300px' }}
+            />
+          </div>
+
+          <div>
             <button 
               onClick={() => {
                 const input = document.getElementById('targetUserId') as HTMLInputElement;
@@ -444,7 +642,7 @@ const MentorComponent = () => {
           <h2>Incoming Session Requests:</h2>
           {incomingRequests.map((req) => (
             <div key={req.id} style={{ padding: '10px', backgroundColor: '#fff3cd', marginBottom: '10px', borderRadius: '3px' }}>
-              <p><strong>From Mentor:</strong> {req.fromMentorId}</p>
+              <p><strong>From Mentor:</strong> {getUserDisplayName(req.fromMentorId)}</p>
               <p><strong>Session Type:</strong> {req.sessionType}</p>
               <button 
                 onClick={() => handleUserAcceptSession(req.fromMentorId, req.sessionType, req.id)}
@@ -490,7 +688,7 @@ const MentorComponent = () => {
                   borderRadius: '3px',
                   alignSelf: msg.from === myUserId ? 'flex-end' : 'flex-start'
                 }}>
-                  <strong>{msg.from === myUserId ? 'You' : msg.from}:</strong> {msg.message}
+                  <strong>{msg.from === myUserId ? 'You' : getUserDisplayName(msg.from)}:</strong> {msg.message}
                 </div>
               ))}
             </div>
@@ -565,16 +763,12 @@ const MentorComponent = () => {
                 alignItems: 'center'
               }}>
                 <span>
-                  <strong>{uid}</strong> - {data.status === 'online' ? '🟢' : '🔴'} {data.status}
+                  <strong>
+                    {data.displayName ? `${data.displayName} (${data.role})` : getUserDisplayName(uid)}
+                  </strong> - {data.status === 'online' ? '🟢' : '🔴'} {data.status}
                 </span>
-                {myRole === 'mentor' && data.status === 'online' && uid !== myUserId && (
+                {myRole === 'mentor' && data.status === 'online' && uid !== myUserId && data.role === 'user' && (
                   <div>
-                    <button 
-                      onClick={() => handleMentorRequestSession(uid, 'chat')}
-                      style={{ padding: '5px 10px', marginRight: '5px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
-                    >
-                      Chat
-                    </button>
                     <button 
                       onClick={() => handleMentorRequestSession(uid, 'video')}
                       style={{ padding: '5px 10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
@@ -592,27 +786,41 @@ const MentorComponent = () => {
       {/* Test Users Helper */}
       <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ffc107', borderRadius: '5px', backgroundColor: '#fff3cd' }}>
         <h3>Testing Helper:</h3>
-        <p>To test the system:</p>
+        <p>To test the system with named users:</p>
         <button 
           onClick={() => {
-            const mentor = { _id: 'mentor_123', role: 'mentor' };
+            const mentor = { 
+              _id: 'mentor_123', 
+              role: 'mentor',
+              firstName: 'Dr. Sarah',
+              lastName: 'Johnson'
+            };
             localStorage.setItem('user', JSON.stringify(mentor));
             window.location.reload();
           }}
           style={{ padding: '5px 10px', marginRight: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px' }}
         >
-          Load as Mentor (mentor_123)
+          Load as Dr. Sarah Johnson (Mentor)
         </button>
         <button 
           onClick={() => {
-            const user = { _id: 'user_456', role: 'user' };
+            const user = { 
+              _id: 'user_456', 
+              role: 'user',
+              firstName: 'John',
+              lastName: 'Smith'
+            };
             localStorage.setItem('user', JSON.stringify(user));
             window.location.reload();
           }}
           style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}
         >
-          Load as User (user_456)
+          Load as John Smith (User)
         </button>
+        <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+          <p><strong>For real MongoDB users:</strong> Enter the ObjectId in the User ID field above.</p>
+          <p>The system will automatically fetch and display the user's first name and role.</p>
+        </div>
       </div>
     </div>
   );
