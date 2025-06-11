@@ -27,6 +27,61 @@ const connectMongo = async () => {
   }
 };
 
+// Helper function to check if a string is a valid ObjectId
+const isValidObjectId = (id: string): boolean => {
+  return mongoose.Types.ObjectId.isValid(id) && id.length === 24;
+};
+
+// Mock user data for test users
+const getMockUserData = (userId: string) => {
+  const mockUsers: { [key: string]: any } = {
+    'mentor_123': {
+      displayName: 'Dr. Sarah Johnson',
+      firstName: 'Dr. Sarah',
+      lastName: 'Johnson',
+      role: 'mentor',
+      id: 'mentor_123'
+    },
+    'user_456': {
+      displayName: 'John Smith',
+      firstName: 'John',
+      lastName: 'Smith',
+      role: 'user',
+      id: 'user_456'
+    },
+    'mentor_one': {
+      displayName: 'mentor one',
+      firstName: 'mentor',
+      lastName: 'one',
+      role: 'mentor',
+      id: 'mentor_one'
+    }
+  };
+
+  // Check for dynamically generated test users
+  if (userId.startsWith('user_') && !mockUsers[userId]) {
+    return {
+      displayName: 'Test User',
+      firstName: 'Test',
+      lastName: 'User',
+      role: 'user',
+      id: userId
+    };
+  }
+
+  if (userId.startsWith('mentor_') && !mockUsers[userId]) {
+    return {
+      displayName: 'Test Mentor',
+      firstName: 'Test',
+      lastName: 'Mentor',
+      role: 'mentor',
+      id: userId
+    };
+  }
+
+  return mockUsers[userId] || null;
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -42,28 +97,52 @@ export default async function handler(
   }
 
   try {
-    await connectMongo();
-
     // Handle single ID or array of IDs
     const idsArray = Array.isArray(userIds) ? userIds : [userIds];
     
-    // Fetch user details for all requested IDs
-    const users = await User.find(
-      { _id: { $in: idsArray } },
-      { firstName: 1, lastName: 1, role: 1, _id: 1 }
-    );
+    // Separate valid ObjectIds from test user IDs
+    const validObjectIds: string[] = [];
+    const testUserIds: string[] = [];
+    
+    idsArray.forEach(id => {
+      if (isValidObjectId(id)) {
+        validObjectIds.push(id);
+      } else {
+        testUserIds.push(id);
+      }
+    });
 
-    // Create a mapping of ID to user details
-    const userMap = users.reduce((acc: any, user: any) => {
-      acc[user._id.toString()] = {
-        displayName: `${user.firstName || 'Unknown'} ${user.lastName || ''}`.trim(),
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        id: user._id.toString()
-      };
-      return acc;
-    }, {});
+    const userMap: { [key: string]: any } = {};
+
+    // Fetch real users from MongoDB if we have valid ObjectIds
+    if (validObjectIds.length > 0) {
+      await connectMongo();
+      
+      const users = await User.find(
+        { _id: { $in: validObjectIds } },
+        { firstName: 1, lastName: 1, role: 1, email: 1, _id: 1 }
+      );
+
+      // Add real users to the map
+      users.forEach((user: any) => {
+        userMap[user._id.toString()] = {
+          displayName: `${user.firstName || 'Unknown'} ${user.lastName || ''}`.trim(),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          email: user.email,
+          id: user._id.toString()
+        };
+      });
+    }
+
+    // Add mock data for test user IDs
+    testUserIds.forEach(id => {
+      const mockData = getMockUserData(id);
+      if (mockData) {
+        userMap[id] = mockData;
+      }
+    });
 
     res.status(200).json({ users: userMap });
 
