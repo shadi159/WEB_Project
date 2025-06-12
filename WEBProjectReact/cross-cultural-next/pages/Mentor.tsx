@@ -1,46 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase, ref, onValue, onChildAdded, push, set, serverTimestamp } from 'firebase/database';
-import SimplePeer from 'simple-peer';
+import dynamic from 'next/dynamic';
 
-// Add error handling for browser extension issues
-const handleGlobalErrors = () => {
-  window.addEventListener('error', (e) => {
-    if (e.message.includes('message channel closed') || 
-        e.message.includes('Extension context invalidated') ||
-        e.message.includes('listener indicated an asynchronous response')) {
-      e.preventDefault();
-      return false;
-    }
-  });
-
-  window.addEventListener('unhandledrejection', (e) => {
-    if (e.reason?.message?.includes('message channel closed') ||
-        e.reason?.message?.includes('Extension context invalidated') ||
-        e.reason?.message?.includes('listener indicated an asynchronous response')) {
-      e.preventDefault();
-      return false;
-    }
-  });
-};
-
-// Call error handler immediately
-handleGlobalErrors();
-
-// Firebase config
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-const firebaseDb = getDatabase(app);
-
+// TypeScript interfaces
 interface UserDetails {
   displayName: string;
   firstName: string;
@@ -54,10 +15,175 @@ interface UserStatus {
   status: string;
   role: string;
   displayName?: string;
-  [key: string]: any;
+  firstName?: string;
+  lastName?: string;
+  timestamp?: any;
 }
 
+interface FirebaseConfig {
+  apiKey?: string;
+  authDomain?: string;
+  databaseURL?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+}
+
+// Error handler utility
+const createErrorHandler = (setErrors: React.Dispatch<React.SetStateAction<string[]>>) => {
+  const handleError = (message: string) => {
+    if (message.includes('message channel closed') || 
+        message.includes('Extension context invalidated') ||
+        message.includes('listener indicated an asynchronous response')) {
+      setErrors(prev => [...prev, message].slice(-5));
+      return true;
+    }
+    return false;
+  };
+
+  const errorHandler = (e: ErrorEvent) => {
+    if (handleError(e.message)) {
+      e.preventDefault();
+      return false;
+    }
+  };
+
+  const rejectionHandler = (e: PromiseRejectionEvent) => {
+    if (handleError(e.reason?.message || 'Promise rejection')) {
+      e.preventDefault();
+      return false;
+    }
+  };
+
+  return { errorHandler, rejectionHandler };
+};
+
+// Firebase configuration validator
+const validateFirebaseConfig = (): FirebaseConfig | null => {
+  const config = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
+
+  const requiredFields = ['apiKey', 'authDomain', 'databaseURL', 'projectId'];
+  const missingFields = requiredFields.filter(field => !config[field as keyof FirebaseConfig]);
+  
+  if (missingFields.length > 0) {
+    console.error('Missing Firebase config fields:', missingFields);
+    return null;
+  }
+
+  return config;
+};
+
+// Disable SSR for this component since it uses browser APIs
+const MentorComponentClient = dynamic(() => Promise.resolve(MentorComponentInner), {
+  ssr: false,
+  loading: () => (
+    <div style={{ padding: '20px', textAlign: 'center' }}>
+      <h2>Loading Mentor System...</h2>
+      <p>Initializing browser environment...</p>
+    </div>
+  )
+});
+
+// Main component wrapper
 const MentorComponent = () => {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <h2>Loading Mentor System...</h2>
+        <p>Initializing browser environment...</p>
+      </div>
+    );
+  }
+
+  return <MentorComponentClient />;
+};
+
+// Client-side component with browser checks
+const MentorComponentInner = () => {
+  const [firebaseLoaded, setFirebaseLoaded] = useState(false);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
+
+  // Check browser environment
+  if (typeof window === 'undefined') {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <h2>Loading...</h2>
+        <p>Browser environment required</p>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    const loadFirebase = async () => {
+      try {
+        // Validate config first
+        const firebaseConfig = validateFirebaseConfig();
+        if (!firebaseConfig) {
+          throw new Error('Invalid Firebase configuration. Please check environment variables.');
+        }
+
+        // Dynamic imports for Firebase
+        const { initializeApp, getApps } = await import('firebase/app');
+        const { getDatabase } = await import('firebase/database');
+        
+        // Initialize Firebase
+        const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+        const firebaseDb = getDatabase(app);
+        
+        // Store in window for global access
+        (window as any).firebaseDb = firebaseDb;
+        setFirebaseLoaded(true);
+      } catch (error) {
+        console.error('Firebase initialization error:', error);
+        setFirebaseError(error instanceof Error ? error.message : 'Unknown Firebase error');
+      }
+    };
+
+    loadFirebase();
+  }, []);
+
+  if (firebaseError) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>
+        <h2>Firebase Configuration Error</h2>
+        <p>{firebaseError}</p>
+        <p>Please check your environment variables and try again.</p>
+      </div>
+    );
+  }
+
+  if (!firebaseLoaded) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <h2>Loading...</h2>
+        <p>Initializing Firebase...</p>
+      </div>
+    );
+  }
+
+  return <MentorComponentCore />;
+};
+
+// Core component with all the logic
+const MentorComponentCore = () => {
+  // Get Firebase instance from window
+  const firebaseDb = (window as any).firebaseDb;
+
   // Core user state
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<'user' | 'mentor' | null>(null);
@@ -81,9 +207,9 @@ const MentorComponent = () => {
   const [isInVideoCall, setIsInVideoCall] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [processedRequests, setProcessedRequests] = useState<Set<string>>(new Set());
-  const [peerConnection, setPeerConnection] = useState<SimplePeer.Instance | null>(null);
+  const [peerConnection, setPeerConnection] = useState<any>(null);
 
-  // State for tracking suppressed errors
+  // Error tracking
   const [errors, setErrors] = useState<string[]>([]);
 
   // Refs
@@ -92,28 +218,10 @@ const MentorComponent = () => {
   const cleanupFunctions = useRef<(() => void)[]>([]);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Enhanced error handling on component mount
+  // Enhanced error handling setup
   useEffect(() => {
-    const errorHandler = (e: ErrorEvent) => {
-      if (e.message.includes('message channel closed') || 
-          e.message.includes('Extension context invalidated') ||
-          e.message.includes('listener indicated an asynchronous response')) {
-        setErrors(prev => [...prev, e.message].slice(-5)); // Keep last 5 errors
-        e.preventDefault();
-        return false;
-      }
-    };
-
-    const rejectionHandler = (e: PromiseRejectionEvent) => {
-      if (e.reason?.message?.includes('message channel closed') ||
-          e.reason?.message?.includes('Extension context invalidated') ||
-          e.reason?.message?.includes('listener indicated an asynchronous response')) {
-        setErrors(prev => [...prev, e.reason?.message || 'Promise rejection'].slice(-5));
-        e.preventDefault();
-        return false;
-      }
-    };
-
+    const { errorHandler, rejectionHandler } = createErrorHandler(setErrors);
+    
     window.addEventListener('error', errorHandler);
     window.addEventListener('unhandledrejection', rejectionHandler);
 
@@ -123,7 +231,7 @@ const MentorComponent = () => {
     };
   }, []);
 
-  // Helper functions
+  // Cleanup management
   const addCleanup = useCallback((cleanup: () => void) => {
     cleanupFunctions.current.push(cleanup);
   }, []);
@@ -152,22 +260,24 @@ const MentorComponent = () => {
         const userId = parsedUser._id || parsedUser.id;
         let userRole = parsedUser.role;
 
-        // Validate role
+        // Validate and fix role if needed
         if (!userRole || !['user', 'mentor'].includes(userRole)) {
           try {
-            const response = await fetch('/api/profile', {
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            });
-            if (response.ok) {
-              const data = await response.json();
-              userRole = data.user?.role || 'user';
-              localStorage.setItem("user", JSON.stringify({ ...parsedUser, role: userRole }));
-            } else {
-              userRole = 'user';
+            const token = localStorage.getItem('token');
+            if (token) {
+              const response = await fetch('/api/profile', {
+                headers: { 'Authorization': `Bearer ${token}` },
+              });
+              if (response.ok) {
+                const data = await response.json();
+                userRole = data.user?.role || 'user';
+                localStorage.setItem("user", JSON.stringify({ ...parsedUser, role: userRole }));
+              }
             }
           } catch {
-            userRole = 'user';
+            // Fallback to default role
           }
+          userRole = userRole || 'user';
         }
 
         const userDetails: UserDetails = {
@@ -199,46 +309,59 @@ const MentorComponent = () => {
 
   // Firebase status management
   useEffect(() => {
-    if (!myUserId || !myUserDetails || !isInitialized) return;
+    if (!myUserId || !myUserDetails || !isInitialized || !firebaseDb) return;
 
-    const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
-    const connectedRef = ref(firebaseDb, '.info/connected');
+    const setupFirebaseStatus = async () => {
+      try {
+        const { ref, onValue, set, serverTimestamp } = await import('firebase/database');
+        
+        const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
+        const connectedRef = ref(firebaseDb, '.info/connected');
 
-    const unsubscribe = onValue(connectedRef, (snapshot) => {
-      if (snapshot.val()) {
-        set(userStatusRef, {
-          status: 'online',
-          role: myUserDetails.role,
-          displayName: myUserDetails.displayName,
-          firstName: myUserDetails.firstName,
-          lastName: myUserDetails.lastName,
-          timestamp: serverTimestamp(),
-        }).then(() => setIsOnline(true)).catch(() => setIsOnline(false));
-      } else {
-        setIsOnline(false);
-      }
-    });
+        const unsubscribe = onValue(connectedRef, (snapshot) => {
+          if (snapshot.val()) {
+            set(userStatusRef, {
+              status: 'online',
+              role: myUserDetails.role,
+              displayName: myUserDetails.displayName,
+              firstName: myUserDetails.firstName,
+              lastName: myUserDetails.lastName,
+              timestamp: serverTimestamp(),
+            }).then(() => setIsOnline(true)).catch(() => setIsOnline(false));
+          } else {
+            setIsOnline(false);
+          }
+        });
 
-    addCleanup(unsubscribe);
+        addCleanup(unsubscribe);
 
-    return () => {
-      unsubscribe();
-      if (myUserId && myUserDetails) {
-        set(ref(firebaseDb, `user_statuses/${myUserId}`), {
-          status: 'offline',
-          role: myUserDetails.role,
-          displayName: myUserDetails.displayName,
-          firstName: myUserDetails.firstName,
-          lastName: myUserDetails.lastName,
-          timestamp: serverTimestamp(),
-        }).catch(console.error);
+        // Cleanup on unmount
+        return () => {
+          unsubscribe();
+          if (myUserId && myUserDetails) {
+            set(ref(firebaseDb, `user_statuses/${myUserId}`), {
+              status: 'offline',
+              role: myUserDetails.role,
+              displayName: myUserDetails.displayName,
+              firstName: myUserDetails.firstName,
+              lastName: myUserDetails.lastName,
+              timestamp: serverTimestamp(),
+            }).catch(console.error);
+          }
+        };
+      } catch (error) {
+        console.error('Firebase status setup error:', error);
       }
     };
-  }, [myUserId, myUserDetails, isInitialized, addCleanup]);
 
-  // Search functionality
+    setupFirebaseStatus();
+  }, [myUserId, myUserDetails, isInitialized, firebaseDb, addCleanup]);
+
+  // Search functionality with debouncing
   useEffect(() => {
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
 
     searchTimeoutRef.current = setTimeout(async () => {
       if (searchQuery.length >= 2) {
@@ -259,16 +382,19 @@ const MentorComponent = () => {
     }, 300);
 
     return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
     };
   }, [searchQuery]);
 
   // Enhanced end session with better cleanup
-  const endSession = useCallback(() => {
+  const endSession = useCallback(async () => {
     console.log('Ending session...');
     
     try {
-      if (activeFirebaseSessionPath) {
+      if (activeFirebaseSessionPath && firebaseDb) {
+        const { ref, set } = await import('firebase/database');
         set(ref(firebaseDb, `${activeFirebaseSessionPath}/status`), 'ended')
           .catch((err: any) => console.error('Error setting session status:', err));
         setActiveFirebaseSessionPath(null);
@@ -309,12 +435,15 @@ const MentorComponent = () => {
     } catch (err) {
       console.error('Session cleanup error:', err);
     }
-  }, [activeFirebaseSessionPath, peerConnection]);
+  }, [activeFirebaseSessionPath, peerConnection, firebaseDb]);
 
   // Video call functionality with enhanced error handling
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
       console.log(`Starting video call as ${initiator ? 'initiator' : 'receiver'}`);
+      
+      // Dynamic import SimplePeer to avoid SSR issues
+      const SimplePeer = (await import('simple-peer')).default;
       
       // Request media with error handling
       let stream: MediaStream;
@@ -356,8 +485,9 @@ const MentorComponent = () => {
         }
       });
 
-      peer.on('signal', (data) => {
+      peer.on('signal', async (data) => {
         try {
+          const { ref, push, serverTimestamp } = await import('firebase/database');
           push(ref(firebaseDb, `${sessionPath}/signals`), {
             from: myUserId,
             signal: JSON.stringify(data),
@@ -388,6 +518,7 @@ const MentorComponent = () => {
       setPeerConnection(peer);
 
       // Listen for signals with error handling
+      const { ref, onChildAdded } = await import('firebase/database');
       const signalsRef = ref(firebaseDb, `${sessionPath}/signals`);
       const signalsUnsubscribe = onChildAdded(signalsRef, (snapshot) => {
         try {
@@ -413,14 +544,16 @@ const MentorComponent = () => {
         alert('Failed to set up video call. Please try again.');
       }
     }
-  }, [myUserId, addCleanup]);
+  }, [myUserId, addCleanup, firebaseDb]);
 
   // Enhanced session setup with error handling
-  const setupSession = useCallback((path: string, sessionType: string) => {
+  const setupSession = useCallback(async (path: string, sessionType: string) => {
     console.log(`Setting up ${sessionType} session at ${path}`);
     setChatMessages([]);
 
     try {
+      const { ref, onValue, onChildAdded } = await import('firebase/database');
+      
       const messagesRef = ref(firebaseDb, `${path}/messages`);
       const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
         try {
@@ -462,83 +595,79 @@ const MentorComponent = () => {
     } catch (err) {
       console.error('Session setup error:', err);
     }
-  }, [myRole, addCleanup, startVideoCall, endSession]);
+  }, [myRole, addCleanup, startVideoCall, endSession, firebaseDb]);
 
   // Enhanced Firebase listeners with error handling
   useEffect(() => {
-    if (!isInitialized || !myUserId || !myRole) return;
+    if (!isInitialized || !myUserId || !myRole || !firebaseDb) return;
 
     console.log('Setting up Firebase listeners...');
 
-    try {
-      const statusesRef = ref(firebaseDb, 'user_statuses');
-      const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
-      const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
+    const setupListeners = async () => {
+      try {
+        const { ref, onValue, onChildAdded } = await import('firebase/database');
+        
+        const statusesRef = ref(firebaseDb, 'user_statuses');
+        const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
+        const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-      // Online users listener with error handling
-      const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
-        try {
-          setOnlineUserStatuses(snapshot.val() || {});
-        } catch (err) {
-          console.error('Status update error:', err);
-        }
-      }, (error) => {
-        console.error('Status listener error:', error);
-      });
-
-      // Requests listener with error handling
-      const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
-        try {
-          const requests = snapshot.val() || {};
-          const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
-          const pending = requestsArray.filter(req => req.status === 'pending' && !processedRequests.has(req.id));
-          setIncomingRequests(pending);
-        } catch (err) {
-          console.error('Requests processing error:', err);
-        }
-      }, (error) => {
-        console.error('Requests listener error:', error);
-      });
-
-      // Responses listener with error handling
-      const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
-        try {
-          const response = snapshot.val();
-          if (response) {
-            if (response.type === 'session_accepted') {
-              console.log('Session accepted:', response.firebaseSessionPath);
-              setActiveFirebaseSessionPath(response.firebaseSessionPath);
-              setupSession(response.firebaseSessionPath, response.sessionType);
-            } else if (response.type === 'session_ended') {
-              console.log('Session ended by remote party');
-              endSession();
-            }
+        // Online users listener with error handling
+        const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
+          try {
+            setOnlineUserStatuses(snapshot.val() || {});
+          } catch (err) {
+            console.error('Status update error:', err);
           }
-        } catch (err) {
-          console.error('Response processing error:', err);
-        }
-      }, (error) => {
-        console.error('Responses listener error:', error);
-      });
+        }, (error) => {
+          console.error('Status listener error:', error);
+        });
 
-      addCleanup(statusUnsubscribe);
-      addCleanup(requestsUnsubscribe);
-      addCleanup(responsesUnsubscribe);
+        // Requests listener with error handling
+        const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
+          try {
+            const requests = snapshot.val() || {};
+            const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
+            const pending = requestsArray.filter(req => req.status === 'pending' && !processedRequests.has(req.id));
+            setIncomingRequests(pending);
+          } catch (err) {
+            console.error('Requests processing error:', err);
+          }
+        }, (error) => {
+          console.error('Requests listener error:', error);
+        });
 
-      return () => {
-        try {
-          statusUnsubscribe();
-          requestsUnsubscribe();
-          responsesUnsubscribe();
-        } catch (err) {
-          console.warn('Listener cleanup error (non-critical):', err);
-        }
-      };
+        // Responses listener with error handling
+        const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
+          try {
+            const response = snapshot.val();
+            if (response) {
+              if (response.type === 'session_accepted') {
+                console.log('Session accepted:', response.firebaseSessionPath);
+                setActiveFirebaseSessionPath(response.firebaseSessionPath);
+                setupSession(response.firebaseSessionPath, response.sessionType);
+              } else if (response.type === 'session_ended') {
+                console.log('Session ended by remote party');
+                endSession();
+              }
+            }
+          } catch (err) {
+            console.error('Response processing error:', err);
+          }
+        }, (error) => {
+          console.error('Responses listener error:', error);
+        });
 
-    } catch (err) {
-      console.error('Firebase listeners setup error:', err);
-    }
-  }, [isInitialized, myUserId, myRole, processedRequests, addCleanup, setupSession, endSession]);
+        addCleanup(statusUnsubscribe);
+        addCleanup(requestsUnsubscribe);
+        addCleanup(responsesUnsubscribe);
+
+      } catch (err) {
+        console.error('Firebase listeners setup error:', err);
+      }
+    };
+
+    setupListeners();
+  }, [isInitialized, myUserId, myRole, processedRequests, addCleanup, setupSession, endSession, firebaseDb]);
 
   // Helper functions
   const getUserDisplayName = useCallback((userId: string): string => {
@@ -554,12 +683,13 @@ const MentorComponent = () => {
   }, []);
 
   const sendRequest = useCallback(async (targetUserId: string, sessionType: 'chat' | 'video') => {
-    if (!myUserId || myRole !== 'mentor' || !targetUserId.trim()) {
+    if (!myUserId || myRole !== 'mentor' || !targetUserId.trim() || !firebaseDb) {
       alert('Invalid request parameters');
       return;
     }
 
     try {
+      const { ref, push, serverTimestamp } = await import('firebase/database');
       await push(ref(firebaseDb, `user_notifications/${targetUserId}/requests`), {
         type: 'session_request',
         fromMentorId: myUserId,
@@ -571,12 +701,14 @@ const MentorComponent = () => {
     } catch (error) {
       alert('Failed to send request');
     }
-  }, [myUserId, myRole]);
+  }, [myUserId, myRole, firebaseDb]);
 
   const acceptRequest = useCallback(async (fromMentorId: string, sessionType: 'chat' | 'video', requestId: string) => {
-    if (!myUserId || myRole !== 'user') return;
+    if (!myUserId || myRole !== 'user' || !firebaseDb) return;
 
     try {
+      const { ref, set, push, serverTimestamp } = await import('firebase/database');
+      
       setProcessedRequests(prev => new Set([...prev, requestId]));
       
       const sessionId = `${myUserId}_${fromMentorId}_${Date.now()}`;
@@ -611,18 +743,23 @@ const MentorComponent = () => {
     } catch (error) {
       alert('Failed to accept request');
     }
-  }, [myUserId, myRole]);
+  }, [myUserId, myRole, firebaseDb]);
 
-  const sendMessage = useCallback(() => {
-    if (!activeFirebaseSessionPath || !myUserId || !currentMessage.trim()) return;
+  const sendMessage = useCallback(async () => {
+    if (!activeFirebaseSessionPath || !myUserId || !currentMessage.trim() || !firebaseDb) return;
     
-    push(ref(firebaseDb, `${activeFirebaseSessionPath}/messages`), {
-      from: myUserId,
-      message: currentMessage.trim(),
-      timestamp: serverTimestamp(),
-    });
-    setCurrentMessage('');
-  }, [activeFirebaseSessionPath, myUserId, currentMessage]);
+    try {
+      const { ref, push, serverTimestamp } = await import('firebase/database');
+      await push(ref(firebaseDb, `${activeFirebaseSessionPath}/messages`), {
+        from: myUserId,
+        message: currentMessage.trim(),
+        timestamp: serverTimestamp(),
+      });
+      setCurrentMessage('');
+    } catch (error) {
+      console.error('Send message error:', error);
+    }
+  }, [activeFirebaseSessionPath, myUserId, currentMessage, firebaseDb]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -632,7 +769,7 @@ const MentorComponent = () => {
     };
   }, [clearAllCleanup, endSession]);
 
-  // Error state
+  // Loading states
   if (userError) {
     return (
       <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>
@@ -643,7 +780,6 @@ const MentorComponent = () => {
     );
   }
 
-  // Loading state
   if (isLoading || !isInitialized || !myUserId || !myRole || !myUserDetails) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
@@ -654,26 +790,34 @@ const MentorComponent = () => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>Mentor/User Dashboard</h1>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
+      <h1 style={{ color: '#333', marginBottom: '30px' }}>Mentor/User Dashboard</h1>
       
-      {/* Error troubleshooter notice */}
+      {/* Error notification */}
       {errors.length > 0 && (
         <div style={{ 
           marginBottom: '20px', 
-          padding: '10px', 
+          padding: '15px', 
           backgroundColor: '#fff3cd', 
           border: '1px solid #ffc107', 
-          borderRadius: '5px',
+          borderRadius: '8px',
           fontSize: '14px'
         }}>
-          <strong>ℹ️ Browser Extension Errors Detected</strong>
+          <strong>ℹ️ Browser Extension Notices</strong>
           <p style={{ margin: '5px 0 0 0' }}>
-            {errors.length} non-critical errors have been suppressed. These are typically caused by browser extensions 
-            and don't affect the application functionality. 
+            {errors.length} non-critical errors have been suppressed (browser extensions). 
             <button 
               onClick={() => setErrors([])}
-              style={{ marginLeft: '10px', padding: '2px 8px', fontSize: '12px' }}
+              style={{ 
+                marginLeft: '10px', 
+                padding: '4px 12px', 
+                fontSize: '12px',
+                backgroundColor: '#856404',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
             >
               Dismiss
             </button>
@@ -681,20 +825,46 @@ const MentorComponent = () => {
         </div>
       )}
       
-      {/* User Info */}
-      <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
-        <p><strong>User:</strong> {myUserDetails.displayName}</p>
-        <p><strong>Role:</strong> {myRole}</p>
-        <p><strong>Status:</strong> {isOnline ? '🟢 Online' : '🔴 Offline'}</p>
+      {/* User Info Card */}
+      <div style={{ 
+        marginBottom: '30px', 
+        padding: '20px', 
+        backgroundColor: '#f8f9fa', 
+        borderRadius: '8px',
+        border: '1px solid #dee2e6'
+      }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#495057' }}>Your Profile</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+          <div><strong>Name:</strong> {myUserDetails.displayName}</div>
+          <div><strong>Role:</strong> <span style={{ 
+            padding: '4px 8px', 
+            backgroundColor: myRole === 'mentor' ? '#007bff' : '#28a745', 
+            color: 'white', 
+            borderRadius: '4px',
+            fontSize: '12px'
+          }}>{myRole.toUpperCase()}</span></div>
+          <div><strong>Status:</strong> {isOnline ? '🟢 Online' : '🔴 Offline'}</div>
+        </div>
       </div>
 
       {/* Mentor Controls */}
       {myRole === 'mentor' && (
-        <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #007bff', borderRadius: '5px' }}>
-          <h2>Mentor Controls</h2>
+        <div style={{ 
+          marginBottom: '30px', 
+          padding: '20px', 
+          border: '2px solid #007bff', 
+          borderRadius: '8px',
+          backgroundColor: '#f8f9ff'
+        }}>
+          <h2 style={{ color: '#007bff', marginBottom: '20px' }}>Mentor Controls</h2>
           
-          <div style={{ marginBottom: '15px', position: 'relative' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          <div style={{ marginBottom: '20px', position: 'relative' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: 'bold',
+              color: '#495057'
+            }}>
               Search for users:
             </label>
             <input 
@@ -702,23 +872,50 @@ const MentorComponent = () => {
               placeholder="Type user's name..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ padding: '8px', width: '300px' }}
+              style={{ 
+                padding: '12px', 
+                width: '100%',
+                maxWidth: '400px',
+                border: '2px solid #ced4da',
+                borderRadius: '6px',
+                fontSize: '14px',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#007bff'}
+              onBlur={(e) => e.target.style.borderColor = '#ced4da'}
             />
             
             {showSearchResults && searchResults.length > 0 && (
               <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0,
-                backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '3px',
-                maxHeight: '200px', overflowY: 'auto', zIndex: 1000,
-                boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                position: 'absolute', 
+                top: '100%', 
+                left: 0, 
+                right: 0,
+                maxWidth: '400px',
+                backgroundColor: 'white', 
+                border: '1px solid #ccc', 
+                borderRadius: '6px',
+                maxHeight: '250px', 
+                overflowY: 'auto', 
+                zIndex: 1000,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                marginTop: '4px'
               }}>
                 {searchResults.map((user) => (
-                  <div key={user.id} onClick={() => handleSelectUser(user)}
-                    style={{ padding: '10px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
-                    <div style={{ fontWeight: 'bold' }}>{user.displayName}</div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>
+                  <div
+                    key={user.id} 
+                    onClick={() => handleSelectUser(user)}
+                    style={{ 
+                      padding: '12px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #eee',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                  >
+                    <div style={{ fontWeight: 'bold', color: '#495057' }}>{user.displayName}</div>
+                    <div style={{ fontSize: '12px', color: '#6c757d', marginTop: '4px' }}>
                       {user.role}{user.email ? ` • ${user.email}` : ''}
                     </div>
                   </div>
@@ -727,26 +924,72 @@ const MentorComponent = () => {
             )}
           </div>
 
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '8px', 
+              fontWeight: 'bold',
+              color: '#495057'
+            }}>
               Or enter User ID directly:
             </label>
-            <input type="text" placeholder="Enter User ID" id="targetUserId"
-              style={{ padding: '8px', marginRight: '10px', width: '300px' }} />
+            <input 
+              type="text" 
+              placeholder="Enter User ID" 
+              id="targetUserId"
+              style={{ 
+                padding: '12px', 
+                width: '100%',
+                maxWidth: '400px',
+                border: '2px solid #ced4da',
+                borderRadius: '6px',
+                fontSize: '14px'
+              }}
+            />
           </div>
 
-          <div>
-            <button onClick={() => {
-              const input = document.getElementById('targetUserId') as HTMLInputElement;
-              if (input?.value.trim()) sendRequest(input.value.trim(), 'chat');
-            }} style={{ padding: '8px 15px', marginRight: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}>
-              Request Chat
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button 
+              onClick={() => {
+                const input = document.getElementById('targetUserId') as HTMLInputElement;
+                if (input?.value.trim()) sendRequest(input.value.trim(), 'chat');
+              }} 
+              style={{ 
+                padding: '12px 24px', 
+                backgroundColor: '#28a745', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#218838'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#28a745'}
+            >
+              💬 Request Chat
             </button>
-            <button onClick={() => {
-              const input = document.getElementById('targetUserId') as HTMLInputElement;
-              if (input?.value.trim()) sendRequest(input.value.trim(), 'video');
-            }} style={{ padding: '8px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px' }}>
-              Request Video Call
+            <button 
+              onClick={() => {
+                const input = document.getElementById('targetUserId') as HTMLInputElement;
+                if (input?.value.trim()) sendRequest(input.value.trim(), 'video');
+              }} 
+              style={{ 
+                padding: '12px 24px', 
+                backgroundColor: '#007bff', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0056b3'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#007bff'}
+            >
+              📹 Request Video Call
             </button>
           </div>
         </div>
@@ -754,15 +997,44 @@ const MentorComponent = () => {
 
       {/* Incoming Requests */}
       {myRole === 'user' && incomingRequests.length > 0 && (
-        <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #ffc107', borderRadius: '5px' }}>
-          <h2>Incoming Requests:</h2>
+        <div style={{ 
+          marginBottom: '30px', 
+          padding: '20px', 
+          border: '2px solid #ffc107', 
+          borderRadius: '8px',
+          backgroundColor: '#fffbf0'
+        }}>
+          <h2 style={{ color: '#856404', marginBottom: '20px' }}>📨 Incoming Requests</h2>
           {incomingRequests.map((req) => (
-            <div key={req.id} style={{ padding: '10px', backgroundColor: '#fff3cd', marginBottom: '10px', borderRadius: '3px' }}>
-              <p><strong>From:</strong> {getUserDisplayName(req.fromMentorId)}</p>
-              <p><strong>Type:</strong> {req.sessionType}</p>
-              <button onClick={() => acceptRequest(req.fromMentorId, req.sessionType, req.id)}
-                style={{ padding: '8px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}>
-                Accept {req.sessionType}
+            <div key={req.id} style={{ 
+              padding: '15px', 
+              backgroundColor: '#fff3cd', 
+              marginBottom: '12px', 
+              borderRadius: '6px',
+              border: '1px solid #ffeaa7'
+            }}>
+              <div style={{ marginBottom: '10px' }}>
+                <div style={{ fontWeight: 'bold', color: '#495057' }}>
+                  From: {getUserDisplayName(req.fromMentorId)}
+                </div>
+                <div style={{ color: '#6c757d', fontSize: '14px' }}>
+                  Type: {req.sessionType === 'chat' ? '💬 Chat' : '📹 Video Call'}
+                </div>
+              </div>
+              <button 
+                onClick={() => acceptRequest(req.fromMentorId, req.sessionType, req.id)}
+                style={{ 
+                  padding: '10px 20px', 
+                  backgroundColor: '#28a745', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '5px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                ✅ Accept {req.sessionType}
               </button>
             </div>
           ))}
@@ -771,58 +1043,158 @@ const MentorComponent = () => {
 
       {/* Active Session */}
       {activeFirebaseSessionPath && (
-        <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #28a745', borderRadius: '5px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h2>Active Session</h2>
-            <button onClick={endSession}
-              style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px' }}>
-              End Session
+        <div style={{ 
+          marginBottom: '30px', 
+          padding: '20px', 
+          border: '2px solid #28a745', 
+          borderRadius: '8px',
+          backgroundColor: '#f8fff9'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <h2 style={{ color: '#28a745', margin: 0 }}>🟢 Active Session</h2>
+            <button 
+              onClick={endSession}
+              style={{ 
+                padding: '10px 20px', 
+                backgroundColor: '#dc3545', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '5px',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              ❌ End Session
             </button>
           </div>
           
-          {/* Chat */}
-          <div style={{ marginBottom: '20px' }}>
-            <h3>Messages:</h3>
+          {/* Chat Interface */}
+          <div style={{ marginBottom: '25px' }}>
+            <h3 style={{ color: '#495057', marginBottom: '15px' }}>💬 Messages</h3>
             <div style={{ 
-              height: '200px', overflowY: 'auto', border: '1px solid #ccc', 
-              padding: '10px', backgroundColor: '#f9f9f9', marginBottom: '10px'
+              height: '250px', 
+              overflowY: 'auto', 
+              border: '1px solid #dee2e6', 
+              padding: '15px', 
+              backgroundColor: '#ffffff',
+              borderRadius: '6px',
+              marginBottom: '15px'
             }}>
-              {chatMessages.map((msg, index) => (
-                <div key={index} style={{ 
-                  marginBottom: '8px', padding: '5px',
-                  backgroundColor: msg.from === myUserId ? '#007bff' : '#6c757d',
-                  color: 'white', borderRadius: '3px'
+              {chatMessages.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  color: '#6c757d', 
+                  fontStyle: 'italic',
+                  marginTop: '50px'
                 }}>
-                  <strong>{msg.from === myUserId ? 'You' : getUserDisplayName(msg.from)}:</strong> {msg.message}
+                  No messages yet. Start the conversation!
                 </div>
-              ))}
+              ) : (
+                chatMessages.map((msg, index) => (
+                  <div key={index} style={{ 
+                    marginBottom: '12px', 
+                    padding: '10px 15px',
+                    backgroundColor: msg.from === myUserId ? '#007bff' : '#6c757d',
+                    color: 'white', 
+                    borderRadius: '18px',
+                    maxWidth: '80%',
+                    marginLeft: msg.from === myUserId ? 'auto' : '0',
+                    marginRight: msg.from === myUserId ? '0' : 'auto'
+                  }}>
+                    <div style={{ fontSize: '12px', opacity: 0.8, marginBottom: '4px' }}>
+                      {msg.from === myUserId ? 'You' : getUserDisplayName(msg.from)}
+                    </div>
+                    <div>{msg.message}</div>
+                  </div>
+                ))
+              )}
             </div>
-            <div style={{ display: 'flex' }}>
-              <input type="text" placeholder="Type message..." value={currentMessage}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <input 
+                type="text" 
+                placeholder="Type your message..." 
+                value={currentMessage}
                 onChange={(e) => setCurrentMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                style={{ flex: 1, padding: '8px', marginRight: '10px' }} />
-              <button onClick={sendMessage}
-                style={{ padding: '8px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px' }}>
+                style={{ 
+                  flex: 1, 
+                  padding: '12px', 
+                  border: '2px solid #ced4da',
+                  borderRadius: '25px',
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#007bff'}
+                onBlur={(e) => e.target.style.borderColor = '#ced4da'}
+              />
+              <button 
+                onClick={sendMessage}
+                disabled={!currentMessage.trim()}
+                style={{ 
+                  padding: '12px 24px', 
+                  backgroundColor: currentMessage.trim() ? '#007bff' : '#6c757d', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '25px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: currentMessage.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
                 Send
               </button>
             </div>
           </div>
 
-          {/* Video */}
+          {/* Video Interface */}
           {isInVideoCall && (
             <div>
-              <h3>Video Call:</h3>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div>
-                  <p>Your Video:</p>
-                  <video ref={localVideoRef} autoPlay muted playsInline 
-                    style={{ width: '300px', height: '200px', backgroundColor: '#000', borderRadius: '5px' }} />
+              <h3 style={{ color: '#495057', marginBottom: '15px' }}>📹 Video Call</h3>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+                gap: '20px' 
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ marginBottom: '10px', fontWeight: 'bold' }}>Your Video:</p>
+                  <video 
+                    ref={localVideoRef} 
+                    autoPlay 
+                    muted 
+                    playsInline 
+                    style={{ 
+                      width: '100%', 
+                      maxWidth: '300px',
+                      height: '200px', 
+                      backgroundColor: '#000', 
+                      borderRadius: '8px',
+                      border: '2px solid #007bff'
+                    }} 
+                  />
                 </div>
-                <div>
-                  <p>Remote Video:</p>
-                  <video ref={remoteVideoRef} autoPlay playsInline 
-                    style={{ width: '300px', height: '200px', backgroundColor: '#000', borderRadius: '5px' }} />
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ marginBottom: '10px', fontWeight: 'bold' }}>Remote Video:</p>
+                  <video 
+                    ref={remoteVideoRef} 
+                    autoPlay 
+                    playsInline 
+                    style={{ 
+                      width: '100%', 
+                      maxWidth: '300px',
+                      height: '200px', 
+                      backgroundColor: '#000', 
+                      borderRadius: '8px',
+                      border: '2px solid #28a745'
+                    }} 
+                  />
                 </div>
               </div>
             </div>
@@ -831,36 +1203,89 @@ const MentorComponent = () => {
       )}
 
       {/* Online Users */}
-      <div style={{ padding: '15px', border: '1px solid #ccc', borderRadius: '5px' }}>
-        <h3>Online Users ({Object.keys(onlineUserStatuses).length}):</h3>
+      <div style={{ 
+        padding: '20px', 
+        border: '1px solid #dee2e6', 
+        borderRadius: '8px',
+        backgroundColor: '#ffffff'
+      }}>
+        <h3 style={{ 
+          color: '#495057', 
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          👥 Online Users ({Object.keys(onlineUserStatuses).length})
+        </h3>
         {Object.keys(onlineUserStatuses).length === 0 ? (
-          <p>No users online</p>
+          <div style={{ 
+            textAlign: 'center', 
+            color: '#6c757d', 
+            fontStyle: 'italic',
+            padding: '30px'
+          }}>
+            No users currently online
+          </div>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <div style={{ display: 'grid', gap: '12px' }}>
             {Object.entries(onlineUserStatuses).map(([uid, data]) => (
-              <li key={uid} style={{ 
-                padding: '10px', marginBottom: '5px', backgroundColor: '#f8f9fa', borderRadius: '3px',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              <div key={uid} style={{ 
+                padding: '15px', 
+                backgroundColor: '#f8f9fa', 
+                borderRadius: '8px',
+                border: '1px solid #e9ecef',
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px'
               }}>
-                <span>
-                  <strong>{data.displayName || getUserDisplayName(uid)}</strong> - 
-                  {data.status === 'online' ? '🟢' : '🔴'} {data.status}
-                </span>
+                <div>
+                  <div style={{ fontWeight: 'bold', color: '#495057' }}>
+                    {data.displayName || getUserDisplayName(uid)}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#6c757d' }}>
+                    {data.status === 'online' ? '🟢' : '🔴'} {data.status} • {data.role}
+                  </div>
+                </div>
                 {myRole === 'mentor' && data.status === 'online' && uid !== myUserId && data.role === 'user' && (
-                  <div>
-                    <button onClick={() => sendRequest(uid, 'chat')}
-                      style={{ padding: '5px 10px', marginRight: '5px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}>
-                      Chat
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => sendRequest(uid, 'chat')}
+                      style={{ 
+                        padding: '6px 12px', 
+                        backgroundColor: '#28a745', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '4px', 
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      💬 Chat
                     </button>
-                    <button onClick={() => sendRequest(uid, 'video')}
-                      style={{ padding: '5px 10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}>
-                      Video
+                    <button 
+                      onClick={() => sendRequest(uid, 'video')}
+                      style={{ 
+                        padding: '6px 12px', 
+                        backgroundColor: '#007bff', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '4px', 
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📹 Video
                     </button>
                   </div>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
