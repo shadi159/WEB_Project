@@ -1,4 +1,4 @@
-// pages/api/signin.ts - Simple version using standard Mongoose methods
+// pages/api/signin.ts - Enhanced version with better error handling
 import type { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -44,11 +44,10 @@ export default async function handler(
       });
     }
 
-    // 🔧 Use standard Mongoose findOne with explicit password selection
     console.log("🔍 Searching for user with email:", email);
     const user = await User.findOne({ 
       email: email.toLowerCase().trim() 
-    }).select('+password'); // Explicitly include password if it has select: false
+    }).select('+password');
 
     if (!user) {
       console.log("❌ User not found");
@@ -61,23 +60,39 @@ export default async function handler(
     console.log("✅ User found:", user._id);
     console.log("🔐 Password field exists:", !!user.password);
     console.log("🔐 Password length:", user.password ? user.password.length : 0);
-    console.log("🔐 Password starts with:", user.password ? user.password.substring(0, 7) : "NO PASSWORD");
 
-    // Check if password exists
-    if (!user.password) {
-      console.log("❌ User has no password set");
-      return res.status(401).json({
-        message: "Account setup incomplete. Please contact support.",
-        code: "NO_PASSWORD_SET",
+    // Enhanced password validation
+    if (!user.password || user.password.length === 0) {
+      console.log("❌ User has no password set - possible account creation issue");
+      
+      // Log user creation info for debugging
+      console.log("👤 User details:", {
+        id: user._id,
+        email: user.email,
+        createdAt: user.createdAt,
+        role: user.role
+      });
+      
+      return res.status(422).json({
+        message: "Account setup is incomplete. This account needs to be reactivated.",
+        code: "INCOMPLETE_ACCOUNT_SETUP",
+        suggestion: "Please contact support or try registering again with this email.",
         success: false,
       });
     }
 
-    // 🔧 Use bcrypt.compare directly
+    // Check if password looks like a hash
+    const isHashedPassword = user.password.startsWith('$2a$') || user.password.startsWith('$2b$');
+    if (!isHashedPassword) {
+      console.log("⚠️ Password doesn't appear to be hashed properly");
+      return res.status(422).json({
+        message: "Account has an invalid password format. Please contact support.",
+        code: "INVALID_PASSWORD_FORMAT",
+        success: false,
+      });
+    }
+
     console.log("🔐 Comparing passwords...");
-    console.log("🔐 Input password length:", password.length);
-    console.log("🔐 Stored hash length:", user.password.length);
-    
     const isMatch = await bcrypt.compare(password, user.password);
     console.log("🔐 Password comparison result:", isMatch ? "✅ MATCH" : "❌ NO MATCH");
 
@@ -136,19 +151,33 @@ export default async function handler(
   } catch (error: any) {
     console.error("❌ Sign In Error:", error);
     
-    // Handle specific MongoDB errors
-    if (error.name === 'MongoNetworkError') {
+    // Enhanced error handling for different MongoDB issues
+    if (error.name === 'MongoNetworkError' || error.message.includes('SSL')) {
+      console.error("🔗 Network/SSL Error - MongoDB connection failed");
       return res.status(503).json({
         message: "Database connection failed",
-        error: "Unable to connect to database",
+        error: "Unable to connect to database. Please try again.",
+        code: "DATABASE_CONNECTION_ERROR",
         success: false,
       });
     }
     
     if (error.name === 'MongoServerSelectionError') {
+      console.error("🗄️ Server Selection Error - MongoDB server unavailable");
       return res.status(503).json({
         message: "Database server unavailable", 
-        error: "Database server selection failed",
+        error: "Database server selection failed. Please try again.",
+        code: "DATABASE_SERVER_ERROR",
+        success: false,
+      });
+    }
+
+    if (error.name === 'MongoTimeoutError') {
+      console.error("⏰ Timeout Error - MongoDB operation timed out");
+      return res.status(503).json({
+        message: "Database operation timed out",
+        error: "The request took too long. Please try again.",
+        code: "DATABASE_TIMEOUT_ERROR",
         success: false,
       });
     }
