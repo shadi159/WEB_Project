@@ -208,6 +208,7 @@ const MentorComponentCore = () => {
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [processedRequests, setProcessedRequests] = useState<Set<string>>(new Set());
   const [peerConnection, setPeerConnection] = useState<any>(null);
+  const [videoCallStatus, setVideoCallStatus] = useState<string>('');
 
   // Error tracking
   const [errors, setErrors] = useState<string[]>([]);
@@ -437,10 +438,21 @@ const MentorComponentCore = () => {
     }
   }, [activeFirebaseSessionPath, peerConnection, firebaseDb]);
 
-  // Video call functionality with enhanced error handling
+  // Video call functionality with enhanced error handling and state management
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
       console.log(`Starting video call as ${initiator ? 'initiator' : 'receiver'}`);
+      
+      // Clean up any existing peer connection first
+      if (peerConnection) {
+        console.log('Cleaning up existing peer connection');
+        try {
+          peerConnection.destroy();
+        } catch (err) {
+          console.warn('Error destroying existing peer:', err);
+        }
+        setPeerConnection(null);
+      }
       
       // Dynamic import SimplePeer to avoid SSR issues
       const SimplePeer = (await import('simple-peer')).default;
@@ -449,12 +461,19 @@ const MentorComponentCore = () => {
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 640, height: 480 }, 
-          audio: true 
+          video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 },
+            facingMode: 'user'
+          }, 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true
+          }
         });
       } catch (mediaError) {
         console.error('Media access error:', mediaError);
-        alert('Could not access camera/microphone. Please check permissions.');
+        alert('Could not access camera/microphone. Please check permissions and try again.');
         return;
       }
       
@@ -462,7 +481,7 @@ const MentorComponentCore = () => {
         localVideoRef.current.srcObject = stream;
       }
 
-      // Create peer with enhanced error handling
+      // Create peer with enhanced configuration
       const peer = new SimplePeer({ 
         initiator, 
         trickle: false, 
@@ -471,84 +490,204 @@ const MentorComponentCore = () => {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10
         }
       });
 
+      // Track peer connection state
+      let isConnected = false;
+      let isDestroyed = false;
+      
       // Enhanced error handling for peer events
       peer.on('error', (err) => {
         console.error('Peer connection error:', err);
-        if (!err.message.includes('message channel closed') && 
-            !err.message.includes('Extension context invalidated')) {
-          console.warn('WebRTC Error (non-critical):', err.message);
+        setVideoCallStatus(`Error: ${err.message}`);
+        
+        // Don't show alerts for certain expected errors
+        if (err.message.includes('message channel closed') || 
+            err.message.includes('Extension context invalidated') ||
+            err.message.includes('Connection failed') ||
+            err.message.includes('setLocalDescription') ||
+            err.message.includes('setRemoteDescription')) {
+          console.warn('WebRTC Error (recoverable):', err.message);
+          return;
+        }
+        
+        // Only show user-facing errors for critical issues
+        if (!isDestroyed) {
+          console.error('Critical WebRTC error:', err.message);
         }
       });
 
       peer.on('signal', async (data) => {
+        if (isDestroyed) return;
+        
+        setVideoCallStatus(`Signaling (${data.type || 'unknown'})...`);
+        
         try {
           const { ref, push, serverTimestamp } = await import('firebase/database');
-          push(ref(firebaseDb, `${sessionPath}/signals`), {
+          
+          // Add some metadata to help with debugging
+          const signalData = {
             from: myUserId,
             signal: JSON.stringify(data),
-            timestamp: serverTimestamp()
-          }).catch((err: any) => console.error('Signal send error:', err));
+            timestamp: serverTimestamp(),
+            type: data.type || 'unknown',
+            initiator: initiator
+          };
+          
+          await push(ref(firebaseDb, `${sessionPath}/signals`), signalData);
         } catch (err) {
           console.error('Signal creation error:', err);
+          setVideoCallStatus('Signal error');
         }
       });
 
       peer.on('stream', (remoteStream) => {
+        if (isDestroyed) return;
+        
         console.log('Received remote stream');
+        setVideoCallStatus('Stream received');
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
       });
 
       peer.on('connect', () => {
-        console.log('Peer connected');
+        if (isDestroyed) return;
+        
+        console.log('Peer connected successfully');
+        setVideoCallStatus('Connected');
+        isConnected = true;
         setIsInVideoCall(true);
       });
 
       peer.on('close', () => {
         console.log('Peer connection closed');
+        setVideoCallStatus('Disconnected');
+        isConnected = false;
         setIsInVideoCall(false);
+        
+        // Clean up video streams
+        if (remoteVideoRef.current?.srcObject) {
+          const stream = remoteVideoRef.current.srcObject as MediaStream;
+          stream.getTracks().forEach(track => track.stop());
+          remoteVideoRef.current.srcObject = null;
+        }
       });
 
+      // Set up peer connection initialization status
+      setVideoCallStatus('Initializing...');
+      
+      // Store peer connection
       setPeerConnection(peer);
 
-      // Listen for signals with error handling
+      // Listen for signals with enhanced error handling and state checking
       const { ref, onChildAdded } = await import('firebase/database');
       const signalsRef = ref(firebaseDb, `${sessionPath}/signals`);
+      
       const signalsUnsubscribe = onChildAdded(signalsRef, (snapshot) => {
+        if (isDestroyed) return;
+        
         try {
           const signalData = snapshot.val();
-          if (signalData && signalData.from !== myUserId) {
-            try {
-              const signal = JSON.parse(signalData.signal);
-              peer.signal(signal);
-            } catch (parseErr) {
-              console.error('Signal parse error:', parseErr);
+          if (!signalData || signalData.from === myUserId) return;
+          
+          try {
+            const signal = JSON.parse(signalData.signal);
+            
+            // Check if peer is in a valid state before signaling
+            if (peer.destroyed) {
+              console.warn('Peer is destroyed, ignoring signal');
+              return;
             }
+            
+            // Add a small delay for offer/answer signals to prevent race conditions
+            if (signal.type === 'offer' || signal.type === 'answer') {
+              setTimeout(() => {
+                if (!peer.destroyed && !isDestroyed) {
+                  peer.signal(signal);
+                }
+              }, 100);
+            } else {
+              // ICE candidates can be processed immediately
+              peer.signal(signal);
+            }
+            
+          } catch (parseErr) {
+            console.error('Signal parse error:', parseErr);
           }
         } catch (err) {
           console.error('Signal processing error:', err);
         }
       });
 
-      addCleanup(signalsUnsubscribe);
+      addCleanup(() => {
+        isDestroyed = true;
+        signalsUnsubscribe();
+        if (peer && !peer.destroyed) {
+          try {
+            peer.destroy();
+          } catch (err) {
+            console.warn('Error destroying peer during cleanup:', err);
+          }
+        }
+      });
+
+      // Set up a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (!isConnected && !isDestroyed) {
+          console.warn('Video call connection timeout');
+          try {
+            peer.destroy();
+          } catch (err) {
+            console.warn('Error destroying peer after timeout:', err);
+          }
+          setPeerConnection(null);
+        }
+      }, 30000); // 30 second timeout
+
+      // Clean up timeout when connection succeeds
+      peer.on('connect', () => {
+        clearTimeout(connectionTimeout);
+      });
+
+      addCleanup(() => {
+        clearTimeout(connectionTimeout);
+      });
 
     } catch (err: any) {
       console.error('Video call setup error:', err);
+      
+      // Clean up on error
+      if (peerConnection) {
+        try {
+          peerConnection.destroy();
+        } catch (destroyErr) {
+          console.warn('Error destroying peer after setup error:', destroyErr);
+        }
+        setPeerConnection(null);
+      }
+      
       if (!err.message.includes('message channel closed')) {
         alert('Failed to set up video call. Please try again.');
       }
     }
-  }, [myUserId, addCleanup, firebaseDb]);
+  }, [myUserId, addCleanup, firebaseDb, peerConnection]);
 
-  // Enhanced session setup with error handling
+  // Enhanced session setup with error handling and better state management
   const setupSession = useCallback(async (path: string, sessionType: string) => {
     console.log(`Setting up ${sessionType} session at ${path}`);
+    
+    // Don't setup if already active
+    if (activeFirebaseSessionPath === path) {
+      console.log('Session already active for this path');
+      return;
+    }
+    
     setChatMessages([]);
 
     try {
@@ -586,16 +725,21 @@ const MentorComponentCore = () => {
       addCleanup(messagesUnsubscribe);
       addCleanup(sessionUnsubscribe);
 
-      if (sessionType === 'video') {
+      // Only start video call if it's a video session and we don't already have a video call active
+      if (sessionType === 'video' && !isInVideoCall && !peerConnection) {
+        // Add a longer delay to ensure Firebase listeners are set up
         setTimeout(() => {
-          startVideoCall(myRole === 'mentor', path);
-        }, 1000);
+          // Double-check we still need to start the video call
+          if (activeFirebaseSessionPath === path && !peerConnection) {
+            startVideoCall(myRole === 'mentor', path);
+          }
+        }, 2000);
       }
 
     } catch (err) {
       console.error('Session setup error:', err);
     }
-  }, [myRole, addCleanup, startVideoCall, endSession, firebaseDb]);
+  }, [myRole, addCleanup, startVideoCall, endSession, firebaseDb, activeFirebaseSessionPath, isInVideoCall, peerConnection]);
 
   // Enhanced Firebase listeners with error handling
   useEffect(() => {
@@ -1155,9 +1299,20 @@ const MentorComponentCore = () => {
           </div>
 
           {/* Video Interface */}
-          {isInVideoCall && (
+          {(isInVideoCall || videoCallStatus) && (
             <div>
-              <h3 style={{ color: '#495057', marginBottom: '15px' }}>📹 Video Call</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <h3 style={{ color: '#495057', margin: 0 }}>📹 Video Call</h3>
+                {videoCallStatus && (
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: isInVideoCall ? '#28a745' : '#6c757d',
+                    fontWeight: 'bold'
+                  }}>
+                    Status: {videoCallStatus}
+                  </span>
+                )}
+              </div>
               <div style={{ 
                 display: 'grid', 
                 gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
@@ -1195,6 +1350,18 @@ const MentorComponentCore = () => {
                       border: '2px solid #28a745'
                     }} 
                   />
+                  {!isInVideoCall && videoCallStatus && (
+                    <div style={{ 
+                      marginTop: '10px', 
+                      fontSize: '12px', 
+                      color: '#6c757d',
+                      fontStyle: 'italic'
+                    }}>
+                      {videoCallStatus.includes('Error') ? 
+                        'Connection failed. Please try again.' : 
+                        'Connecting to peer...'}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
