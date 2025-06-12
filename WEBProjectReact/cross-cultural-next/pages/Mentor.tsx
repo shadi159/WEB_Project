@@ -3,6 +3,30 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, onChildAdded, push, set, serverTimestamp } from 'firebase/database';
 import SimplePeer from 'simple-peer';
 
+// Add error handling for browser extension issues
+const handleGlobalErrors = () => {
+  window.addEventListener('error', (e) => {
+    if (e.message.includes('message channel closed') || 
+        e.message.includes('Extension context invalidated') ||
+        e.message.includes('listener indicated an asynchronous response')) {
+      e.preventDefault();
+      return false;
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    if (e.reason?.message?.includes('message channel closed') ||
+        e.reason?.message?.includes('Extension context invalidated') ||
+        e.reason?.message?.includes('listener indicated an asynchronous response')) {
+      e.preventDefault();
+      return false;
+    }
+  });
+};
+
+// Call error handler immediately
+handleGlobalErrors();
+
 // Firebase config
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -59,11 +83,45 @@ const MentorComponent = () => {
   const [processedRequests, setProcessedRequests] = useState<Set<string>>(new Set());
   const [peerConnection, setPeerConnection] = useState<SimplePeer.Instance | null>(null);
 
+  // State for tracking suppressed errors
+  const [errors, setErrors] = useState<string[]>([]);
+
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const cleanupFunctions = useRef<(() => void)[]>([]);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Enhanced error handling on component mount
+  useEffect(() => {
+    const errorHandler = (e: ErrorEvent) => {
+      if (e.message.includes('message channel closed') || 
+          e.message.includes('Extension context invalidated') ||
+          e.message.includes('listener indicated an asynchronous response')) {
+        setErrors(prev => [...prev, e.message].slice(-5)); // Keep last 5 errors
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    const rejectionHandler = (e: PromiseRejectionEvent) => {
+      if (e.reason?.message?.includes('message channel closed') ||
+          e.reason?.message?.includes('Extension context invalidated') ||
+          e.reason?.message?.includes('listener indicated an asynchronous response')) {
+        setErrors(prev => [...prev, e.reason?.message || 'Promise rejection'].slice(-5));
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', errorHandler);
+    window.addEventListener('unhandledrejection', rejectionHandler);
+
+    return () => {
+      window.removeEventListener('error', errorHandler);
+      window.removeEventListener('unhandledrejection', rejectionHandler);
+    };
+  }, []);
 
   // Helper functions
   const addCleanup = useCallback((cleanup: () => void) => {
@@ -71,7 +129,7 @@ const MentorComponent = () => {
   }, []);
 
   const clearAllCleanup = useCallback(() => {
-    cleanupFunctions.current.forEach(cleanup => {
+    cleanupFunctions.current.forEach((cleanup: () => void) => {
       try {
         cleanup();
       } catch (error) {
@@ -178,49 +236,6 @@ const MentorComponent = () => {
     };
   }, [myUserId, myUserDetails, isInitialized, addCleanup]);
 
-  // Firebase listeners
-  useEffect(() => {
-    if (!isInitialized || !myUserId || !myRole) return;
-
-    const statusesRef = ref(firebaseDb, 'user_statuses');
-    const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
-    const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
-
-    // Online users listener
-    const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
-      setOnlineUserStatuses(snapshot.val() || {});
-    });
-
-    // Requests listener
-    const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
-      const requests = snapshot.val() || {};
-      const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
-      const pending = requestsArray.filter(req => req.status === 'pending' && !processedRequests.has(req.id));
-      setIncomingRequests(pending);
-    });
-
-    // Responses listener
-    const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
-      const response = snapshot.val();
-      if (response.type === 'session_accepted') {
-        setActiveFirebaseSessionPath(response.firebaseSessionPath);
-        setupSession(response.firebaseSessionPath, response.sessionType);
-      } else if (response.type === 'session_ended') {
-        endSession();
-      }
-    });
-
-    addCleanup(statusUnsubscribe);
-    addCleanup(requestsUnsubscribe);
-    addCleanup(responsesUnsubscribe);
-
-    return () => {
-      statusUnsubscribe();
-      requestsUnsubscribe();
-      responsesUnsubscribe();
-    };
-  }, [isInitialized, myUserId, myRole, processedRequests, addCleanup]);
-
   // Search functionality
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -248,43 +263,77 @@ const MentorComponent = () => {
     };
   }, [searchQuery]);
 
-  // Session setup
-  const setupSession = useCallback((path: string, sessionType: string) => {
-    setChatMessages([]);
-
-    const messagesRef = ref(firebaseDb, `${path}/messages`);
-    const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
-      const message = snapshot.val();
-      if (message) {
-        setChatMessages(prev => [...prev, message]);
+  // Enhanced end session with better cleanup
+  const endSession = useCallback(() => {
+    console.log('Ending session...');
+    
+    try {
+      if (activeFirebaseSessionPath) {
+        set(ref(firebaseDb, `${activeFirebaseSessionPath}/status`), 'ended')
+          .catch((err: any) => console.error('Error setting session status:', err));
+        setActiveFirebaseSessionPath(null);
       }
-    });
-
-    const sessionRef = ref(firebaseDb, path);
-    const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
-      const sessionData = snapshot.val();
-      if (sessionData?.status === 'ended') {
-        endSession();
+      
+      setChatMessages([]);
+      setIsInVideoCall(false);
+      
+      // Enhanced peer connection cleanup
+      if (peerConnection) {
+        try {
+          peerConnection.destroy();
+        } catch (err) {
+          console.warn('Peer destruction error (non-critical):', err);
+        }
+        setPeerConnection(null);
       }
-    });
 
-    addCleanup(messagesUnsubscribe);
-    addCleanup(sessionUnsubscribe);
+      // Enhanced video stream cleanup
+      [localVideoRef, remoteVideoRef].forEach(videoRef => {
+        if (videoRef.current?.srcObject) {
+          try {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => {
+              try {
+                track.stop();
+              } catch (err) {
+                console.warn('Track stop error (non-critical):', err);
+              }
+            });
+            videoRef.current.srcObject = null;
+          } catch (err) {
+            console.warn('Video cleanup error (non-critical):', err);
+          }
+        }
+      });
 
-    if (sessionType === 'video') {
-      startVideoCall(myRole === 'mentor', path);
+    } catch (err) {
+      console.error('Session cleanup error:', err);
     }
-  }, [myRole, addCleanup]);
+  }, [activeFirebaseSessionPath, peerConnection]);
 
-  // Video call functionality
+  // Video call functionality with enhanced error handling
   const startVideoCall = useCallback(async (initiator: boolean, sessionPath: string) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      console.log(`Starting video call as ${initiator ? 'initiator' : 'receiver'}`);
+      
+      // Request media with error handling
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 640, height: 480 }, 
+          audio: true 
+        });
+      } catch (mediaError) {
+        console.error('Media access error:', mediaError);
+        alert('Could not access camera/microphone. Please check permissions.');
+        return;
+      }
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
+      // Create peer with enhanced error handling
       const peer = new SimplePeer({ 
         initiator, 
         trickle: false, 
@@ -292,73 +341,204 @@ const MentorComponent = () => {
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'stun:stun1.l.google.com:19302' }
           ]
         }
       });
 
+      // Enhanced error handling for peer events
+      peer.on('error', (err) => {
+        console.error('Peer connection error:', err);
+        if (!err.message.includes('message channel closed') && 
+            !err.message.includes('Extension context invalidated')) {
+          console.warn('WebRTC Error (non-critical):', err.message);
+        }
+      });
+
       peer.on('signal', (data) => {
-        push(ref(firebaseDb, `${sessionPath}/signals`), {
-          from: myUserId,
-          signal: JSON.stringify(data),
-          timestamp: serverTimestamp()
-        });
+        try {
+          push(ref(firebaseDb, `${sessionPath}/signals`), {
+            from: myUserId,
+            signal: JSON.stringify(data),
+            timestamp: serverTimestamp()
+          }).catch((err: any) => console.error('Signal send error:', err));
+        } catch (err) {
+          console.error('Signal creation error:', err);
+        }
       });
 
       peer.on('stream', (remoteStream) => {
+        console.log('Received remote stream');
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
       });
 
-      peer.on('connect', () => setIsInVideoCall(true));
-      peer.on('close', () => setIsInVideoCall(false));
+      peer.on('connect', () => {
+        console.log('Peer connected');
+        setIsInVideoCall(true);
+      });
+
+      peer.on('close', () => {
+        console.log('Peer connection closed');
+        setIsInVideoCall(false);
+      });
 
       setPeerConnection(peer);
 
+      // Listen for signals with error handling
       const signalsRef = ref(firebaseDb, `${sessionPath}/signals`);
       const signalsUnsubscribe = onChildAdded(signalsRef, (snapshot) => {
-        const signalData = snapshot.val();
-        if (signalData && signalData.from !== myUserId) {
-          try {
-            peer.signal(JSON.parse(signalData.signal));
-          } catch (err) {
-            console.error('Signal parse error:', err);
+        try {
+          const signalData = snapshot.val();
+          if (signalData && signalData.from !== myUserId) {
+            try {
+              const signal = JSON.parse(signalData.signal);
+              peer.signal(signal);
+            } catch (parseErr) {
+              console.error('Signal parse error:', parseErr);
+            }
           }
+        } catch (err) {
+          console.error('Signal processing error:', err);
         }
       });
 
       addCleanup(signalsUnsubscribe);
 
-    } catch (err) {
-      console.error('Video call error:', err);
-      alert('Failed to access camera/microphone');
+    } catch (err: any) {
+      console.error('Video call setup error:', err);
+      if (!err.message.includes('message channel closed')) {
+        alert('Failed to set up video call. Please try again.');
+      }
     }
   }, [myUserId, addCleanup]);
 
-  // End session
-  const endSession = useCallback(() => {
-    if (activeFirebaseSessionPath) {
-      set(ref(firebaseDb, `${activeFirebaseSessionPath}/status`), 'ended');
-      setActiveFirebaseSessionPath(null);
-    }
+  // Enhanced session setup with error handling
+  const setupSession = useCallback((path: string, sessionType: string) => {
+    console.log(`Setting up ${sessionType} session at ${path}`);
     setChatMessages([]);
-    setIsInVideoCall(false);
-    
-    if (peerConnection) {
-      peerConnection.destroy();
-      setPeerConnection(null);
-    }
 
-    // Stop video streams
-    [localVideoRef, remoteVideoRef].forEach(videoRef => {
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
+    try {
+      const messagesRef = ref(firebaseDb, `${path}/messages`);
+      const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
+        try {
+          const message = snapshot.val();
+          if (message) {
+            setChatMessages(prev => [...prev, message]);
+          }
+        } catch (err) {
+          console.error('Message processing error:', err);
+        }
+      }, (error) => {
+        console.error('Messages listener error:', error);
+      });
+
+      const sessionRef = ref(firebaseDb, path);
+      const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
+        try {
+          const sessionData = snapshot.val();
+          if (sessionData?.status === 'ended') {
+            console.log('Session ended by remote party');
+            endSession();
+          }
+        } catch (err) {
+          console.error('Session status error:', err);
+        }
+      }, (error) => {
+        console.error('Session listener error:', error);
+      });
+
+      addCleanup(messagesUnsubscribe);
+      addCleanup(sessionUnsubscribe);
+
+      if (sessionType === 'video') {
+        setTimeout(() => {
+          startVideoCall(myRole === 'mentor', path);
+        }, 1000);
       }
-    });
-  }, [activeFirebaseSessionPath, peerConnection]);
+
+    } catch (err) {
+      console.error('Session setup error:', err);
+    }
+  }, [myRole, addCleanup, startVideoCall, endSession]);
+
+  // Enhanced Firebase listeners with error handling
+  useEffect(() => {
+    if (!isInitialized || !myUserId || !myRole) return;
+
+    console.log('Setting up Firebase listeners...');
+
+    try {
+      const statusesRef = ref(firebaseDb, 'user_statuses');
+      const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
+      const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
+
+      // Online users listener with error handling
+      const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
+        try {
+          setOnlineUserStatuses(snapshot.val() || {});
+        } catch (err) {
+          console.error('Status update error:', err);
+        }
+      }, (error) => {
+        console.error('Status listener error:', error);
+      });
+
+      // Requests listener with error handling
+      const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
+        try {
+          const requests = snapshot.val() || {};
+          const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
+          const pending = requestsArray.filter(req => req.status === 'pending' && !processedRequests.has(req.id));
+          setIncomingRequests(pending);
+        } catch (err) {
+          console.error('Requests processing error:', err);
+        }
+      }, (error) => {
+        console.error('Requests listener error:', error);
+      });
+
+      // Responses listener with error handling
+      const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
+        try {
+          const response = snapshot.val();
+          if (response) {
+            if (response.type === 'session_accepted') {
+              console.log('Session accepted:', response.firebaseSessionPath);
+              setActiveFirebaseSessionPath(response.firebaseSessionPath);
+              setupSession(response.firebaseSessionPath, response.sessionType);
+            } else if (response.type === 'session_ended') {
+              console.log('Session ended by remote party');
+              endSession();
+            }
+          }
+        } catch (err) {
+          console.error('Response processing error:', err);
+        }
+      }, (error) => {
+        console.error('Responses listener error:', error);
+      });
+
+      addCleanup(statusUnsubscribe);
+      addCleanup(requestsUnsubscribe);
+      addCleanup(responsesUnsubscribe);
+
+      return () => {
+        try {
+          statusUnsubscribe();
+          requestsUnsubscribe();
+          responsesUnsubscribe();
+        } catch (err) {
+          console.warn('Listener cleanup error (non-critical):', err);
+        }
+      };
+
+    } catch (err) {
+      console.error('Firebase listeners setup error:', err);
+    }
+  }, [isInitialized, myUserId, myRole, processedRequests, addCleanup, setupSession, endSession]);
 
   // Helper functions
   const getUserDisplayName = useCallback((userId: string): string => {
@@ -476,6 +656,30 @@ const MentorComponent = () => {
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <h1>Mentor/User Dashboard</h1>
+      
+      {/* Error troubleshooter notice */}
+      {errors.length > 0 && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '10px', 
+          backgroundColor: '#fff3cd', 
+          border: '1px solid #ffc107', 
+          borderRadius: '5px',
+          fontSize: '14px'
+        }}>
+          <strong>ℹ️ Browser Extension Errors Detected</strong>
+          <p style={{ margin: '5px 0 0 0' }}>
+            {errors.length} non-critical errors have been suppressed. These are typically caused by browser extensions 
+            and don't affect the application functionality. 
+            <button 
+              onClick={() => setErrors([])}
+              style={{ marginLeft: '10px', padding: '2px 8px', fontSize: '12px' }}
+            >
+              Dismiss
+            </button>
+          </p>
+        </div>
+      )}
       
       {/* User Info */}
       <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
