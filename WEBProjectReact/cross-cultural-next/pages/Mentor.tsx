@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 
 // TypeScript interfaces
@@ -179,8 +179,8 @@ const MentorComponentInner = () => {
   return <MentorComponentCore />;
 };
 
-// Core component with all the logic
-const MentorComponentCore = () => {
+// Core component with all the logic - memoized to prevent unnecessary re-renders
+const MentorComponentCore = React.memo(() => {
   // Get Firebase instance from window
   const firebaseDb = (window as any).firebaseDb;
 
@@ -210,8 +210,22 @@ const MentorComponentCore = () => {
   const [peerConnection, setPeerConnection] = useState<any>(null);
   const [videoCallStatus, setVideoCallStatus] = useState<string>('');
 
-  // Error tracking
+  // Error tracking and performance monitoring
   const [errors, setErrors] = useState<string[]>([]);
+  const [renderCount, setRenderCount] = useState(0);
+  const [lastRenderTime, setLastRenderTime] = useState(Date.now());
+
+  // Monitor render frequency to detect excessive re-renders
+  useEffect(() => {
+    const now = Date.now();
+    setRenderCount(prev => prev + 1);
+    setLastRenderTime(now);
+    
+    // Log warning if rendering too frequently
+    if (renderCount > 0 && now - lastRenderTime < 100) {
+      console.warn(`Fast re-render detected (${now - lastRenderTime}ms since last render)`);
+    }
+  });
 
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -247,6 +261,31 @@ const MentorComponentCore = () => {
     });
     cleanupFunctions.current = [];
   }, []);
+
+  // Helper functions with proper memoization
+  const getUserDisplayName = useCallback((userId: string): string => {
+    const userDetails = userDetailsCache[userId];
+    return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
+  }, [userDetailsCache]);
+
+  // Memoized computed values to prevent re-renders
+  const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
+  
+  const onlineUsersList = useMemo(() => {
+    return Object.entries(onlineUserStatuses).map(([uid, data]) => ({
+      uid,
+      data,
+      displayName: data.displayName || getUserDisplayName(uid)
+    }));
+  }, [onlineUserStatuses, getUserDisplayName]);
+
+  // Memoized search results to prevent re-computation
+  const memoizedSearchResults = useMemo(() => {
+    return searchResults.map(user => ({
+      ...user,
+      key: user.id // Add stable key for React
+    }));
+  }, [searchResults]);
 
   // User initialization
   useEffect(() => {
@@ -308,9 +347,13 @@ const MentorComponentCore = () => {
     initUser();
   }, []);
 
-  // Firebase status management
+  // Firebase status management with throttling
   useEffect(() => {
     if (!myUserId || !myUserDetails || !isInitialized || !firebaseDb) return;
+
+    console.log('Setting up Firebase status management...');
+    let isActive = true;
+    let lastStatusUpdate = 0;
 
     const setupFirebaseStatus = async () => {
       try {
@@ -319,26 +362,57 @@ const MentorComponentCore = () => {
         const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
         const connectedRef = ref(firebaseDb, '.info/connected');
 
-        const unsubscribe = onValue(connectedRef, (snapshot) => {
-          if (snapshot.val()) {
-            set(userStatusRef, {
-              status: 'online',
+        const updateStatus = async (status: string) => {
+          const now = Date.now();
+          // Throttle status updates to once per 2 seconds
+          if (now - lastStatusUpdate < 2000) return;
+          lastStatusUpdate = now;
+
+          if (!isActive) return;
+
+          try {
+            await set(userStatusRef, {
+              status,
               role: myUserDetails.role,
               displayName: myUserDetails.displayName,
               firstName: myUserDetails.firstName,
               lastName: myUserDetails.lastName,
               timestamp: serverTimestamp(),
-            }).then(() => setIsOnline(true)).catch(() => setIsOnline(false));
+            });
+            
+            if (status === 'online') {
+              setIsOnline(true);
+            } else {
+              setIsOnline(false);
+            }
+          } catch (err) {
+            console.error('Status update error:', err);
+          }
+        };
+
+        let connectionTimeout: NodeJS.Timeout | null = null;
+        const unsubscribe = onValue(connectedRef, (snapshot) => {
+          if (!isActive) return;
+
+          // Clear any existing timeout
+          if (connectionTimeout) clearTimeout(connectionTimeout);
+
+          if (snapshot.val()) {
+            // Debounce online status updates
+            connectionTimeout = setTimeout(() => {
+              if (isActive) updateStatus('online');
+            }, 1000);
           } else {
             setIsOnline(false);
           }
         });
 
-        addCleanup(unsubscribe);
-
-        // Cleanup on unmount
-        return () => {
+        addCleanup(() => {
+          isActive = false;
+          if (connectionTimeout) clearTimeout(connectionTimeout);
           unsubscribe();
+          
+          // Set offline status on cleanup
           if (myUserId && myUserDetails) {
             set(ref(firebaseDb, `user_statuses/${myUserId}`), {
               status: 'offline',
@@ -349,13 +423,18 @@ const MentorComponentCore = () => {
               timestamp: serverTimestamp(),
             }).catch(console.error);
           }
-        };
+        });
+
       } catch (error) {
         console.error('Firebase status setup error:', error);
       }
     };
 
     setupFirebaseStatus();
+
+    return () => {
+      isActive = false;
+    };
   }, [myUserId, myUserDetails, isInitialized, firebaseDb, addCleanup]);
 
   // Search functionality with debouncing
@@ -403,6 +482,7 @@ const MentorComponentCore = () => {
       
       setChatMessages([]);
       setIsInVideoCall(false);
+      setVideoCallStatus('');
       
       // Enhanced peer connection cleanup
       if (peerConnection) {
@@ -501,6 +581,9 @@ const MentorComponentCore = () => {
       let isConnected = false;
       let isDestroyed = false;
       
+      // Set up peer connection initialization status
+      setVideoCallStatus('Initializing...');
+      
       // Enhanced error handling for peer events
       peer.on('error', (err) => {
         console.error('Peer connection error:', err);
@@ -579,9 +662,6 @@ const MentorComponentCore = () => {
         }
       });
 
-      // Set up peer connection initialization status
-      setVideoCallStatus('Initializing...');
-      
       // Store peer connection
       setPeerConnection(peer);
 
@@ -688,17 +768,27 @@ const MentorComponentCore = () => {
       return;
     }
     
+    // Clear any existing session data
     setChatMessages([]);
+    setVideoCallStatus('');
 
     try {
       const { ref, onValue, onChildAdded } = await import('firebase/database');
       
       const messagesRef = ref(firebaseDb, `${path}/messages`);
+      let messageCount = 0;
+      
       const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
         try {
           const message = snapshot.val();
           if (message) {
-            setChatMessages(prev => [...prev, message]);
+            messageCount++;
+            // Throttle message updates to prevent excessive re-renders
+            setChatMessages(prev => {
+              const newMessages = [...prev, message];
+              // Limit to last 100 messages to prevent memory issues
+              return newMessages.slice(-100);
+            });
           }
         } catch (err) {
           console.error('Message processing error:', err);
@@ -741,11 +831,12 @@ const MentorComponentCore = () => {
     }
   }, [myRole, addCleanup, startVideoCall, endSession, firebaseDb, activeFirebaseSessionPath, isInVideoCall, peerConnection]);
 
-  // Enhanced Firebase listeners with error handling
+  // Enhanced Firebase listeners with error handling and optimization
   useEffect(() => {
     if (!isInitialized || !myUserId || !myRole || !firebaseDb) return;
 
     console.log('Setting up Firebase listeners...');
+    let isActive = true; // Flag to prevent setting state after cleanup
 
     const setupListeners = async () => {
       try {
@@ -755,55 +846,116 @@ const MentorComponentCore = () => {
         const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
         const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-        // Online users listener with error handling
+        // Throttle status updates to prevent excessive re-renders
+        let statusUpdateTimeout: NodeJS.Timeout | null = null;
         const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
+          if (!isActive) return;
+          
           try {
-            setOnlineUserStatuses(snapshot.val() || {});
+            const newStatuses = snapshot.val() || {};
+            
+            // Throttle updates to prevent rapid fire
+            if (statusUpdateTimeout) clearTimeout(statusUpdateTimeout);
+            statusUpdateTimeout = setTimeout(() => {
+              if (isActive) {
+                setOnlineUserStatuses((prevStatuses: any) => {
+                  // Only update if there's actually a change
+                  if (JSON.stringify(prevStatuses) !== JSON.stringify(newStatuses)) {
+                    return newStatuses;
+                  }
+                  return prevStatuses;
+                });
+              }
+            }, 500); // 500ms throttle
+            
           } catch (err) {
             console.error('Status update error:', err);
           }
         }, (error) => {
-          console.error('Status listener error:', error);
+          if (isActive) console.error('Status listener error:', error);
         });
 
-        // Requests listener with error handling
+        // Throttle request updates
+        let requestUpdateTimeout: NodeJS.Timeout | null = null;
         const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
+          if (!isActive) return;
+          
           try {
             const requests = snapshot.val() || {};
-            const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
-            const pending = requestsArray.filter(req => req.status === 'pending' && !processedRequests.has(req.id));
-            setIncomingRequests(pending);
+            
+            if (requestUpdateTimeout) clearTimeout(requestUpdateTimeout);
+            requestUpdateTimeout = setTimeout(() => {
+              if (isActive) {
+                const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
+                const pending = requestsArray.filter(req => req.status === 'pending');
+                
+                setIncomingRequests((prevRequests: any) => {
+                  // Only update if there's actually a change
+                  const prevIds = prevRequests.map((r: any) => r.id).sort();
+                  const newIds = pending.map(r => r.id).sort();
+                  if (JSON.stringify(prevIds) !== JSON.stringify(newIds)) {
+                    return pending.filter(req => !processedRequests.has(req.id));
+                  }
+                  return prevRequests;
+                });
+              }
+            }, 300); // 300ms throttle
+            
           } catch (err) {
             console.error('Requests processing error:', err);
           }
         }, (error) => {
-          console.error('Requests listener error:', error);
+          if (isActive) console.error('Requests listener error:', error);
         });
 
-        // Responses listener with error handling
+        // Use onChildAdded for responses to avoid re-processing old responses
+        let lastResponseTime = Date.now();
         const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
+          if (!isActive) return;
+          
           try {
             const response = snapshot.val();
-            if (response) {
-              if (response.type === 'session_accepted') {
-                console.log('Session accepted:', response.firebaseSessionPath);
-                setActiveFirebaseSessionPath(response.firebaseSessionPath);
-                setupSession(response.firebaseSessionPath, response.sessionType);
-              } else if (response.type === 'session_ended') {
-                console.log('Session ended by remote party');
-                endSession();
-              }
+            if (!response) return;
+            
+            // Only process responses that are newer than when we started listening
+            const responseTime = response.timestamp?.toMillis?.() || Date.now();
+            if (responseTime < lastResponseTime) return;
+            
+            console.log('Processing new response:', response.type);
+            
+            if (response.type === 'session_accepted') {
+              console.log('Session accepted:', response.firebaseSessionPath);
+              setActiveFirebaseSessionPath(response.firebaseSessionPath);
+              setupSession(response.firebaseSessionPath, response.sessionType);
+            } else if (response.type === 'session_ended') {
+              console.log('Session ended by remote party');
+              endSession();
             }
           } catch (err) {
             console.error('Response processing error:', err);
           }
         }, (error) => {
-          console.error('Responses listener error:', error);
+          if (isActive) console.error('Responses listener error:', error);
         });
 
-        addCleanup(statusUnsubscribe);
-        addCleanup(requestsUnsubscribe);
-        addCleanup(responsesUnsubscribe);
+        // Store cleanup functions
+        const cleanup = () => {
+          isActive = false;
+          if (statusUpdateTimeout) clearTimeout(statusUpdateTimeout);
+          if (requestUpdateTimeout) clearTimeout(requestUpdateTimeout);
+          
+          try {
+            statusUnsubscribe();
+            requestsUnsubscribe();
+            responsesUnsubscribe();
+          } catch (err) {
+            console.warn('Listener cleanup error (non-critical):', err);
+          }
+        };
+
+        addCleanup(cleanup);
+
+        return cleanup;
 
       } catch (err) {
         console.error('Firebase listeners setup error:', err);
@@ -811,13 +963,11 @@ const MentorComponentCore = () => {
     };
 
     setupListeners();
-  }, [isInitialized, myUserId, myRole, processedRequests, addCleanup, setupSession, endSession, firebaseDb]);
 
-  // Helper functions
-  const getUserDisplayName = useCallback((userId: string): string => {
-    const userDetails = userDetailsCache[userId];
-    return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
-  }, [userDetailsCache]);
+    return () => {
+      isActive = false;
+    };
+  }, [isInitialized, myUserId, myRole, firebaseDb, processedRequests, addCleanup, setupSession, endSession]);
 
   const handleSelectUser = useCallback((user: UserDetails) => {
     const input = document.getElementById('targetUserId') as HTMLInputElement;
@@ -853,7 +1003,7 @@ const MentorComponentCore = () => {
     try {
       const { ref, set, push, serverTimestamp } = await import('firebase/database');
       
-      setProcessedRequests(prev => new Set([...prev, requestId]));
+      setProcessedRequests((prev: any) => new Set([...prev, requestId]));
       
       const sessionId = `${myUserId}_${fromMentorId}_${Date.now()}`;
       const firebaseSessionPath = `live_sessions/${sessionId}`;
@@ -882,7 +1032,7 @@ const MentorComponentCore = () => {
       ));
 
       await set(ref(firebaseDb, `user_notifications/${myUserId}/requests/${requestId}/status`), 'accepted');
-      setIncomingRequests(prev => prev.filter(r => r.id !== requestId));
+      setIncomingRequests((prev: any) => prev.filter((r: any) => r.id !== requestId));
 
     } catch (error) {
       alert('Failed to accept request');
@@ -936,6 +1086,25 @@ const MentorComponentCore = () => {
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
       <h1 style={{ color: '#333', marginBottom: '30px' }}>Mentor/User Dashboard</h1>
+      
+      {/* Debug info for development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '10px', 
+          backgroundColor: '#e9ecef', 
+          border: '1px solid #ced4da', 
+          borderRadius: '5px',
+          fontSize: '12px',
+          fontFamily: 'monospace'
+        }}>
+          <strong>🔧 Debug Info:</strong>
+          <div>Renders: {renderCount} | Last: {new Date(lastRenderTime).toLocaleTimeString()}</div>
+          <div>Session: {activeFirebaseSessionPath ? '✅ Active' : '❌ None'}</div>
+          <div>Video: {isInVideoCall ? '✅ Connected' : '❌ Disconnected'} | Status: {videoCallStatus}</div>
+          <div>Online Users: {onlineUsersCount} | Firebase: {isOnline ? '🟢' : '🔴'}</div>
+        </div>
+      )}
       
       {/* Error notification */}
       {errors.length > 0 && (
@@ -1029,7 +1198,7 @@ const MentorComponentCore = () => {
               onBlur={(e) => e.target.style.borderColor = '#ced4da'}
             />
             
-            {showSearchResults && searchResults.length > 0 && (
+            {showSearchResults && memoizedSearchResults.length > 0 && (
               <div style={{
                 position: 'absolute', 
                 top: '100%', 
@@ -1045,9 +1214,9 @@ const MentorComponentCore = () => {
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                 marginTop: '4px'
               }}>
-                {searchResults.map((user) => (
+                {memoizedSearchResults.map((user) => (
                   <div
-                    key={user.id} 
+                    key={user.key} 
                     onClick={() => handleSelectUser(user)}
                     style={{ 
                       padding: '12px', 
@@ -1383,9 +1552,9 @@ const MentorComponentCore = () => {
           alignItems: 'center',
           gap: '10px'
         }}>
-          👥 Online Users ({Object.keys(onlineUserStatuses).length})
+          👥 Online Users ({onlineUsersCount})
         </h3>
-        {Object.keys(onlineUserStatuses).length === 0 ? (
+        {onlineUsersCount === 0 ? (
           <div style={{ 
             textAlign: 'center', 
             color: '#6c757d', 
@@ -1396,7 +1565,7 @@ const MentorComponentCore = () => {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '12px' }}>
-            {Object.entries(onlineUserStatuses).map(([uid, data]) => (
+            {onlineUsersList.map(({ uid, data, displayName }) => (
               <div key={uid} style={{ 
                 padding: '15px', 
                 backgroundColor: '#f8f9fa', 
@@ -1410,13 +1579,13 @@ const MentorComponentCore = () => {
               }}>
                 <div>
                   <div style={{ fontWeight: 'bold', color: '#495057' }}>
-                    {data.displayName || getUserDisplayName(uid)}
+                    {displayName}
                   </div>
                   <div style={{ fontSize: '14px', color: '#6c757d' }}>
-                    {data.status === 'online' ? '🟢' : '🔴'} {data.status} • {data.role}
+                    {(data as any).status === 'online' ? '🟢' : '🔴'} {(data as any).status} • {(data as any).role}
                   </div>
                 </div>
-                {myRole === 'mentor' && data.status === 'online' && uid !== myUserId && data.role === 'user' && (
+                {myRole === 'mentor' && (data as any).status === 'online' && uid !== myUserId && (data as any).role === 'user' && (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
                       onClick={() => sendRequest(uid, 'chat')}
@@ -1457,6 +1626,6 @@ const MentorComponentCore = () => {
       </div>
     </div>
   );
-};
+});
 
 export default MentorComponent;
