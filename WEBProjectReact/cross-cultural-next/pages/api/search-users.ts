@@ -1,37 +1,19 @@
-// pages/api/search-users.ts - API to search users by name
+// pages/api/search-users.ts - Updated to work with your existing User model
 import type { NextApiRequest, NextApiResponse } from 'next';
 import mongoose from 'mongoose';
+import { connectToDatabase } from '../../utils/db';
+import User from '../../models/User';
 
-// User model (adjust this to match your actual User model)
-const userSchema = new mongoose.Schema({
-  firstName: String,
-  lastName: String,
-  role: String,
-  email: String,
-  // Add other fields as needed
-});
-
-const User = mongoose.models.User || mongoose.model('User', userSchema);
-
-const connectMongo = async () => {
-  if (mongoose.connections[0].readyState) return;
-  
-  try {
-    await mongoose.connect(process.env.MONGODB_URI!, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    });
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
-  }
-};
+// Rate limiting
+const searchCounts = new Map<string, { count: number; resetTime: number }>();
+const MAX_SEARCHES_PER_MINUTE = 20;
 
 // Mock user data for testing
 const getMockUsers = (query: string, role?: string) => {
   const mockUsers = [
     {
       id: 'mentor_123',
+      _id: 'mentor_123',
       displayName: 'Dr. Sarah Johnson',
       firstName: 'Dr. Sarah',
       lastName: 'Johnson',
@@ -40,6 +22,7 @@ const getMockUsers = (query: string, role?: string) => {
     },
     {
       id: 'user_456',
+      _id: 'user_456',
       displayName: 'John Smith',
       firstName: 'John',
       lastName: 'Smith',
@@ -48,6 +31,7 @@ const getMockUsers = (query: string, role?: string) => {
     },
     {
       id: 'mentor_one',
+      _id: 'mentor_one',
       displayName: 'mentor one',
       firstName: 'mentor',
       lastName: 'one',
@@ -56,6 +40,7 @@ const getMockUsers = (query: string, role?: string) => {
     },
     {
       id: 'user_alex',
+      _id: 'user_alex',
       displayName: 'Alex Wilson',
       firstName: 'Alex',
       lastName: 'Wilson',
@@ -64,11 +49,30 @@ const getMockUsers = (query: string, role?: string) => {
     },
     {
       id: 'mentor_emma',
+      _id: 'mentor_emma',
       displayName: 'Dr. Emma Davis',
       firstName: 'Dr. Emma',
       lastName: 'Davis',
       role: 'mentor',
       email: 'emma.davis@example.com'
+    },
+    {
+      id: 'user_maria',
+      _id: 'user_maria',
+      displayName: 'Maria Garcia',
+      firstName: 'Maria',
+      lastName: 'Garcia',
+      role: 'user',
+      email: 'maria.garcia@example.com'
+    },
+    {
+      id: 'mentor_david',
+      _id: 'mentor_david',
+      displayName: 'David Chen',
+      firstName: 'David',
+      lastName: 'Chen',
+      role: 'mentor',
+      email: 'david.chen@example.com'
     }
   ];
 
@@ -81,11 +85,27 @@ const getMockUsers = (query: string, role?: string) => {
   );
 
   // Filter by role if specified
-  if (role) {
+  if (role && ['user', 'mentor'].includes(role)) {
     filteredUsers = filteredUsers.filter(user => user.role === role);
   }
 
   return filteredUsers;
+};
+
+// Rate limiting check
+const checkSearchRateLimit = (clientId: string): boolean => {
+  const now = Date.now();
+  const clientData = searchCounts.get(clientId) || { count: 0, resetTime: now + 60000 };
+  
+  if (now > clientData.resetTime) {
+    clientData.count = 1;
+    clientData.resetTime = now + 60000;
+  } else {
+    clientData.count++;
+  }
+  
+  searchCounts.set(clientId, clientData);
+  return clientData.count <= MAX_SEARCHES_PER_MINUTE;
 };
 
 export default async function handler(
@@ -96,10 +116,34 @@ export default async function handler(
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
+  // Rate limiting
+  const clientId = (req.headers['x-forwarded-for'] as string) || 
+                   (req.socket.remoteAddress) || 'unknown';
+  
+  if (!checkSearchRateLimit(clientId)) {
+    return res.status(429).json({ 
+      message: 'Too many search requests. Please slow down.',
+      retryAfter: 60 
+    });
+  }
+
   const { query, role } = req.query;
 
   if (!query || typeof query !== 'string') {
     return res.status(400).json({ message: 'Search query is required' });
+  }
+
+  if (query.length < 2) {
+    return res.status(400).json({ message: 'Query must be at least 2 characters long' });
+  }
+
+  if (query.length > 100) {
+    return res.status(400).json({ message: 'Query too long' });
+  }
+
+  // Validate role parameter
+  if (role && typeof role === 'string' && !['user', 'mentor'].includes(role)) {
+    return res.status(400).json({ message: 'Role must be either "user" or "mentor"' });
   }
 
   try {
@@ -111,7 +155,7 @@ export default async function handler(
 
     // Try to search real MongoDB users if available
     try {
-      await connectMongo();
+      await connectToDatabase();
 
       // Build search criteria
       const searchCriteria: any = {
@@ -131,19 +175,23 @@ export default async function handler(
       const users = await User.find(
         searchCriteria,
         { firstName: 1, lastName: 1, role: 1, email: 1, _id: 1 }
-      ).limit(20); // Limit results to prevent large responses
+      )
+      .limit(20) // Limit results to prevent large responses
+      .lean(); // Use lean() for better performance
 
       // Format real users and add to results
       const realUsers = users.map((user: any) => ({
         id: user._id.toString(),
-        displayName: `${user.firstName || 'Unknown'} ${user.lastName || ''}`.trim(),
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
+        _id: user._id.toString(),
+        displayName: `${user.firstName || 'Unknown'} ${user.lastName || 'User'}`.trim(),
+        firstName: user.firstName || 'Unknown',
+        lastName: user.lastName || 'User',
+        role: user.role || 'user',
         email: user.email
       }));
 
       formattedUsers = [...formattedUsers, ...realUsers];
+      console.log(`Found ${users.length} real users and ${mockResults.length} mock users`);
 
     } catch (dbError) {
       console.log('MongoDB search failed, using mock data only:', dbError);
@@ -155,13 +203,45 @@ export default async function handler(
       index === self.findIndex(u => u.id === user.id)
     );
 
-    res.status(200).json({ users: uniqueUsers });
+    // Sort results by relevance (exact matches first, then partial matches)
+    const sortedUsers = uniqueUsers.sort((a, b) => {
+      const aExact = a.firstName.toLowerCase() === query.toLowerCase() || 
+                     a.lastName.toLowerCase() === query.toLowerCase();
+      const bExact = b.firstName.toLowerCase() === query.toLowerCase() || 
+                     b.lastName.toLowerCase() === query.toLowerCase();
+      
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      
+      // Then sort by display name
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    // Set cache headers for search results
+    res.setHeader('Cache-Control', 'public, max-age=60'); // 1 minute
+
+    res.status(200).json({ 
+      users: sortedUsers,
+      success: true,
+      query: query,
+      role: role || null,
+      count: sortedUsers.length
+    });
 
   } catch (error) {
     console.error('Error searching users:', error);
     
     // Fallback to mock data if everything fails
     const mockResults = getMockUsers(query, role as string);
-    res.status(200).json({ users: mockResults });
+    
+    res.status(200).json({ 
+      users: mockResults,
+      success: true,
+      query: query,
+      role: role || null,
+      count: mockResults.length,
+      fallback: true,
+      message: 'Using mock data due to database error'
+    });
   }
 }

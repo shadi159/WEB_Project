@@ -1,36 +1,8 @@
-// pages/api/get-user-details.ts - Optimized API with better caching and rate limiting
+// pages/api/get-user-details.ts - Updated to work with your existing User model
 import type { NextApiRequest, NextApiResponse } from 'next';
 import mongoose from 'mongoose';
-
-// User model (adjust this to match your actual User model)
-const userSchema = new mongoose.Schema({
-  firstName: String,
-  lastName: String,
-  role: String,
-  email: String,
-  // Add other fields as needed
-});
-
-const User = mongoose.models.User || mongoose.model('User', userSchema);
-
-const connectMongo = async () => {
-  if (mongoose.connections[0].readyState) return;
-  
-  try {
-    await mongoose.connect(process.env.MONGODB_URI!, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    });
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
-  }
-};
-
-// Helper function to check if a string is a valid ObjectId
-const isValidObjectId = (id: string): boolean => {
-  return mongoose.Types.ObjectId.isValid(id) && id.length === 24;
-};
+import { connectToDatabase } from '../../utils/db';
+import User from '../../models/User';
 
 // In-memory cache to prevent repeated database queries
 const userCache = new Map<string, any>();
@@ -41,7 +13,12 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const requestCounts = new Map<string, { count: number; resetTime: number }>();
 const MAX_REQUESTS_PER_MINUTE = 30;
 
-// Mock user data for test users
+// Helper function to check if a string is a valid ObjectId
+const isValidObjectId = (id: string): boolean => {
+  return mongoose.Types.ObjectId.isValid(id) && id.length === 24;
+};
+
+// Mock user data for testing
 const getMockUserData = (userId: string) => {
   const mockUsers: { [key: string]: any } = {
     'mentor_123': {
@@ -49,21 +26,24 @@ const getMockUserData = (userId: string) => {
       firstName: 'Dr. Sarah',
       lastName: 'Johnson',
       role: 'mentor',
-      id: 'mentor_123'
+      id: 'mentor_123',
+      email: 'sarah.johnson@example.com'
     },
     'user_456': {
       displayName: 'John Smith',
       firstName: 'John',
       lastName: 'Smith',
       role: 'user',
-      id: 'user_456'
+      id: 'user_456',
+      email: 'john.smith@example.com'
     },
     'mentor_one': {
       displayName: 'mentor one',
       firstName: 'mentor',
       lastName: 'one',
       role: 'mentor',
-      id: 'mentor_one'
+      id: 'mentor_one',
+      email: 'mentor.one@example.com'
     }
   };
 
@@ -74,7 +54,8 @@ const getMockUserData = (userId: string) => {
       firstName: 'Test',
       lastName: 'User',
       role: 'user',
-      id: userId
+      id: userId,
+      email: `${userId}@example.com`
     };
   }
 
@@ -84,7 +65,8 @@ const getMockUserData = (userId: string) => {
       firstName: 'Test',
       lastName: 'Mentor',
       role: 'mentor',
-      id: userId
+      id: userId,
+      email: `${userId}@example.com`
     };
   }
 
@@ -99,7 +81,6 @@ const checkRateLimit = (clientId: string): boolean => {
   const clientData = requestCounts.get(clientId) || { count: 0, resetTime: now + 60000 };
   
   if (now > clientData.resetTime) {
-    // Reset the counter
     clientData.count = 1;
     clientData.resetTime = now + 60000;
   } else {
@@ -107,7 +88,6 @@ const checkRateLimit = (clientId: string): boolean => {
   }
   
   requestCounts.set(clientId, clientData);
-  
   return clientData.count <= MAX_REQUESTS_PER_MINUTE;
 };
 
@@ -120,10 +100,11 @@ export default async function handler(
   }
 
   // Get client identifier for rate limiting
-  const clientId = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+  const clientId = (req.headers['x-forwarded-for'] as string) || 
+                   (req.socket.remoteAddress) || 'unknown';
   
   // Check rate limit
-  if (!checkRateLimit(clientId as string)) {
+  if (!checkRateLimit(clientId)) {
     return res.status(429).json({ 
       message: 'Too many requests. Please slow down.',
       retryAfter: 60 
@@ -137,8 +118,13 @@ export default async function handler(
   }
 
   try {
-    // Handle single ID or array of IDs
-    const idsArray = Array.isArray(userIds) ? userIds : [userIds];
+    // Handle single ID or comma-separated IDs
+    const idsString = Array.isArray(userIds) ? userIds[0] : userIds;
+    const idsArray = idsString.split(',').map(id => id.trim()).filter(id => id);
+    
+    if (idsArray.length === 0) {
+      return res.status(400).json({ message: 'No valid user IDs provided' });
+    }
     
     if (idsArray.length > 50) {
       return res.status(400).json({ message: 'Maximum 50 user IDs allowed per request' });
@@ -177,7 +163,7 @@ export default async function handler(
       console.log(`Fetching ${validObjectIds.length} users from MongoDB`);
       
       try {
-        await connectMongo();
+        await connectToDatabase();
         
         const users = await User.find(
           { _id: { $in: validObjectIds } },
@@ -188,12 +174,13 @@ export default async function handler(
         const now = Date.now();
         users.forEach((user: any) => {
           const userData = {
-            displayName: `${user.firstName || 'Unknown'} ${user.lastName || ''}`.trim(),
-            firstName: user.firstName,
-            lastName: user.lastName,
-            role: user.role,
+            displayName: `${user.firstName || 'Unknown'} ${user.lastName || 'User'}`.trim(),
+            firstName: user.firstName || 'Unknown',
+            lastName: user.lastName || 'User',
+            role: user.role || 'user',
             email: user.email,
-            id: user._id.toString()
+            id: user._id.toString(),
+            _id: user._id.toString()
           };
           
           userMap[user._id.toString()] = userData;
@@ -238,14 +225,19 @@ export default async function handler(
     
     // Set cache headers
     res.setHeader('Cache-Control', 'public, max-age=300'); // 5 minutes
-    res.status(200).json({ users: userMap });
+    res.status(200).json({ 
+      users: userMap,
+      success: true,
+      count: Object.keys(userMap).length
+    });
 
   } catch (error) {
     console.error('Error fetching user details:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     res.status(500).json({ 
       message: 'Failed to fetch user details',
-      error: errorMessage 
+      error: errorMessage,
+      success: false
     });
   }
 }

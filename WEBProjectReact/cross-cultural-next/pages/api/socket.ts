@@ -1,4 +1,4 @@
-// pages/api/socket.ts - Fixed version with better error handling and logging
+// pages/api/socket.ts - Improved version with better error handling and cleanup
 import { Server } from 'socket.io';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import type { Server as NetServer } from 'http';
@@ -8,10 +8,14 @@ import * as admin from 'firebase-admin';
 import LiveUser from '../../models/LiveUser';
 import ActiveSession from '../../models/ActiveSession';
 
-// Mongoose connection with better error handling
+// Global connection state to prevent multiple connections
+let mongoConnected = false;
+let firebaseAdminApp: admin.app.App | null = null;
+
+// Mongoose connection with singleton pattern
 const connectMongo = async () => {
-  if (mongoose.connections[0].readyState) {
-    console.log('MongoDB already connected');
+  if (mongoConnected && mongoose.connections[0].readyState === 1) {
+    console.log('✅ MongoDB already connected');
     return;
   }
   
@@ -20,17 +24,23 @@ const connectMongo = async () => {
       throw new Error('MONGODB_URI environment variable is not set');
     }
     
+    // Close existing connections if any
+    if (mongoose.connections[0].readyState !== 0) {
+      await mongoose.disconnect();
+    }
+    
     await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000, // 10 seconds
-      socketTimeoutMS: 45000, // 45 seconds
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
     });
+    
+    mongoConnected = true;
     console.log('✅ MongoDB connected successfully');
     
-    // Test the connection by performing a simple operation
-    await LiveUser.countDocuments();
-    console.log('✅ MongoDB operations working');
-    
   } catch (error) {
+    mongoConnected = false;
     console.error('❌ MongoDB connection error:', error);
     throw error;
   }
@@ -48,55 +58,46 @@ interface NextApiResponseWithSocket extends NextApiResponse {
   socket: SocketWithIO;
 }
 
-// Firebase Admin initialization with better error handling
-let firebaseAdminApp: admin.app.App | null = null;
-
+// Firebase Admin initialization with singleton pattern
 const getFirebaseAdmin = () => {
-  if (!firebaseAdminApp) {
-    try {
-      const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-      const databaseURL = process.env.FIREBASE_DATABASE_URL;
-      
-      if (!serviceAccountKey) {
-        console.error('❌ FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set');
-        return null;
-      }
-      
-      if (!databaseURL) {
-        console.error('❌ FIREBASE_DATABASE_URL environment variable is not set');
-        return null;
-      }
+  if (firebaseAdminApp) {
+    return firebaseAdminApp;
+  }
 
-      let serviceAccount;
-      try {
-        serviceAccount = JSON.parse(serviceAccountKey);
-      } catch (parseError) {
-        console.error('❌ Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:', parseError);
-        return null;
-      }
-
-      if (!serviceAccount || Object.keys(serviceAccount).length === 0) {
-        console.error('❌ FIREBASE_SERVICE_ACCOUNT_KEY is empty or malformed');
-        return null;
-      }
-
-      // Check if Firebase app already exists
-      try {
-        firebaseAdminApp = admin.app();
-        console.log('✅ Using existing Firebase Admin app');
-      } catch {
-        firebaseAdminApp = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          databaseURL: databaseURL,
-        });
-        console.log('✅ Firebase Admin SDK initialized successfully');
-      }
-      
-    } catch (error) {
-      console.error('❌ Error initializing Firebase Admin SDK:', error);
+  try {
+    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    const databaseURL = process.env.FIREBASE_DATABASE_URL;
+    
+    if (!serviceAccountKey || !databaseURL) {
+      console.error('❌ Firebase environment variables not set');
       return null;
     }
+
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(serviceAccountKey);
+    } catch (parseError) {
+      console.error('❌ Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:', parseError);
+      return null;
+    }
+
+    // Check if Firebase app already exists
+    try {
+      firebaseAdminApp = admin.app();
+      console.log('✅ Using existing Firebase Admin app');
+    } catch {
+      firebaseAdminApp = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: databaseURL,
+      });
+      console.log('✅ Firebase Admin SDK initialized');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error initializing Firebase Admin SDK:', error);
+    return null;
   }
+
   return firebaseAdminApp;
 };
 
@@ -105,39 +106,35 @@ export default async function SocketHandler(
   res: NextApiResponseWithSocket
 ) {
   try {
-    // Connect to MongoDB first
-    await connectMongo();
-    console.log('✅ MongoDB connection established');
+    // Only allow POST requests to prevent GET request loops
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
 
-    // Initialize Firebase Admin
+    // Connect to services
+    await connectMongo();
     const firebaseApp = getFirebaseAdmin();
+    
     if (!firebaseApp) {
-      console.error('❌ Firebase Admin SDK initialization failed');
       res.status(500).json({ error: 'Firebase Admin SDK not configured' });
       return;
     }
 
     const db = firebaseApp.database();
-    console.log('✅ Firebase Admin SDK ready');
 
+    // Initialize Socket.IO server only once
     if (!res.socket.server.io) {
-      console.log('🚀 Initializing new Socket.IO server...');
+      console.log('🚀 Initializing Socket.IO server...');
       
       const io = new Server(res.socket.server, {
         path: '/api/socket',
         cors: {
-          origin: (origin, callback) => {
-            // Allow same-origin requests and Vercel deployments
-            if (!origin || 
-                origin.endsWith('.vercel.app') || 
-                origin === 'http://localhost:3000' ||
-                origin === 'https://localhost:3000') {
-              callback(null, true);
-            } else {
-              console.warn(`🚫 Blocked by CORS: ${origin}`);
-              callback(new Error(`Blocked by CORS: ${origin}`));
-            }
-          },
+          origin: [
+            'http://localhost:3000',
+            'https://localhost:3000',
+            /\.vercel\.app$/
+          ],
           methods: ['GET', 'POST'],
           credentials: true,
         },
@@ -145,57 +142,65 @@ export default async function SocketHandler(
         pingTimeout: 60000,
         pingInterval: 25000,
         connectTimeout: 45000,
+        allowEIO3: true,
       });
 
       res.socket.server.io = io;
 
+      // Socket connection handler
       io.on('connection', (socket) => {
         console.log(`✅ Client connected: ${socket.id}`);
         
+        // Send initial connection confirmation
         socket.emit('connected', {
           message: 'Successfully connected to server',
           clientId: socket.id,
           timestamp: new Date().toISOString(),
-          totalClients: io.engine.clientsCount,
         });
 
         // Handle user registration
         socket.on('register', async ({ userId, role }) => {
           try {
-            console.log(`📝 Registering user: ${userId} as ${role} (Socket: ${socket.id})`);
+            if (!userId || !role || !['user', 'mentor'].includes(role)) {
+              socket.emit('server-error', { 
+                message: 'Invalid userId or role provided' 
+              });
+              return;
+            }
+
+            console.log(`📝 Registering: ${userId} as ${role}`);
             
             socket.data.userId = userId;
             socket.data.role = role;
 
-            // Update or create LiveUser record
-            const liveUser = await LiveUser.findOneAndUpdate(
-              { userId: userId },
+            // Update LiveUser record
+            await LiveUser.findOneAndUpdate(
+              { userId },
               {
                 socketIoId: socket.id,
-                role: role,
+                role,
                 status: 'online',
                 lastSeen: new Date(),
               },
               { upsert: true, new: true }
             );
 
-            console.log(`✅ LiveUser record updated:`, liveUser);
-
-            // Update Firebase user status
+            // Update Firebase status
             await db.ref(`user_statuses/${userId}`).set({
               status: 'online',
               socketIoId: socket.id,
-              role: role,
+              role,
               timestamp: admin.database.ServerValue.TIMESTAMP,
             });
 
-            console.log(`✅ Firebase user status updated for ${userId}`);
+            socket.emit('registration-success', { userId, role });
+            console.log(`✅ User ${userId} registered successfully`);
 
           } catch (error) {
-            console.error('❌ Error registering client:', error);
+            console.error('❌ Registration error:', error);
             socket.emit('server-error', { 
-              message: 'Failed to register user. Please try again.',
-              error: error instanceof Error ? error.message : 'Unknown error occurred'
+              message: 'Registration failed',
+              error: error instanceof Error ? error.message : 'Unknown error'
             });
           }
         });
@@ -203,144 +208,157 @@ export default async function SocketHandler(
         // Handle mentor session requests
         socket.on('mentor-request-session', async ({ targetUserId, sessionType }) => {
           try {
-            console.log(`📞 Session request: ${socket.data.userId} -> ${targetUserId} (${sessionType})`);
-
             if (socket.data.role !== 'mentor') {
-              socket.emit('server-error', { message: 'Only mentors can initiate sessions.' });
+              socket.emit('server-error', { message: 'Only mentors can initiate sessions' });
               return;
             }
+
+            if (!targetUserId || !sessionType || !['chat', 'video'].includes(sessionType)) {
+              socket.emit('server-error', { message: 'Invalid target user or session type' });
+              return;
+            }
+
+            console.log(`📞 Session request: ${socket.data.userId} -> ${targetUserId} (${sessionType})`);
 
             // Find target user
             const targetUser = await LiveUser.findOne({ 
               userId: targetUserId, 
-              role: 'user', 
               status: 'online' 
             });
 
             if (!targetUser) {
-              socket.emit('server-error', { message: 'Target user not found or not online.' });
-              console.warn(`❌ Target user ${targetUserId} not found or offline`);
+              socket.emit('server-error', { message: 'Target user not found or offline' });
               return;
             }
 
-            // Check if target user is already in a session
+            // Check for existing active sessions
             const existingSession = await ActiveSession.findOne({
               $or: [
                 { userUserId: targetUserId, status: 'active' },
-                { mentorUserId: targetUserId, status: 'active' }
+                { mentorUserId: targetUserId, status: 'active' },
+                { userUserId: socket.data.userId, status: 'active' },
+                { mentorUserId: socket.data.userId, status: 'active' }
               ]
             });
 
             if (existingSession) {
-              socket.emit('server-error', { message: 'Target user is already in an active session.' });
+              socket.emit('server-error', { message: 'User already in active session' });
               return;
             }
 
-            // Send notification via Firebase
-            const notificationPath = `user_notifications/${targetUserId}/requests`;
-            await db.ref(notificationPath).push({
+            // Send request via Firebase
+            const requestRef = db.ref(`user_notifications/${targetUserId}/requests`).push();
+            await requestRef.set({
               type: 'session_request',
               fromMentorId: socket.data.userId,
               mentorSocketIoId: socket.id,
-              sessionType: sessionType,
+              sessionType,
               timestamp: admin.database.ServerValue.TIMESTAMP,
               status: 'pending'
             });
 
-            console.log(`✅ Session request sent to ${targetUserId} via Firebase`);
+            socket.emit('request-sent', { targetUserId, sessionType });
+            console.log(`✅ Request sent to ${targetUserId}`);
 
           } catch (error) {
             console.error('❌ Error in mentor-request-session:', error);
             socket.emit('server-error', { 
-              message: 'Internal server error during session request.',
-              error: error instanceof Error ? error.message : 'Unknown error occurred'
+              message: 'Failed to send session request',
+              error: error instanceof Error ? error.message : 'Unknown error'
             });
           }
         });
 
         // Handle user accepting sessions
-        socket.on('user-accept-session', async ({ mentorSocketIoId, sessionType, requestId }) => {
+        socket.on('user-accept-session', async ({ mentorUserId, sessionType, requestId }) => {
           try {
-            console.log(`✅ Session accepted by ${socket.data.userId} from mentor ${mentorSocketIoId}`);
-
             if (socket.data.role !== 'user') {
-              socket.emit('server-error', { message: 'Only users can accept sessions.' });
+              socket.emit('server-error', { message: 'Only users can accept sessions' });
               return;
             }
 
-            // Find mentor and user
-            const mentorLiveUser = await LiveUser.findOne({ 
-              socketIoId: mentorSocketIoId, 
-              status: 'online' 
-            });
-            const userLiveUser = await LiveUser.findOne({ 
-              socketIoId: socket.id, 
-              status: 'online' 
-            });
+            console.log(`✅ Session accepted by ${socket.data.userId}`);
 
-            if (!mentorLiveUser || !userLiveUser) {
-              socket.emit('server-error', { message: 'Mentor or user not found or offline.' });
+            // Find both users
+            const [mentorUser, user] = await Promise.all([
+              LiveUser.findOne({ userId: mentorUserId, status: 'online' }),
+              LiveUser.findOne({ userId: socket.data.userId, status: 'online' })
+            ]);
+
+            if (!mentorUser || !user) {
+              socket.emit('server-error', { message: 'Mentor or user not found' });
               return;
             }
 
-            // Generate session details
-            const sessionId = `${userLiveUser.userId}_${mentorLiveUser.userId}_${Date.now()}`;
+            // Generate session
+            const sessionId = `${user.userId}_${mentorUser.userId}_${Date.now()}`;
             const firebaseSessionPath = `live_sessions/${sessionId}`;
 
-            // Create active session record
-            const activeSession = await ActiveSession.create({
-              sessionId: sessionId,
-              mentorUserId: mentorLiveUser.userId,
-              mentorSocketIoId: mentorLiveUser.socketIoId,
-              userUserId: userLiveUser.userId,
-              userSocketIoId: userLiveUser.socketIoId,
-              sessionType: sessionType,
-              firebaseSessionPath: firebaseSessionPath,
+            // Create active session
+            await ActiveSession.create({
+              sessionId,
+              mentorUserId: mentorUser.userId,
+              mentorSocketIoId: mentorUser.socketIoId,
+              userUserId: user.userId,
+              userSocketIoId: user.socketIoId,
+              sessionType,
+              firebaseSessionPath,
               status: 'active',
             });
 
-            console.log(`✅ Active session created:`, activeSession);
-
-            // Update request status in Firebase
-            if (requestId) {
-              await db.ref(`user_notifications/${userLiveUser.userId}/requests/${requestId}`).update({ 
-                status: 'accepted' 
-              });
-            }
-
-            // Initialize session in Firebase RTDB
+            // Initialize Firebase session
             await db.ref(firebaseSessionPath).set({
-              mentorId: mentorLiveUser.userId,
-              userId: userLiveUser.userId,
-              sessionType: sessionType,
+              mentorId: mentorUser.userId,
+              userId: user.userId,
+              sessionType,
               status: 'active',
               createdAt: admin.database.ServerValue.TIMESTAMP,
             });
 
-            // Notify both parties via Firebase
-            await db.ref(`user_notifications/${userLiveUser.userId}/responses`).push({
-              type: 'session_accepted',
-              peerUserId: mentorLiveUser.userId,
-              sessionType: sessionType,
-              firebaseSessionPath: firebaseSessionPath,
-              timestamp: admin.database.ServerValue.TIMESTAMP,
-            });
+            // Update request status
+            if (requestId) {
+              await db.ref(`user_notifications/${user.userId}/requests/${requestId}`).update({ 
+                status: 'accepted' 
+              });
+            }
 
-            await db.ref(`user_notifications/${mentorLiveUser.userId}/responses`).push({
-              type: 'session_accepted',
-              peerUserId: userLiveUser.userId,
-              sessionType: sessionType,
-              firebaseSessionPath: firebaseSessionPath,
-              timestamp: admin.database.ServerValue.TIMESTAMP,
-            });
+            // Notify both parties
+            const notifications = [
+              {
+                path: `user_notifications/${user.userId}/responses`,
+                data: {
+                  type: 'session_accepted',
+                  peerUserId: mentorUser.userId,
+                  sessionType,
+                  firebaseSessionPath,
+                  timestamp: admin.database.ServerValue.TIMESTAMP,
+                }
+              },
+              {
+                path: `user_notifications/${mentorUser.userId}/responses`,
+                data: {
+                  type: 'session_accepted',
+                  peerUserId: user.userId,
+                  sessionType,
+                  firebaseSessionPath,
+                  timestamp: admin.database.ServerValue.TIMESTAMP,
+                }
+              }
+            ];
 
-            console.log(`✅ Session notifications sent to both parties`);
+            await Promise.all(
+              notifications.map(notif => 
+                db.ref(notif.path).push(notif.data)
+              )
+            );
+
+            console.log(`✅ Session ${sessionId} created successfully`);
 
           } catch (error) {
-            console.error('❌ Error in user-accept-session:', error);
+            console.error('❌ Error accepting session:', error);
             socket.emit('server-error', { 
-              message: 'Internal server error during session acceptance.',
-              error: error instanceof Error ? error.message : 'Unknown error occurred'
+              message: 'Failed to accept session',
+              error: error instanceof Error ? error.message : 'Unknown error'
             });
           }
         });
@@ -348,9 +366,8 @@ export default async function SocketHandler(
         // Handle session ending
         socket.on('end-session', async () => {
           try {
-            console.log(`🔚 Session end requested by ${socket.data.userId}`);
+            console.log(`🔚 Ending session for ${socket.data.userId}`);
 
-            // Find and update active session
             const session = await ActiveSession.findOneAndUpdate(
               {
                 $or: [
@@ -367,21 +384,19 @@ export default async function SocketHandler(
             );
 
             if (session) {
-              console.log(`✅ Session ended: ${session.sessionId}`);
-
-              // Update session status in Firebase
+              // Update Firebase
               await db.ref(session.firebaseSessionPath).update({
                 status: 'ended',
                 endedBy: socket.data.userId,
                 endTime: admin.database.ServerValue.TIMESTAMP,
               });
 
-              // Notify other party
-              const otherPeerUserId = session.userUserId === socket.data.userId 
+              // Notify peer
+              const peerUserId = session.userUserId === socket.data.userId 
                 ? session.mentorUserId 
                 : session.userUserId;
 
-              await db.ref(`user_notifications/${otherPeerUserId}/responses`).push({
+              await db.ref(`user_notifications/${peerUserId}/responses`).push({
                 type: 'session_ended',
                 peerUserId: socket.data.userId,
                 sessionId: session.sessionId,
@@ -389,21 +404,17 @@ export default async function SocketHandler(
                 reason: 'ended_by_peer'
               });
 
-              console.log(`✅ Session end notification sent to ${otherPeerUserId}`);
+              socket.emit('session-ended', { sessionId: session.sessionId });
+              console.log(`✅ Session ${session.sessionId} ended`);
             }
 
           } catch (error) {
             console.error('❌ Error ending session:', error);
             socket.emit('server-error', { 
-              message: 'Internal server error during session end.',
-              error: error instanceof Error ? error.message : 'Unknown error occurred'
+              message: 'Failed to end session',
+              error: error instanceof Error ? error.message : 'Unknown error'
             });
           }
-        });
-
-        // Handle ping-pong for connection health
-        socket.on('ping', () => {
-          socket.emit('pong');
         });
 
         // Handle disconnection
@@ -412,100 +423,77 @@ export default async function SocketHandler(
           
           try {
             if (socket.data.userId) {
-              // Update LiveUser status
-              const liveUser = await LiveUser.findOneAndUpdate(
-                { socketIoId: socket.id },
-                { 
-                  status: 'offline', 
-                  lastSeen: new Date() 
-                },
-                { new: true }
-              );
-
-              if (liveUser) {
-                console.log(`✅ User ${liveUser.userId} marked offline`);
-
-                // Update Firebase user status
-                await db.ref(`user_statuses/${liveUser.userId}`).update({
+              // Update user status
+              await Promise.all([
+                LiveUser.findOneAndUpdate(
+                  { socketIoId: socket.id },
+                  { status: 'offline', lastSeen: new Date() }
+                ),
+                db.ref(`user_statuses/${socket.data.userId}`).update({
                   status: 'offline',
                   timestamp: admin.database.ServerValue.TIMESTAMP,
+                })
+              ]);
+
+              // End any active sessions
+              const session = await ActiveSession.findOneAndUpdate(
+                {
+                  $or: [
+                    { userSocketIoId: socket.id },
+                    { mentorSocketIoId: socket.id }
+                  ],
+                  status: 'active'
+                },
+                { 
+                  status: 'ended', 
+                  endTime: new Date() 
+                }
+              );
+
+              if (session) {
+                await db.ref(session.firebaseSessionPath).update({
+                  status: 'ended',
+                  endedBy: socket.data.userId,
+                  endTime: admin.database.ServerValue.TIMESTAMP,
+                  reason: 'peer_disconnected',
                 });
 
-                // Check for active sessions and end them
-                const session = await ActiveSession.findOneAndUpdate(
-                  {
-                    $or: [
-                      { userSocketIoId: socket.id },
-                      { mentorSocketIoId: socket.id }
-                    ],
-                    status: 'active'
-                  },
-                  { 
-                    status: 'ended', 
-                    endTime: new Date() 
-                  },
-                  { new: true }
-                );
+                const peerUserId = session.userUserId === socket.data.userId 
+                  ? session.mentorUserId 
+                  : session.userUserId;
 
-                if (session) {
-                  console.log(`✅ Session ${session.sessionId} ended due to disconnect`);
-
-                  // Update session status in Firebase
-                  await db.ref(session.firebaseSessionPath).update({
-                    status: 'ended',
-                    endedBy: liveUser.userId,
-                    endTime: admin.database.ServerValue.TIMESTAMP,
-                    reason: 'peer_disconnected',
-                  });
-
-                  // Notify other party
-                  const otherPeerUserId = session.userUserId === liveUser.userId 
-                    ? session.mentorUserId 
-                    : session.userUserId;
-
-                  await db.ref(`user_notifications/${otherPeerUserId}/responses`).push({
-                    type: 'session_ended',
-                    peerUserId: liveUser.userId,
-                    sessionId: session.sessionId,
-                    reason: 'peer_disconnected',
-                    timestamp: admin.database.ServerValue.TIMESTAMP,
-                  });
-
-                  console.log(`✅ Disconnect notification sent to ${otherPeerUserId}`);
-                }
+                await db.ref(`user_notifications/${peerUserId}/responses`).push({
+                  type: 'session_ended',
+                  peerUserId: socket.data.userId,
+                  sessionId: session.sessionId,
+                  reason: 'peer_disconnected',
+                  timestamp: admin.database.ServerValue.TIMESTAMP,
+                });
               }
             }
           } catch (error) {
-            console.error('❌ Error handling disconnect:', error);
+            console.error('❌ Disconnect cleanup error:', error);
           }
         });
 
-        // Handle socket errors
-        socket.on('error', (error: Error) => {
-          console.error(`❌ Socket error for client ${socket.id}:`, error);
-          socket.emit('server-error', {
-            message: 'Socket connection error',
-            error: error.message,
-            timestamp: new Date().toISOString(),
-          });
+        // Health check
+        socket.on('ping', () => {
+          socket.emit('pong');
         });
       });
 
-      console.log('✅ Socket.IO server initialized successfully');
-    } else {
-      console.log('♻️ Socket.IO server already running');
+      console.log('✅ Socket.IO server initialized');
     }
+
+    res.status(200).json({ message: 'Socket.IO server running' });
 
   } catch (error) {
     console.error('❌ Socket handler error:', error);
     res.status(500).json({ 
       error: 'Socket server initialization failed',
-      message: error instanceof Error ? error.message : 'Unknown error occurred'
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
-    return;
   }
-
-  res.end();
 }
 
 export const config = {
