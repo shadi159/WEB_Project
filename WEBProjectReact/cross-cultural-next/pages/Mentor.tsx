@@ -966,68 +966,6 @@ const MentorComponent = () => {
           </ul>
         )}
       </div>
-
-      {/* Test Users Helper */}
-      <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ffc107', borderRadius: '5px', backgroundColor: '#fff3cd' }}>
-        <h3>Testing Helper:</h3>
-        <p>To test the system with named users:</p>
-        <button 
-          onClick={() => {
-            const mentor = { 
-              _id: 'mentor_123', 
-              role: 'mentor',
-              firstName: 'Dr. Sarah',
-              lastName: 'Johnson'
-            };
-            localStorage.setItem('user', JSON.stringify(mentor));
-            window.location.reload();
-          }}
-          style={{ padding: '5px 10px', marginRight: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '3px' }}
-        >
-          Load as Dr. Sarah Johnson (Mentor)
-        </button>
-        <button 
-          onClick={() => {
-            const user = { 
-              _id: 'user_456', 
-              role: 'user',
-              firstName: 'John',
-              lastName: 'Smith'
-            };
-            localStorage.setItem('user', JSON.stringify(user));
-            window.location.reload();
-          }}
-          style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px' }}
-        >
-          Load as John Smith (User)
-        </button>
-        
-        {/* Debug Section */}
-        <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '3px' }}>
-          <h4>Debug Info:</h4>
-          <p><strong>User ID:</strong> {myUserId}</p>
-          <p><strong>Role:</strong> {myRole}</p>
-          <p><strong>Display Name:</strong> {myUserDetails?.displayName}</p>
-          <p><strong>Processed Requests:</strong> {processedRequests.size}</p>
-          <p><strong>Incoming Requests Count:</strong> {incomingRequests.length}</p>
-          <button 
-            onClick={() => {
-              setIncomingRequests([]);
-              setProcessedRequests(new Set());
-              console.log('Cleared all requests');
-            }}
-            style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', fontSize: '12px' }}
-          >
-            Clear All Requests
-          </button>
-        </div>
-        
-        <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
-          <p><strong>For real MongoDB users:</strong> Enter the ObjectId in the User ID field above.</p>
-          <p>The system will automatically fetch and display the user's first name and role.</p>
-          <p><strong>Note:</strong> If you see duplicate requests, click "Clear All Requests" above.</p>
-        </div>
-      </div>
     </div>
   );
 };
