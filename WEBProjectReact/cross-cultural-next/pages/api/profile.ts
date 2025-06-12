@@ -1,4 +1,4 @@
-// pages/api/profile.ts - SAFE VERSION that never touches password field
+// pages/api/profile.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import jwt from 'jsonwebtoken';
 import { connectToDatabase } from '../../utils/db';
@@ -10,8 +10,6 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  console.log(`🔄 Profile API called: ${req.method}`);
-  
   // 1) Authenticate
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -34,90 +32,40 @@ export default async function handler(
     return res.status(500).json({ message: 'Database connection failed' });
   }
 
-  // 3) Handle GET
+  // 3) Handle GET / PUT
   if (req.method === 'GET') {
-    try {
-      console.log(`🔍 Fetching user profile for: ${userId}`);
-      const dbUser = await User.findById(userId).select('-password');
-      if (!dbUser) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-      console.log(`✅ Profile fetched successfully for: ${dbUser.email}`);
-      return res.status(200).json({ user: dbUser });
-    } catch (err: any) {
-      console.error('❌ Profile fetch error:', err);
-      return res.status(500).json({ message: 'Failed to fetch profile' });
+    const dbUser = await User.findById(userId).select('-password');
+    if (!dbUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
+    return res.status(200).json({ user: dbUser });
   }
 
-  // 4) Handle PUT (Profile Update)
   if (req.method === 'PUT') {
-    try {
-      console.log(`💾 Updating profile for user: ${userId}`);
-      console.log(`📝 Update payload:`, req.body);
+  const { password, ...safeUpdates } = req.body;
 
-      // 🚨 CRITICAL: Explicitly exclude password and sensitive fields
-      const { 
-        password, 
-        _id, 
-        __v, 
-        createdAt, 
-        updatedAt,
-        ...safeUpdates 
-      } = req.body;
-
-      // 🔒 Double-check: Remove any password-related fields that might sneak in
-      const sanitizedUpdates = Object.fromEntries(
-        Object.entries(safeUpdates).filter(([key]) => 
-          !key.toLowerCase().includes('password') && 
-          !key.startsWith('_') &&
-          key !== 'role' // Prevent role escalation
-        )
-      );
-
-      console.log(`🧹 Sanitized updates:`, sanitizedUpdates);
-
-      // 🔥 CRITICAL: Use $set with explicit field targeting to avoid overwriting
-      const dbUser = await User.findByIdAndUpdate(
-        userId,
-        { 
-          $set: sanitizedUpdates  // Only update the specific fields
-        },
-        { 
-          new: true,
-          runValidators: true,
-          context: 'query'
-        }
-      ).select('-password'); // Always exclude password from response
-
-      if (!dbUser) {
-        return res.status(404).json({ message: 'User not found' });
+  try {
+    const dbUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: safeUpdates }, // Explicit $set operator
+      { 
+        new: true,
+        runValidators: true,
+        context: 'query'
       }
-
-      console.log(`✅ Profile updated successfully for: ${dbUser.email}`);
-
-      // 🔍 Debug: Check if user still has password in DB (without returning it)
-      const userWithPassword = await User.findById(userId).select('+password');
-      console.log(`🔐 Password still exists after update: ${!!userWithPassword?.password}`);
-      console.log(`🔐 Password length after update: ${userWithPassword?.password?.length || 0}`);
-
-      return res.status(200).json({ 
-        user: dbUser,
-        debug: {
-          passwordStillExists: !!userWithPassword?.password,
-          passwordLength: userWithPassword?.password?.length || 0
-        }
-      });
-    } catch (err: any) {
-      console.error('❌ Profile update error:', err);
-      return res.status(400).json({ 
-        message: err.message,
-        error: process.env.NODE_ENV === 'development' ? err.stack : undefined
-      });
+    ).select('-password');
+    
+    if (!dbUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
+    return res.status(200).json({ user: dbUser });
+  } catch (err: any) {
+    console.error('Update error:', err);
+    return res.status(400).json({ message: err.message });
   }
+}
 
-  // 5) Method not allowed
+  // 4) Method not allowed
   res.setHeader('Allow', ['GET', 'PUT']);
   return res.status(405).end(`Method ${req.method} Not Allowed`);
 }
