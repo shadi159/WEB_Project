@@ -1,59 +1,38 @@
-// pages/api/signin.ts - Fixed version with explicit password selection
+// pages/api/signin.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
-// Enhanced MongoDB connection with better error handling
-const connectMongo = async () => {
-  if (mongoose.connections[0].readyState) {
-    console.log("MongoDB already connected");
-    return;
-  }
-  
-  try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error("MONGODB_URI environment variable is not set");
-    }
-    
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-    });
-    console.log("✅ MongoDB connected successfully");
-    
-  } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
-    throw error;
-  }
-};
-
-// User Schema - Make sure this matches your actual User model
-const userSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, required: true, enum: ['user', 'mentor', 'admin'], default: 'user' },
-  country: String,
-  educationalLevel: String,
-  preferences: {
-    emailNotifications: { type: Boolean, default: true },
-    appNotifications: { type: Boolean, default: true },
-    resourceRecommendations: { type: Boolean, default: true },
-    peerConnections: { type: Boolean, default: true }
-  }
-}, { timestamps: true });
-
-const User = mongoose.models.User || mongoose.model('User', userSchema);
+import { connectToDatabase } from "../../utils/db";
+import User from "../../models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+
+// 🔧 Define the user type for lean queries
+interface UserDocument {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  role: string;
+  country?: string;
+  destination?: string;
+  phone?: string;
+  educationalLevel?: string;
+  fieldOfStudy?: string;
+  bio?: string;
+  preferences?: {
+    emailNotifications: boolean;
+    appNotifications: boolean;
+    resourceRecommendations: boolean;
+    peerConnections: boolean;
+  };
+}
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
   }
@@ -61,16 +40,14 @@ export default async function handler(
   console.log("📝 Signin attempt started");
 
   try {
-    // Connect to the database
     console.log("🔌 Connecting to MongoDB...");
-    await connectMongo();
+    await connectToDatabase();
     console.log("✅ MongoDB connection successful");
 
     const { email, password } = req.body;
     console.log("📧 Email received:", email ? "✅" : "❌");
     console.log("🔐 Password received:", password ? "✅" : "❌");
 
-    // Validate input
     if (!email || !password) {
       console.log("❌ Missing email or password");
       return res.status(400).json({
@@ -79,30 +56,16 @@ export default async function handler(
       });
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      console.log("❌ Invalid email format");
-      return res.status(400).json({
-        message: "Invalid email format",
-        success: false,
-      });
-    }
-
-    // Find the user in the database - EXPLICITLY SELECT PASSWORD
+    // 🔧 FIXED: Proper typing with lean query
     console.log("🔍 Searching for user with email:", email);
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
-    
-    // Alternative approach - explicitly include all fields
-    // const user = await User.findOne({ email: email.toLowerCase().trim() }, 
-    //   '+password firstName lastName email role country educationalLevel preferences'
-    // );
-    
+    const user = await User.findOne({ 
+      email: email.toLowerCase().trim() 
+    }).lean() as UserDocument | null;
+
     if (!user) {
       console.log("❌ User not found");
       return res.status(401).json({
         message: "Invalid credentials",
-        code: "INVALID_CREDENTIALS",
         success: false,
       });
     }
@@ -110,33 +73,37 @@ export default async function handler(
     console.log("✅ User found:", user._id);
     console.log("🔐 Password field exists:", !!user.password);
     console.log("🔐 Password length:", user.password ? user.password.length : 0);
+    console.log("🔐 Password starts with:", user.password ? user.password.substring(0, 7) : "NO PASSWORD");
 
-    // Verify password exists
+    // Check if password exists
     if (!user.password) {
       console.log("❌ User has no password set");
       return res.status(401).json({
         message: "Account setup incomplete. Please contact support.",
-        code: "NO_PASSWORD_SET", 
+        code: "NO_PASSWORD_SET",
         success: false,
       });
     }
 
-    // Compare the provided password with the stored hash
+    // 🔧 FIXED: Use bcrypt.compare directly with the stored hash
     console.log("🔐 Comparing passwords...");
+    console.log("🔐 Input password length:", password.length);
+    console.log("🔐 Stored hash length:", user.password.length);
+    
     const isMatch = await bcrypt.compare(password, user.password);
+    console.log("🔐 Password comparison result:", isMatch ? "✅ MATCH" : "❌ NO MATCH");
 
     if (!isMatch) {
       console.log("❌ Password mismatch");
       return res.status(401).json({
         message: "Invalid credentials",
-        code: "INVALID_CREDENTIALS",
         success: false,
       });
     }
 
     console.log("✅ Password verified");
 
-    // Create a JWT token
+    // Create JWT token
     console.log("🎫 Creating JWT token...");
     const token = jwt.sign(
       { 
@@ -145,12 +112,10 @@ export default async function handler(
         role: user.role,
       },
       JWT_SECRET,
-      { expiresIn: "7d" } // Token expires in 7 days
+      { expiresIn: "7d" }
     );
 
-    console.log("✅ JWT token created");
-
-    // Return user data and token (excluding password)
+    // Prepare user response (exclude password)
     const userData = {
       _id: user._id,
       firstName: user.firstName,
@@ -158,7 +123,11 @@ export default async function handler(
       email: user.email,
       role: user.role,
       country: user.country || null,
+      destination: user.destination || null,
+      phone: user.phone || null,
       educationalLevel: user.educationalLevel || null,
+      fieldOfStudy: user.fieldOfStudy || null,
+      bio: user.bio || null,
       preferences: user.preferences || {
         emailNotifications: true,
         appNotifications: true,
@@ -178,34 +147,6 @@ export default async function handler(
 
   } catch (error: any) {
     console.error("❌ Sign In Error:", error);
-    
-    // Handle specific MongoDB errors
-    if (error.name === 'MongoNetworkError') {
-      return res.status(503).json({
-        message: "Database connection failed",
-        error: "Unable to connect to database",
-        success: false,
-      });
-    }
-    
-    if (error.name === 'MongoServerSelectionError') {
-      return res.status(503).json({
-        message: "Database server unavailable",
-        error: "Database server selection failed",
-        success: false,
-      });
-    }
-
-    // Handle JWT errors
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(500).json({
-        message: "Token generation failed",
-        error: "JWT configuration error",
-        success: false,
-      });
-    }
-
-    // Generic error response
     return res.status(500).json({
       message: "Internal server error during sign in",
       error: process.env.NODE_ENV === 'development' ? error.message : "Unknown error occurred",
