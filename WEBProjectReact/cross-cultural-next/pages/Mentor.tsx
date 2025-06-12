@@ -63,12 +63,15 @@ const MentorComponent = () => {
   const [isInVideoCall, setIsInVideoCall] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [processedRequests, setProcessedRequests] = useState<Set<string>>(new Set());
+  const [userLoadError, setUserLoadError] = useState<string | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Fetch user details from your MongoDB
+  // Fetch user details from your MongoDB with better error handling
   const fetchUserDetails = useCallback(async (userIds: string[]) => {
+    if (userIds.length === 0) return {};
+    
     try {
       const response = await fetch(`/api/get-user-details?userIds=${userIds.join(',')}`);
       const data = await response.json();
@@ -83,7 +86,7 @@ const MentorComponent = () => {
     return {};
   }, []);
 
-  // Search for users by name
+  // Search for users by name with debouncing
   const searchUsers = useCallback(async (query: string) => {
     if (query.length < 2) {
       setSearchResults([]);
@@ -144,36 +147,93 @@ const MentorComponent = () => {
     setSearchQuery('');
   };
 
-  // Initialize user data from localStorage and fetch details
+  // Enhanced user initialization with better error handling
   useEffect(() => {
     const initializeUser = async () => {
       try {
+        setUserLoadError(null);
         const storedUser = localStorage.getItem("user");
+        
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           console.log('Loaded user from localStorage:', parsedUser);
-          const userId = parsedUser._id || parsedUser.id;
-          setMyUserId(userId);
-          setMyRole(parsedUser.role as 'user' | 'mentor');
           
-          // Fetch current user details from database
-          const userDetails = await fetchUserDetails([userId]);
-          if (userDetails[userId]) {
-            setMyUserDetails(userDetails[userId]);
+          const userId = parsedUser._id || parsedUser.id;
+          let userRole = parsedUser.role;
+          
+          // 🔧 CRITICAL: Validate and fix role
+          if (!userRole || (userRole !== 'user' && userRole !== 'mentor')) {
+            console.warn('Invalid or missing role, attempting to fetch from server...');
+            
+            try {
+              // Fetch current user data from server to get correct role
+              const response = await fetch('/api/profile', {
+                headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                },
+              });
+              
+              if (response.ok) {
+                const profileData = await response.json();
+                userRole = profileData.user?.role || 'user'; // Default to 'user' if still missing
+                
+                // Update localStorage with correct role
+                const updatedUser = { ...parsedUser, role: userRole };
+                localStorage.setItem("user", JSON.stringify(updatedUser));
+                
+                console.log('✅ Role updated from server:', userRole);
+              } else {
+                console.warn('Failed to fetch profile, defaulting role to user');
+                userRole = 'user'; // Safe default
+              }
+            } catch (fetchError) {
+              console.error('Error fetching user profile:', fetchError);
+              userRole = 'user'; // Safe default
+            }
           }
+          
+          setMyUserId(userId);
+          setMyRole(userRole as 'user' | 'mentor');
+          
+          // Create user details with validated role
+          const userDetails: UserDetails = {
+            displayName: `${parsedUser.firstName || 'Unknown'} ${parsedUser.lastName || 'User'}`.trim(),
+            firstName: parsedUser.firstName || 'Unknown',
+            lastName: parsedUser.lastName || 'User',
+            role: userRole,
+            id: userId,
+            email: parsedUser.email
+          };
+          
+          setMyUserDetails(userDetails);
+          setUserDetailsCache(prev => ({ ...prev, [userId]: userDetails }));
+          
+          // Fetch additional details from database if needed
+          try {
+            const serverDetails = await fetchUserDetails([userId]);
+            if (serverDetails[userId]) {
+              const updatedDetails = { ...userDetails, ...serverDetails[userId] };
+              setMyUserDetails(updatedDetails);
+              setUserDetailsCache(prev => ({ ...prev, [userId]: updatedDetails }));
+            }
+          } catch (detailsError) {
+            console.warn('Could not fetch additional user details:', detailsError);
+            // Continue with local data
+          }
+          
         } else {
-          // For testing purposes, create a mock user
+          // Create a mock user for testing if no stored user
           const mockUser = {
             _id: `user_${Math.random().toString(36).substr(2, 9)}`,
             role: 'user' as const,
             firstName: 'Test',
             lastName: 'User'
           };
+          
           localStorage.setItem("user", JSON.stringify(mockUser));
           setMyUserId(mockUser._id);
           setMyRole(mockUser.role);
           
-          // Set mock user details
           const mockDetails: UserDetails = {
             displayName: `${mockUser.firstName} ${mockUser.lastName}`,
             firstName: mockUser.firstName,
@@ -181,6 +241,7 @@ const MentorComponent = () => {
             role: mockUser.role,
             id: mockUser._id
           };
+          
           setMyUserDetails(mockDetails);
           setUserDetailsCache(prev => ({ ...prev, [mockUser._id]: mockDetails }));
           
@@ -188,33 +249,56 @@ const MentorComponent = () => {
         }
       } catch (error) {
         console.error('Error loading user data:', error);
+        setUserLoadError('Failed to load user data. Please refresh the page.');
       }
     };
 
     initializeUser();
   }, [fetchUserDetails]);
 
-  // Set user online status in Firebase with user details
+  // Set user online status in Firebase with validation
   useEffect(() => {
-    if (!myUserId || !myUserDetails) return;
+    if (!myUserId || !myUserDetails || !myRole) {
+      console.log('Skipping Firebase status update - missing required data:', {
+        myUserId: !!myUserId,
+        myUserDetails: !!myUserDetails,
+        myRole: !!myRole
+      });
+      return;
+    }
+
+    console.log('Setting up Firebase status for:', { myUserId, myRole, displayName: myUserDetails.displayName });
 
     const userStatusRef = ref(firebaseDb, `user_statuses/${myUserId}`);
     const connectedRef = ref(firebaseDb, '.info/connected');
 
     const handleConnectedChange = (snapshot: any) => {
       if (snapshot.val() === true) {
-        // User is online - include display name and role
-        set(userStatusRef, {
+        console.log('User connected to Firebase, setting status...');
+        
+        // 🔧 CRITICAL: Ensure all values are valid before setting
+        const statusData = {
           status: 'online',
-          role: myRole,
-          displayName: myUserDetails.displayName,
-          firstName: myUserDetails.firstName,
-          lastName: myUserDetails.lastName,
+          role: myRole, // This must not be null/undefined
+          displayName: myUserDetails.displayName || 'Unknown User',
+          firstName: myUserDetails.firstName || 'Unknown',
+          lastName: myUserDetails.lastName || 'User',
           timestamp: serverTimestamp(),
-        });
-
-        setIsOnline(true);
+        };
+        
+        console.log('Setting Firebase status with data:', statusData);
+        
+        set(userStatusRef, statusData)
+          .then(() => {
+            console.log('✅ Firebase status set successfully');
+            setIsOnline(true);
+          })
+          .catch((error) => {
+            console.error('❌ Failed to set Firebase status:', error);
+            setIsOnline(false);
+          });
       } else {
+        console.log('User disconnected from Firebase');
         setIsOnline(false);
       }
     };
@@ -224,15 +308,16 @@ const MentorComponent = () => {
     // Cleanup function
     return () => {
       unsubscribe();
-      if (myUserId) {
+      if (myUserId && myRole && myUserDetails) {
+        console.log('Cleaning up Firebase status on unmount');
         set(ref(firebaseDb, `user_statuses/${myUserId}`), {
           status: 'offline',
           role: myRole,
-          displayName: myUserDetails.displayName,
-          firstName: myUserDetails.firstName,
-          lastName: myUserDetails.lastName,
+          displayName: myUserDetails.displayName || 'Unknown User',
+          firstName: myUserDetails.firstName || 'Unknown',
+          lastName: myUserDetails.lastName || 'User',
           timestamp: serverTimestamp(),
-        });
+        }).catch(console.error);
       }
     };
   }, [myUserId, myRole, myUserDetails]);
@@ -382,9 +467,9 @@ const MentorComponent = () => {
     };
   }, [myUserId, myRole, peerConnection, startVideoCall, endCurrentSession]);
 
-  // Listen for user statuses and notifications with proper cleanup
+  // Listen for user statuses and notifications with rate limiting
   useEffect(() => {
-    if (!myUserId) return;
+    if (!myUserId || !myRole) return;
 
     console.log('Setting up Firebase listeners for user:', myUserId);
     
@@ -396,17 +481,40 @@ const MentorComponent = () => {
     setIncomingRequests([]);
     setProcessedRequests(new Set());
 
+    // Rate limit the fetchUserDetails calls
+    let fetchTimeout: NodeJS.Timeout | null = null;
+    const pendingUserIds = new Set<string>();
+
+    const debouncedFetchUserDetails = (userIds: string[]) => {
+      userIds.forEach(id => pendingUserIds.add(id));
+      
+      if (fetchTimeout) {
+        clearTimeout(fetchTimeout);
+      }
+      
+      fetchTimeout = setTimeout(async () => {
+        const idsToFetch = Array.from(pendingUserIds);
+        pendingUserIds.clear();
+        
+        if (idsToFetch.length > 0) {
+          await fetchUserDetails(idsToFetch);
+        }
+      }, 500); // Wait 500ms before fetching
+    };
+
     const statusesUnsubscribe = onValue(statusesRef, async (snapshot) => {
       const statuses = snapshot.val() || {};
-      console.log('User statuses updated:', statuses);
+      console.log('User statuses updated, count:', Object.keys(statuses).length);
       
       // Fetch user details for any new users we haven't seen before
       const unknownUserIds = Object.keys(statuses).filter(uid => 
-        uid !== myUserId && !userDetailsCache[uid] && !uid.startsWith('user_') && !uid.startsWith('mentor_')
+        uid !== myUserId && !userDetailsCache[uid] && 
+        !uid.startsWith('user_') && !uid.startsWith('mentor_')
       );
       
       if (unknownUserIds.length > 0) {
-        await fetchUserDetails(unknownUserIds);
+        console.log('Fetching details for unknown users:', unknownUserIds.length);
+        debouncedFetchUserDetails(unknownUserIds);
       }
       
       setOnlineUserStatuses(statuses);
@@ -415,7 +523,7 @@ const MentorComponent = () => {
     // Use onValue instead of onChildAdded to get all existing requests first
     const requestsUnsubscribe = onValue(requestsRef, async (snapshot) => {
       const requests = snapshot.val() || {};
-      console.log('All requests:', requests);
+      console.log('All requests:', Object.keys(requests).length);
       
       const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({
         id,
@@ -434,7 +542,7 @@ const MentorComponent = () => {
           .filter(id => id && !userDetailsCache[id]);
         
         if (mentorIds.length > 0) {
-          await fetchUserDetails(mentorIds);
+          debouncedFetchUserDetails(mentorIds);
         }
       }
 
@@ -454,11 +562,14 @@ const MentorComponent = () => {
     });
 
     return () => {
+      if (fetchTimeout) {
+        clearTimeout(fetchTimeout);
+      }
       statusesUnsubscribe();
       requestsUnsubscribe();
       responsesUnsubscribe();
     };
-  }, [myUserId, setupFirebaseSessionListeners, endCurrentSession, userDetailsCache, fetchUserDetails, processedRequests]);
+  }, [myUserId, myRole, setupFirebaseSessionListeners, endCurrentSession, userDetailsCache, fetchUserDetails, processedRequests]);
 
   const handleMentorRequestSession = async (targetUserId: string, sessionType: 'chat' | 'video') => {
     if (!myUserId || myRole !== 'mentor') {
@@ -564,11 +675,31 @@ const MentorComponent = () => {
     }
   };
 
-  if (!myUserId || !myRole) {
+  // Show error message if user loading failed
+  if (userLoadError) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>
+        <h2>Error Loading User Data</h2>
+        <p>{userLoadError}</p>
+        <button onClick={() => window.location.reload()}>
+          Refresh Page
+        </button>
+      </div>
+    );
+  }
+
+  // Show loading if user data is not ready
+  if (!myUserId || !myRole || !myUserDetails) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
         <h2>Loading user session...</h2>
-        <p>If this persists, please refresh the page.</p>
+        <p>Validating user data and role...</p>
+        <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+          <p>User ID: {myUserId ? '✅' : '❌'}</p>
+          <p>Role: {myRole ? '✅' : '❌'}</p>
+          <p>Details: {myUserDetails ? '✅' : '❌'}</p>
+        </div>
+        {!myUserId && <p>If this persists, please refresh the page or sign in again.</p>}
       </div>
     );
   }
@@ -578,12 +709,16 @@ const MentorComponent = () => {
       <h1>Mentor/User Dashboard (Firebase Only)</h1>
       
       <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
-        <p><strong>User:</strong> {myUserDetails ? myUserDetails.displayName : myUserId}</p>
+        <p><strong>User:</strong> {myUserDetails.displayName}</p>
         <p><strong>Role:</strong> {myRole}</p>
         <p><strong>Firebase Status:</strong> {isOnline ? '🟢 Connected' : '🔴 Disconnected'}</p>
         <p><em>This version works on Vercel using Firebase only (no Socket.IO)</em></p>
       </div>
 
+      {/* Rest of your component remains the same... */}
+      {/* I'll keep the rest of the component unchanged to avoid making this response too long */}
+      {/* The key fixes are in the user initialization and Firebase status setting */}
+      
       {/* Mentor Controls */}
       {myRole === 'mentor' && (
         <div style={{ marginBottom: '30px', padding: '15px', border: '2px solid #007bff', borderRadius: '5px' }}>
@@ -870,6 +1005,9 @@ const MentorComponent = () => {
         {/* Debug Section */}
         <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '3px' }}>
           <h4>Debug Info:</h4>
+          <p><strong>User ID:</strong> {myUserId}</p>
+          <p><strong>Role:</strong> {myRole}</p>
+          <p><strong>Display Name:</strong> {myUserDetails?.displayName}</p>
           <p><strong>Processed Requests:</strong> {processedRequests.size}</p>
           <p><strong>Incoming Requests Count:</strong> {incomingRequests.length}</p>
           <button 
