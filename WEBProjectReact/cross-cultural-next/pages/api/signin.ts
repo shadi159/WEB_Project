@@ -1,4 +1,4 @@
-// pages/api/signin.ts
+// pages/api/signin.ts - Simple version using standard Mongoose methods
 import type { NextApiRequest, NextApiResponse } from "next";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -6,28 +6,6 @@ import { connectToDatabase } from "../../utils/db";
 import User from "../../models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-
-// 🔧 Define the user type for lean queries
-interface UserDocument {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-  role: string;
-  country?: string;
-  destination?: string;
-  phone?: string;
-  educationalLevel?: string;
-  fieldOfStudy?: string;
-  bio?: string;
-  preferences?: {
-    emailNotifications: boolean;
-    appNotifications: boolean;
-    resourceRecommendations: boolean;
-    peerConnections: boolean;
-  };
-}
 
 export default async function handler(
   req: NextApiRequest,
@@ -56,11 +34,21 @@ export default async function handler(
       });
     }
 
-    // 🔧 FIXED: Proper typing with lean query
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.log("❌ Invalid email format");
+      return res.status(400).json({
+        message: "Invalid email format",
+        success: false,
+      });
+    }
+
+    // 🔧 Use standard Mongoose findOne with explicit password selection
     console.log("🔍 Searching for user with email:", email);
     const user = await User.findOne({ 
       email: email.toLowerCase().trim() 
-    }).lean() as UserDocument | null;
+    }).select('+password'); // Explicitly include password if it has select: false
 
     if (!user) {
       console.log("❌ User not found");
@@ -85,7 +73,7 @@ export default async function handler(
       });
     }
 
-    // 🔧 FIXED: Use bcrypt.compare directly with the stored hash
+    // 🔧 Use bcrypt.compare directly
     console.log("🔐 Comparing passwords...");
     console.log("🔐 Input password length:", password.length);
     console.log("🔐 Stored hash length:", user.password.length);
@@ -101,7 +89,7 @@ export default async function handler(
       });
     }
 
-    console.log("✅ Password verified");
+    console.log("✅ Password verified successfully");
 
     // Create JWT token
     console.log("🎫 Creating JWT token...");
@@ -147,6 +135,24 @@ export default async function handler(
 
   } catch (error: any) {
     console.error("❌ Sign In Error:", error);
+    
+    // Handle specific MongoDB errors
+    if (error.name === 'MongoNetworkError') {
+      return res.status(503).json({
+        message: "Database connection failed",
+        error: "Unable to connect to database",
+        success: false,
+      });
+    }
+    
+    if (error.name === 'MongoServerSelectionError') {
+      return res.status(503).json({
+        message: "Database server unavailable", 
+        error: "Database server selection failed",
+        success: false,
+      });
+    }
+
     return res.status(500).json({
       message: "Internal server error during sign in",
       error: process.env.NODE_ENV === 'development' ? error.message : "Unknown error occurred",
