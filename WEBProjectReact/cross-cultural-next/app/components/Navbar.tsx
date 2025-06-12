@@ -1,7 +1,7 @@
-// components/Navbar.tsx
+// components/Navbar.tsx - Enhanced with proper session management
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "./ui/button";
@@ -23,9 +23,15 @@ import Logo from "./Logo";
 import { BookOpen, LogOut, MapPin, User } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Moon, Sun } from "lucide-react";
+import { useToast } from "./ui/use-toast";
 
-const Navbar = () => {
+interface NavbarProps {
+  onLogout?: () => void; // Optional callback for custom logout handling
+}
+
+const Navbar = ({ onLogout }: NavbarProps) => {
   const router = useRouter();
+  const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -36,17 +42,124 @@ const Navbar = () => {
     role: "user",
   });
 
-  useEffect(() => {
-    // … your existing user/session & theme logic …
+  // 🔧 Enhanced session cleanup function
+  const clearAllSessionData = useCallback(() => {
+    console.log("🧹 Clearing all session data from Navbar");
+    
+    // Clear localStorage
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("profileCache");
+    
+    // Clear sessionStorage
+    sessionStorage.removeItem("isLoggedIn");
+    sessionStorage.clear();
+    
+    // Reset component state
+    setIsLoggedIn(false);
+    setUser({ firstName: "", lastName: "", email: "", role: "user" });
+    
+    console.log("✅ Session data cleared");
+  }, []);
+
+  // 🔧 Enhanced token validation
+  const validateToken = useCallback((token: string | null): boolean => {
+    if (!token) {
+      console.log("❌ No token found in validation");
+      return false;
+    }
+
+    try {
+      // Basic JWT format check
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.log("❌ Invalid JWT format");
+        return false;
+      }
+
+      // Decode payload to check expiration
+      const payload = JSON.parse(atob(parts[1]));
+      const currentTime = Date.now() / 1000;
+      
+      if (payload.exp && payload.exp < currentTime) {
+        console.log("❌ Token expired in navbar validation");
+        return false;
+      }
+
+      console.log("✅ Token is valid in navbar");
+      return true;
+    } catch (error) {
+      console.log("❌ Token validation error in navbar:", error);
+      return false;
+    }
+  }, []);
+
+  // 🔧 Enhanced session check
+  const checkAndValidateSession = useCallback(() => {
     const storedUser = localStorage.getItem("user");
     const sessionFlag = sessionStorage.getItem("isLoggedIn");
-    if (storedUser && sessionFlag === "true") {
-      const userData = JSON.parse(storedUser);
-      setUser(userData);
-      setIsLoggedIn(true);
-    } else {
-      setIsLoggedIn(false);
+    const token = localStorage.getItem("token");
+
+    console.log("🔍 Checking session in navbar:");
+    console.log("- User data exists:", !!storedUser);
+    console.log("- Session flag:", sessionFlag);
+    console.log("- Token exists:", !!token);
+
+    // If no token, clear everything
+    if (!token) {
+      console.log("❌ No token found - clearing session");
+      clearAllSessionData();
+      return false;
     }
+
+    // Validate token
+    if (!validateToken(token)) {
+      console.log("❌ Invalid token - clearing session");
+      clearAllSessionData();
+      toast({ 
+        title: "Session expired", 
+        description: "Please sign in again", 
+        variant: "destructive" 
+      });
+      return false;
+    }
+
+    // If token is valid but other data is missing, try to recover
+    if (!storedUser || sessionFlag !== "true") {
+      console.log("⚠️ Token valid but session data incomplete");
+      
+      if (storedUser) {
+        // We have user data, restore session
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+        setIsLoggedIn(true);
+        sessionStorage.setItem("isLoggedIn", "true");
+        console.log("✅ Session restored from user data");
+        return true;
+      } else {
+        // No user data, but token exists - this shouldn't happen
+        console.log("❌ Token exists but no user data - clearing session");
+        clearAllSessionData();
+        return false;
+      }
+    }
+
+    // Everything looks good
+    const userData = JSON.parse(storedUser);
+    setUser(userData);
+    setIsLoggedIn(true);
+    console.log("✅ Session validated successfully");
+    return true;
+  }, [clearAllSessionData, validateToken, toast]);
+
+  // 🔧 Enhanced useEffect for session monitoring
+  useEffect(() => {
+    console.log("🔄 Navbar mounted - checking session");
+    
+    // Initial session check
+    checkAndValidateSession();
+
+    // Theme setup
     const storedTheme = localStorage.getItem("theme");
     const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (storedTheme === "dark" || (!storedTheme && systemDark)) {
@@ -56,7 +169,56 @@ const Navbar = () => {
       document.documentElement.classList.remove("dark");
       setIsDarkMode(false);
     }
-  }, []);
+
+    // 🔧 Periodic session validation (every 5 minutes)
+    const sessionCheckInterval = setInterval(() => {
+      console.log("⏰ Periodic session check in navbar");
+      const token = localStorage.getItem("token");
+      if (token && !validateToken(token)) {
+        console.log("🚨 Session expired during periodic check");
+        clearAllSessionData();
+        toast({ 
+          title: "Session expired", 
+          description: "Please sign in again", 
+          variant: "destructive" 
+        });
+        router.push("/SignIn");
+      }
+    }, 5 * 60 * 1000);
+
+    // 🔧 Listen for storage changes (multi-tab sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "token" && !e.newValue) {
+        console.log("🔄 Token removed in another tab - syncing");
+        clearAllSessionData();
+        router.push("/SignIn");
+      } else if (e.key === "user" && e.newValue) {
+        console.log("🔄 User data updated in another tab - syncing");
+        checkAndValidateSession();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // Cleanup
+    return () => {
+      clearInterval(sessionCheckInterval);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [checkAndValidateSession, validateToken, clearAllSessionData, toast, router]);
+
+  // 🔧 Enhanced visibility change handler
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("👁️ Tab became visible - revalidating session");
+        checkAndValidateSession();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [checkAndValidateSession]);
 
   const getInitials = () => {
     if (user.firstName && user.lastName) {
@@ -65,12 +227,24 @@ const Navbar = () => {
     return "U";
   };
 
-  const handleSignOut = () => {
-    sessionStorage.removeItem("isLoggedIn");
-    setIsLoggedIn(false);
-    setUser({ firstName: "", lastName: "", email: "" , role: "user" });
-    router.replace("/SignIn");
-  };
+  // 🔧 Enhanced sign out function
+  const handleSignOut = useCallback((e?: React.MouseEvent) => {
+    e?.preventDefault();
+    console.log("👋 User initiated sign out from navbar");
+    
+    // Call custom logout handler if provided
+    if (onLogout) {
+      onLogout();
+    } else {
+      // Default logout behavior
+      clearAllSessionData();
+      toast({ 
+        title: "Signed out", 
+        description: "You have been signed out successfully" 
+      });
+      router.replace("/SignIn");
+    }
+  }, [clearAllSessionData, onLogout, router, toast]);
 
   const publicNavigation = [
     { name: "Resources", href: "/Resources" },
@@ -196,14 +370,13 @@ const Navbar = () => {
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link
-                        href="/SignIn"
-                        className="cursor-pointer text-red-500 flex items-center gap-2"
+                      <button
+                        className="w-full cursor-pointer text-red-500 flex items-center gap-2"
                         onClick={handleSignOut}
                       >
                         <LogOut className="h-4 w-4" />
                         <span>Sign Out</span>
-                      </Link>
+                      </button>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -239,8 +412,7 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* ========== MOBILE “HAMBURGER” ========== */}
-          {/* ← ADD md:hidden so this only appears on < 768px */}
+          {/* ========== MOBILE "HAMBURGER" ========== */}
           <div className="flex items-center md:hidden ml-auto">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
@@ -279,7 +451,7 @@ const Navbar = () => {
                     </Link>
                   ))}
 
-                  {/* If logged in, show profile/sign-out; else show SignIn/Register */}
+                  {/* Mobile menu user section */}
                   {isLoggedIn ? (
                     <div className="pt-4 pb-3 border-t border-gray-200">
                       <div className="flex items-center px-3">
@@ -307,16 +479,15 @@ const Navbar = () => {
                         >
                           Your Profile
                         </Link>
-                        <Link
-                          href="/SignIn"
-                          className="block px-3 py-2 rounded-md text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
+                        <button
+                          className="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-red-500 hover:text-red-700 hover:bg-gray-50"
                           onClick={() => {
                             setIsMobileMenuOpen(false);
                             handleSignOut();
                           }}
                         >
                           Sign out
-                        </Link>
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -336,7 +507,6 @@ const Navbar = () => {
                         >
                           Register
                         </Link>
-                        {/* אפשר לשים גם כפתור toggle dark mode כאן אם רוצים */}
                       </div>
                     </div>
                   )}
