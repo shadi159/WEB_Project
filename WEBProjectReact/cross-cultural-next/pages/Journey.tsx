@@ -11,7 +11,7 @@ import { Button } from "../app/components/ui/button";
 import { Progress } from "../app/components/ui/progress";
 import { Separator } from "../app/components/ui/separator";
 import Navbar from "../app/components/Navbar";
-import { CheckCircle, Circle, ArrowRight } from "lucide-react";
+import { CheckCircle, Circle, ArrowRight, Trophy, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
 type JourneyStep = {
@@ -194,6 +194,7 @@ const defaultJourneySteps: JourneyStep[] = [
 
 const Journey = () => {
   const [journeySteps, setJourneySteps] = useState<JourneyStep[]>([]);
+  const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const stored = localStorage.getItem("journeySteps");
@@ -224,6 +225,12 @@ const Journey = () => {
             t.id === taskId ? { ...t, completed: !t.completed } : t
           );
           const allDone = updatedTasks.every((t) => t.completed);
+          
+          // If all tasks are completed and card is not flipped, flip it
+          if (allDone && !flippedCards.has(stepId)) {
+            setFlippedCards(prev => new Set([...prev, stepId]));
+          }
+          
           return { ...step, tasks: updatedTasks, completed: allDone };
         }
         return step;
@@ -231,13 +238,22 @@ const Journey = () => {
     );
   };
 
-  // 1) Define a function that scrolls the step into view
   const handleActionClick = (stepId: number) => {
     const el = document.getElementById(`step-${stepId}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
+
+  const handleReviewSession = (stepId: number) => {
+    setFlippedCards(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(stepId);
+      return newSet;
+    });
+  };
+
+  const isCardFlipped = (stepId: number) => flippedCards.has(stepId);
 
   return (
     <div className="min-h-screen bg-background">
@@ -262,8 +278,9 @@ const Journey = () => {
                 )
               : 0;
 
+            const cardFlipped = isCardFlipped(step.id);
+
             return (
-              // 2) Give each step’s wrapper a unique ID
               <div key={step.id} id={`step-${step.id}`} className="relative">
                 {idx < journeySteps.length - 1 && (
                   <div
@@ -284,98 +301,144 @@ const Journey = () => {
                     )}
                   </div>
                   <div className="flex-1">
-                    <Card className="border-l-4 border-blue-500">
-                      <CardHeader>
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle className="text-xl">{step.title}</CardTitle>
-                            <CardDescription className="mt-1">
-                              {step.description}
-                            </CardDescription>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-bold">{stepProgress}%</span>
-                            <Progress value={stepProgress} className="w-20 mt-1" />
-                          </div>
-                        </div>
-                      </CardHeader>
+                    {/* Card flip container */}
+                    <div className="relative [perspective:1000px]">
+                      <div
+                        className={`relative transition-transform duration-700 [transform-style:preserve-3d] ${
+                          cardFlipped ? "[transform:rotateY(180deg)]" : ""
+                        }`}
+                      >
+                        {/* Front side - Normal card content */}
+                        <div className="[backface-visibility:hidden]">
+                          <Card className="border-l-4 border-blue-500">
+                            <CardHeader>
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <CardTitle className="text-xl">{step.title}</CardTitle>
+                                  <CardDescription className="mt-1">
+                                    {step.description}
+                                  </CardDescription>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-bold">{stepProgress}%</span>
+                                  <Progress value={stepProgress} className="w-20 mt-1" />
+                                </div>
+                              </div>
+                            </CardHeader>
 
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div>
-                            <h4 className="font-medium mb-2">Tasks</h4>
-                            <ul className="space-y-2">
-                              {step.tasks.map((task) => (
-                                <li
-                                  key={task.id}
-                                  className="flex items-center gap-2 cursor-pointer"
-                                  onClick={() => toggleTaskCompletion(step.id, task.id)}
-                                >
-                                  {task.completed ? (
-                                    <CheckCircle className="h-5 w-5 text-blue-600" />
-                                  ) : (
-                                    <Circle className="h-5 w-5 text-gray-400/50" />
-                                  )}
-                                  <span
-                                    className={
-                                      task.completed ? "line-through text-gray-400" : ""
-                                    }
-                                  >
-                                    {task.title}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <Separator />
-
-                          <div>
-                            <h4 className="font-medium mb-2">Resources</h4>
-                            <ul className="grid gap-2 sm:grid-cols-2">
-                              {step.resources.map((resource) => (
-                                <li key={resource.id}>
-                                  <Button
-                                    asChild
-                                    variant="outline"
-                                    className="w-full justify-between text-left font-normal"
-                                  >
-                                    <Link
-                                      href={resource.href!}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex w-full justify-between items-center text-secondary"
-                                    >
-                                      <div>
-                                        <span>{resource.title}</span>
-                                        <span className="block text-xs text-gray-500">
-                                          {resource.type}
+                            <CardContent>
+                              <div className="space-y-4">
+                                <div>
+                                  <h4 className="font-medium mb-2">Tasks</h4>
+                                  <ul className="space-y-2">
+                                    {step.tasks.map((task) => (
+                                      <li
+                                        key={task.id}
+                                        className="flex items-center gap-2 cursor-pointer"
+                                        onClick={() => toggleTaskCompletion(step.id, task.id)}
+                                      >
+                                        {task.completed ? (
+                                          <CheckCircle className="h-5 w-5 text-blue-600" />
+                                        ) : (
+                                          <Circle className="h-5 w-5 text-gray-400/50" />
+                                        )}
+                                        <span
+                                          className={
+                                            task.completed ? "line-through text-gray-400" : ""
+                                          }
+                                        >
+                                          {task.title}
                                         </span>
-                                      </div>
-                                      <ArrowRight className="h-4 w-4" />
-                                    </Link>
-                                  </Button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </CardContent>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
 
-                      <CardFooter>
-                        {/* 3) Wire the onClick to call handleActionClick(step.id) */}
-                        <Button
-                          className="w-full bg-blue-500 hover:bg-purple-500 text-white"
-                          onClick={() => handleActionClick(step.id)}
-                        >
-                          {step.completed
-                            ? "Review Step"
-                            : stepProgress > 0
-                            ? "Continue Step"
-                            : "Start Step"}
-                        </Button>
-                      </CardFooter>
-                    </Card>
+                                <Separator />
+
+                                <div>
+                                  <h4 className="font-medium mb-2">Resources</h4>
+                                  <ul className="grid gap-2 sm:grid-cols-2">
+                                    {step.resources.map((resource) => (
+                                      <li key={resource.id}>
+                                        <Button
+                                          asChild
+                                          variant="outline"
+                                          className="w-full justify-between text-left font-normal"
+                                        >
+                                          <Link
+                                            href={resource.href!}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex w-full justify-between items-center text-secondary"
+                                          >
+                                            <div>
+                                              <span>{resource.title}</span>
+                                              <span className="block text-xs text-gray-500">
+                                                {resource.type}
+                                              </span>
+                                            </div>
+                                            <ArrowRight className="h-4 w-4" />
+                                          </Link>
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </CardContent>
+
+                            <CardFooter>
+                              <Button
+                                className="w-full bg-blue-500 hover:bg-purple-500 text-white"
+                                onClick={() => handleActionClick(step.id)}
+                              >
+                                {step.completed
+                                  ? "Review Step"
+                                  : stepProgress > 0
+                                  ? "Continue Step"
+                                  : "Start Step"}
+                              </Button>
+                            </CardFooter>
+                          </Card>
+                        </div>
+
+                        {/* Back side - Completion message */}
+                        <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                          <Card className="border-l-4 border-blue-500 bg-background min-h-[400px]">
+                            <CardContent className="flex flex-col items-center justify-center text-center p-8 min-h-[300px]">
+                              <div className="mb-6">
+                                <Trophy className="h-20 w-20 text-blue-600 mx-auto mb-4" />
+                                <h2 className="text-2xl font-bold text-blue-800 mb-2">
+                                  Congratulations!
+                                </h2>
+                                <p className="text-lg text-blue-700 mb-2">
+                                  You have completed this session
+                                </p>
+                                <p className="text-sm text-blue-600">
+                                  "{step.title}" - All tasks finished!
+                                </p>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 text-blue-600 mb-6">
+                                <CheckCircle className="h-5 w-5" />
+                                <span className="font-medium">
+                                  {step.tasks.length} tasks completed
+                                </span>
+                              </div>
+
+                              <Button
+                                onClick={() => handleReviewSession(step.id)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                                Review Session
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
