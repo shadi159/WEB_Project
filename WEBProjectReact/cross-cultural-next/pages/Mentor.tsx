@@ -515,10 +515,10 @@ const MentorComponentCore = React.memo(() => {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Create peer connection with enhanced config
-      // === DEBUG: Set trickle to false for easier ICE debugging ===
+      // === DEBUG: Set trickle to true for robust ICE exchange ===
       const peer = new SimplePeer({
         initiator: true,
-        trickle: false, // DEBUG: Set to false for debugging ICE issues
+        trickle: true, // Switched back to true for production robustness
         stream: stream,
         config: {
           iceServers: [
@@ -611,6 +611,7 @@ const MentorComponentCore = React.memo(() => {
 
       peer.on('close', () => {
         console.log('Caller peer connection closed');
+        setCallStatus('Call ended');
         endVideoCall();
       });
 
@@ -800,7 +801,7 @@ const MentorComponentCore = React.memo(() => {
       const remoteUserId = otherUserId;
       const peer = new SimplePeer({
         initiator: false,
-        trickle: false, // DEBUG: Set to false for debugging ICE issues
+        trickle: true, // Switched back to true for production robustness
         stream: stream,
         config: {
           iceServers: [
@@ -927,6 +928,7 @@ const MentorComponentCore = React.memo(() => {
 
       peer.on('close', () => {
         console.log('Accepter peer connection closed');
+        setCallStatus('Call ended');
         endVideoCall();
       });
 
