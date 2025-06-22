@@ -515,9 +515,10 @@ const MentorComponentCore = React.memo(() => {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Create peer connection with enhanced config
+      // === DEBUG: Set trickle to false for easier ICE debugging ===
       const peer = new SimplePeer({
         initiator: true,
-        trickle: true,
+        trickle: false, // DEBUG: Set to false for debugging ICE issues
         stream: stream,
         config: {
           iceServers: [
@@ -535,6 +536,13 @@ const MentorComponentCore = React.memo(() => {
 
       // Enhanced signaling with better error handling
       peer.on('signal', async (data: any) => {
+        if (data.type === 'candidate') {
+          console.log('Caller sending ICE candidate:', data.candidate, data.sdpMid, data.sdpMLineIndex);
+        } else if (data.type === 'offer') {
+          console.log('Caller sending offer');
+        } else if (data.type === 'answer') {
+          console.log('Caller sending answer');
+        }
         try {
           console.log('Caller sending signal:', data.type);
           await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
@@ -561,6 +569,14 @@ const MentorComponentCore = React.memo(() => {
         if (data.callId && data.callId !== callId) {
           console.log('Ignoring signal from different call');
           return;
+        }
+
+        if (data.signal.type === 'candidate') {
+          console.log('Caller received ICE candidate:', data.signal.candidate, data.signal.sdpMid, data.signal.sdpMLineIndex);
+        } else if (data.signal.type === 'answer') {
+          console.log('Caller received answer');
+        } else if (data.signal.type === 'offer') {
+          console.log('Caller received offer (should not happen for initiator)');
         }
 
         try {
@@ -784,7 +800,7 @@ const MentorComponentCore = React.memo(() => {
       const remoteUserId = otherUserId;
       const peer = new SimplePeer({
         initiator: false,
-        trickle: true,
+        trickle: false, // DEBUG: Set to false for debugging ICE issues
         stream: stream,
         config: {
           iceServers: [
@@ -803,6 +819,13 @@ const MentorComponentCore = React.memo(() => {
 
       // Always send the first answer, only deduplicate outgoing answers
       peer.on('signal', async (data: any) => {
+        if (data.type === 'candidate') {
+          console.log('Accepter sending ICE candidate:', data.candidate, data.sdpMid, data.sdpMLineIndex);
+        } else if (data.type === 'offer') {
+          console.log('Accepter sending offer');
+        } else if (data.type === 'answer') {
+          console.log('Accepter sending answer');
+        }
         try {
           if (data.type === 'answer') {
             if (hasSentAnswer) return;
@@ -866,6 +889,13 @@ const MentorComponentCore = React.memo(() => {
         const data = snapshot.val();
         if (!data || !data.signal || !peer || peer.destroyed) return;
         if (data.callId !== incomingVideoCall.callId) return;
+        if (data.signal.type === 'candidate') {
+          console.log('Accepter received ICE candidate:', data.signal.candidate, data.signal.sdpMid, data.signal.sdpMLineIndex);
+        } else if (data.signal.type === 'offer') {
+          console.log('Accepter received offer');
+        } else if (data.signal.type === 'answer') {
+          console.log('Accepter received answer (should not happen for non-initiator)');
+        }
         try {
           if (data.signal.type === 'offer' && !offerProcessed) {
             peer.signal(data.signal);
@@ -930,72 +960,63 @@ const MentorComponentCore = React.memo(() => {
   // Enhanced endVideoCall with initialization flag reset
   const endVideoCall = useCallback(() => {
     console.log('Ending video call...');
-
-    // Reset initialization flag immediately
     videoCallInitializingRef.current = false;
-
-    // Cleanup peer connection
-    if (peerRef.current) {
+    // Delay cleanup to allow ICE candidates to finish processing
+    setTimeout(() => {
+      // ... existing cleanup code ...
+      if (peerRef.current) {
+        try {
+          if (!peerRef.current.destroyed) {
+            peerRef.current.destroy();
+          }
+        } catch (error) {
+          console.warn('Error destroying peer:', error);
+        }
+        peerRef.current = null;
+      }
+      if (signalingCleanupRef.current) {
+        try {
+          signalingCleanupRef.current();
+        } catch (error) {
+          console.warn('Error cleaning up signaling:', error);
+        }
+        signalingCleanupRef.current = null;
+      }
+      if (localStream) {
+        try {
+          localStream.getTracks().forEach(track => {
+            try {
+              if (track.readyState !== 'ended') {
+                track.stop();
+              }
+            } catch (trackError) {
+              console.warn('Error stopping track:', trackError);
+            }
+          });
+        } catch (streamError) {
+          console.warn('Error stopping stream:', streamError);
+        }
+        setLocalStream(null);
+      }
       try {
-        if (!peerRef.current.destroyed) {
-          peerRef.current.destroy();
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = null;
         }
       } catch (error) {
-        console.warn('Error destroying peer:', error);
+        console.warn('Error clearing video elements:', error);
       }
-      peerRef.current = null;
-    }
-    
-    // Cleanup signaling
-    if (signalingCleanupRef.current) {
-      try {
-        signalingCleanupRef.current();
-      } catch (error) {
-        console.warn('Error cleaning up signaling:', error);
-      }
-      signalingCleanupRef.current = null;
-    }
-
-    // Stop local media tracks with better error handling
-    if (localStream) {
-      try {
-        localStream.getTracks().forEach(track => {
-          try {
-            if (track.readyState !== 'ended') {
-              track.stop();
-            }
-          } catch (trackError) {
-            console.warn('Error stopping track:', trackError);
-          }
-        });
-      } catch (streamError) {
-        console.warn('Error stopping stream:', streamError);
-      }
-      setLocalStream(null);
-    }
-
-    // Clear video elements safely
-    try {
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
-    } catch (error) {
-      console.warn('Error clearing video elements:', error);
-    }
-
-    // Reset state
-    setRemoteStream(null);
-    setIsVideoCallActive(false);
-    setIsCallInitiator(false);
-    setCallStatus('');
-    setIncomingVideoCall(null);
-    setIsVideoEnabled(true);
-    setIsAudioEnabled(true);
-
-    console.log('Video call cleanup complete');
+      setRemoteStream(null);
+      setIsVideoCallActive(false);
+      setIsCallInitiator(false);
+      setCallStatus('');
+      setIncomingVideoCall(null);
+      setIsVideoEnabled(true);
+      setIsAudioEnabled(true);
+      console.log('Video call cleanup complete');
+    }, 2000); // 2 second delay before cleanup
   }, [localStream]);
 
   const toggleVideo = useCallback(() => {
