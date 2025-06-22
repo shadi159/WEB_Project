@@ -439,13 +439,37 @@ const startVideoCall = useCallback(async () => {
     setCallStatus('Initializing video call...');
 
     // Determine other user ID
-    const otherUserId = activeFirebaseSessionPath?.includes(myUserId) 
-      ? activeFirebaseSessionPath.split('_').find(id => id !== myUserId && id !== 'live_sessions')
-      : null;
-
-    if (!otherUserId) {
-      throw new Error('Could not determine other user ID');
+    const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
+    // Session path format: live_sessions/userId1_userId2_timestamp
+    // Extract the part after 'live_sessions/'
+    const pathParts = sessionPath.split('/');
+    if (pathParts.length < 2) return null;
+    
+    const sessionPart = pathParts[1]; // Gets "userId1_userId2_timestamp"
+    const userIds = sessionPart.split('_');
+    
+    // Find the other user ID (not mine and not the timestamp)
+    for (const id of userIds) {
+      // Skip if it's my ID, or if it looks like a timestamp (all numbers)
+      if (id !== myUserId && !/^\d+$/.test(id)) {
+        return id;
+      }
     }
+    
+    return null;
+  };
+
+  const otherUserId = activeFirebaseSessionPath 
+    ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
+    : null;
+
+  console.log('Session path:', activeFirebaseSessionPath);
+  console.log('My user ID:', myUserId);
+  console.log('Detected other user ID:', otherUserId);
+
+  if (!otherUserId) {
+    throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+  }
 
     console.log(`Video call initiator decision: true (myRole: ${myRole}, myUserId: ${myUserId}, otherUserId: ${otherUserId})`);
 
