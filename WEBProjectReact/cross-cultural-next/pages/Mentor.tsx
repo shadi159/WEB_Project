@@ -257,7 +257,123 @@ const MentorComponentCore = React.memo(() => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<any>(null);
   const signalingCleanupRef = useRef<(() => void) | null>(null);
+  const getICEConfiguration = () => {
+  return {
+    iceServers: [
+      // Google STUN servers (multiple for redundancy)
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      
+      // Cloudflare STUN servers
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      
+      // Free TURN servers for NAT traversal (multiple for redundancy)
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      
+      // Alternative TURN servers
+      { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' },
+      { urls: 'turn:turn.anyfirewall.com:443?transport=tcp', username: 'webrtc', credential: 'webrtc' }
+    ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
+  };
+};
 
+const setupConnectionMonitoring = (peer: any, callType: string) => {
+  let connectionStateTimeout: NodeJS.Timeout | null = null;
+  let iceConnectionStateTimeout: NodeJS.Timeout | null = null;
+  
+  // Monitor ICE connection state
+  peer.on('iceConnectionStateChange', (state: string) => {
+    console.log(`${callType} ICE Connection State: ${state}`);
+    
+    if (iceConnectionStateTimeout) {
+      clearTimeout(iceConnectionStateTimeout);
+    }
+    
+    switch (state) {
+      case 'connecting':
+        setCallStatus('Establishing connection...');
+        // Set timeout for connecting state
+        iceConnectionStateTimeout = setTimeout(() => {
+          console.warn(`${callType} ICE connection stuck in connecting state`);
+          setCallStatus('Connection taking longer than expected...');
+        }, 10000);
+        break;
+        
+      case 'connected':
+      case 'completed':
+        setCallStatus('Connected');
+        if (iceConnectionStateTimeout) {
+          clearTimeout(iceConnectionStateTimeout);
+        }
+        break;
+        
+      case 'disconnected':
+        setCallStatus('Connection interrupted - attempting to reconnect...');
+        // Give it time to reconnect
+        iceConnectionStateTimeout = setTimeout(() => {
+          if (peer && !peer.destroyed) {
+            console.log('Attempting to restart ICE');
+            // peer.restartIce(); // This might not be available in simple-peer
+          }
+        }, 5000);
+        break;
+        
+      case 'failed':
+        setCallStatus('Connection failed');
+        setTimeout(() => endVideoCall(), 2000);
+        break;
+        
+      case 'closed':
+        setCallStatus('Connection closed');
+        break;
+    }
+  });
+  
+  // Monitor general connection state
+  peer.on('connectionStateChange', (state: string) => {
+    console.log(`${callType} Connection State: ${state}`);
+    
+    if (connectionStateTimeout) {
+      clearTimeout(connectionStateTimeout);
+    }
+    
+    switch (state) {
+      case 'connecting':
+        setCallStatus('Connecting...');
+        break;
+      case 'connected':
+        setCallStatus('Connected');
+        break;
+      case 'disconnected':
+        setCallStatus('Disconnected - attempting to reconnect...');
+        connectionStateTimeout = setTimeout(() => {
+          console.warn(`${callType} Connection timeout`);
+          endVideoCall();
+        }, 15000);
+        break;
+      case 'failed':
+        setCallStatus('Connection failed');
+        setTimeout(() => endVideoCall(), 2000);
+        break;
+      case 'closed':
+        setCallStatus('Connection closed');
+        break;
+    }
+  });
+  
+  return () => {
+    if (connectionStateTimeout) clearTimeout(connectionStateTimeout);
+    if (iceConnectionStateTimeout) clearTimeout(iceConnectionStateTimeout);
+  };
+};
   // Sync ref with state
   useEffect(() => {
     activeSessionRef.current = activeFirebaseSessionPath;
@@ -408,24 +524,21 @@ const RemoteVideoElement = () => (
   const videoCallInitializingRef = useRef(false);
 
   // Fixed startVideoCall with race condition prevention
-  const startVideoCall = useCallback(async () => {
+ const startVideoCall = useCallback(async () => {
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId) return;
   
-  // Prevent multiple simultaneous calls - CRITICAL CHECK
   if (isVideoCallActive || videoCallInitializingRef.current) {
     console.log('Video call already active or initializing, ignoring start request');
     return;
   }
 
-  // Set initializing flag IMMEDIATELY to prevent race conditions
   videoCallInitializingRef.current = true;
   console.log('Starting video call...');
-  setCallStatus('Initializing...');
+  setCallStatus('Initializing call...');
 
   try {
-    // First, clean up any existing streams to avoid "device in use" errors
+    // Clean up existing resources
     if (localStream) {
-      console.log('Cleaning up existing local stream...');
       localStream.getTracks().forEach(track => {
         try {
           track.stop();
@@ -436,9 +549,7 @@ const RemoteVideoElement = () => (
       setLocalStream(null);
     }
 
-    // Clean up any existing peer connection
     if (peerRef.current) {
-      console.log('Cleaning up existing peer connection...');
       try {
         if (!peerRef.current.destroyed) {
           peerRef.current.destroy();
@@ -449,10 +560,8 @@ const RemoteVideoElement = () => (
       peerRef.current = null;
     }
 
-    // Wait for devices to be completely released
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced wait time
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Double-check we're still supposed to start the call
     if (!videoCallInitializingRef.current) {
       console.log('Video call initialization was cancelled');
       return;
@@ -460,12 +569,11 @@ const RemoteVideoElement = () => (
 
     setIsVideoCallActive(true);
     setIsCallInitiator(true);
-    setCallStatus('Requesting camera and microphone access...');
+    setCallStatus('Getting camera access...');
     
-    // Get user media with enhanced error handling
+    // Get user media
     let stream: MediaStream;
     try {
-      // Try to get available devices first
       const devices = await navigator.mediaDevices.enumerateDevices();
       const hasVideo = devices.some(device => device.kind === 'videoinput');
       const hasAudio = devices.some(device => device.kind === 'audioinput');
@@ -495,17 +603,13 @@ const RemoteVideoElement = () => (
       } else if (mediaError.name === 'NotFoundError') {
         errorMessage = 'No camera or microphone found.';
       } else if (mediaError.name === 'NotReadableError') {
-        errorMessage = 'Camera/microphone is already in use. Please close other applications using the camera and try again.';
-      } else if (mediaError.name === 'OverconstrainedError') {
-        errorMessage = 'Camera/microphone constraints not supported.';
+        errorMessage = 'Camera/microphone is already in use. Please close other applications and try again.';
       }
       
       setCallStatus(errorMessage);
       setIsVideoCallActive(false);
       setIsCallInitiator(false);
       videoCallInitializingRef.current = false;
-      
-      // Auto-clear error after 5 seconds
       setTimeout(() => setCallStatus(''), 5000);
       return;
     }
@@ -513,21 +617,16 @@ const RemoteVideoElement = () => (
     console.log('Got media stream, setting local video...');
     setLocalStream(stream);
     
-    // Set local video with error handling
     if (localVideoRef.current) {
       try {
         localVideoRef.current.srcObject = stream;
-        // Wait for video to start playing
         await new Promise((resolve, reject) => {
           if (!localVideoRef.current) {
             reject(new Error('Video element not found'));
             return;
           }
-          
           localVideoRef.current.onloadedmetadata = () => resolve(true);
           localVideoRef.current.onerror = reject;
-          
-          // Timeout after 5 seconds
           setTimeout(() => reject(new Error('Video load timeout')), 5000);
         });
       } catch (videoError) {
@@ -535,26 +634,19 @@ const RemoteVideoElement = () => (
       }
     }
 
-    setCallStatus('Initializing video call...');
+    setCallStatus('Setting up connection...');
 
-    // Determine other user ID
+    // Get other user ID
     const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
-      // Session path format: live_sessions/userId1_userId2_timestamp
-      // Extract the part after 'live_sessions/'
       const pathParts = sessionPath.split('/');
       if (pathParts.length < 2) return null;
-      
-      const sessionPart = pathParts[1]; // Gets "userId1_userId2_timestamp"
+      const sessionPart = pathParts[1];
       const userIds = sessionPart.split('_');
-      
-      // Find the other user ID (not mine and not the timestamp)
       for (const id of userIds) {
-        // Skip if it's my ID, or if it looks like a timestamp (all numbers)
         if (id !== myUserId && !/^\d+$/.test(id)) {
           return id;
         }
       }
-      
       return null;
     };
 
@@ -562,24 +654,19 @@ const RemoteVideoElement = () => (
       ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
       : null;
 
-    console.log('Session path:', activeFirebaseSessionPath);
-    console.log('My user ID:', myUserId);
-    console.log('Detected other user ID:', otherUserId);
-
     if (!otherUserId) {
       throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
     }
 
     const shouldInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-    console.log(`Video call initiator decision: ${shouldInitiate} (myRole: ${myRole}, myUserId: ${myUserId}, otherUserId: ${otherUserId})`);
-
     if (!shouldInitiate) {
       console.log('This user should not initiate - waiting for other user to initiate');
       setCallStatus('Waiting for other user to start video call...');
       videoCallInitializingRef.current = false;
       return;
     }
-    // Clear any existing signaling data
+
+    // Clear existing signaling data
     const { ref, set, push, onChildAdded, serverTimestamp, remove } = await import('firebase/database');
     const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
     
@@ -589,32 +676,58 @@ const RemoteVideoElement = () => (
       console.warn('Error clearing signaling data:', removeError);
     }
     
-    // Wait for cleanup
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Create peer connection with TURN and STUN servers for robust connectivity
+    // Create peer with enhanced configuration
     const peer = new SimplePeer({
       initiator: true,
       trickle: true,
       stream: stream,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-        ],
-        iceCandidatePoolSize: 10
-      }
+      config: getICEConfiguration()
     });
 
     peerRef.current = peer;
     const callId = Date.now();
 
-    // Enhanced signaling with better error handling
+    // Setup connection monitoring
+    const cleanupMonitoring = setupConnectionMonitoring(peer, 'Caller');
+    
+    // Enhanced error handling
+    peer.on('error', (error: any) => {
+      console.error('Caller peer error:', error);
+      
+      // Clean up monitoring
+      cleanupMonitoring();
+      
+      // Provide specific error messages
+      let errorMessage = 'Connection error';
+      if (error.message?.includes('Connection failed')) {
+        errorMessage = 'Connection failed - please check your network and try again';
+      } else if (error.message?.includes('ice')) {
+        errorMessage = 'Network connection issue - trying to reconnect...';
+      } else {
+        errorMessage = `Connection error: ${error.message}`;
+      }
+      
+      setCallStatus(errorMessage);
+      
+      // Try to restart the call once before giving up
+      setTimeout(() => {
+        if (isVideoCallActive && !videoCallInitializingRef.current) {
+          console.log('Attempting to restart video call...');
+          endVideoCall();
+          setTimeout(() => {
+            startVideoCall();
+          }, 2000);
+        } else {
+          endVideoCall();
+        }
+      }, 3000);
+    });
+
+    // Enhanced signaling
     peer.on('signal', async (data: any) => {
       if (data.type === 'candidate') {
-        console.log('Caller sending ICE candidate (full):', JSON.stringify(data));
         if (
           !data.candidate ||
           typeof data.candidate !== 'object' ||
@@ -623,16 +736,12 @@ const RemoteVideoElement = () => (
           data.candidate.sdpMid === undefined ||
           data.candidate.sdpMLineIndex === undefined
         ) {
-          console.warn('Caller: ICE candidate missing required fields, not sending:', data);
+          console.warn('Caller: Invalid ICE candidate, not sending:', data);
           return;
         }
-      } else if (data.type === 'offer') {
-        console.log('Caller sending offer');
-      } else if (data.type === 'answer') {
-        console.log('Caller sending answer');
       }
+      
       try {
-        console.log('Caller sending signal:', data.type);
         await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
           signal: data,
           timestamp: serverTimestamp(),
@@ -645,7 +754,7 @@ const RemoteVideoElement = () => (
       }
     });
 
-    // Listen for remote signals with improved filtering
+    // Listen for remote signals
     const remoteSignalPath = `${signalBasePath}/${otherUserId}`;
     let signalCount = 0;
     
@@ -653,14 +762,12 @@ const RemoteVideoElement = () => (
       const data = snapshot.val();
       if (!data || !data.signal || !peer || peer.destroyed) return;
       
-      // Only process signals from the current call
       if (data.callId && data.callId !== callId) {
         console.log('Ignoring signal from different call');
         return;
       }
 
       if (data.signal.type === 'candidate') {
-        console.log('Caller received ICE candidate (full):', JSON.stringify(data.signal));
         if (
           !data.signal.candidate ||
           typeof data.signal.candidate !== 'object' ||
@@ -669,13 +776,9 @@ const RemoteVideoElement = () => (
           data.signal.candidate.sdpMid === undefined ||
           data.signal.candidate.sdpMLineIndex === undefined
         ) {
-          console.warn('Caller: Received ICE candidate missing required fields, ignoring:', data.signal);
+          console.warn('Caller: Received invalid ICE candidate, ignoring:', data.signal);
           return;
         }
-      } else if (data.signal.type === 'answer') {
-        console.log('Caller received answer');
-      } else if (data.signal.type === 'offer') {
-        console.log('Caller received offer (should not happen for initiator)');
       }
 
       try {
@@ -684,16 +787,15 @@ const RemoteVideoElement = () => (
         peer.signal(data.signal);
       } catch (error: any) {
         console.error('Error processing remote signal:', error);
-        if (error?.message?.includes('have-remote-offer')) {
-          console.log('WebRTC state error - ending call');
-          endVideoCall();
-        }
       }
     });
 
-    signalingCleanupRef.current = unsubscribe;
+    signalingCleanupRef.current = () => {
+      unsubscribe();
+      cleanupMonitoring();
+    };
 
-    // ✅ FIXED: Enhanced peer event handlers with proper status updates
+    // Enhanced stream handling
     peer.on('stream', (remoteStream: MediaStream) => {
       console.log('✅ Caller received remote stream');
       setRemoteStream(remoteStream);
@@ -701,27 +803,19 @@ const RemoteVideoElement = () => (
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated');
       }
-      setCallStatus('Connected'); // ✅ Update status when stream received
+      setCallStatus('Connected');
     });
 
     peer.on('connect', () => {
       console.log('✅ Caller peer connected');
-      // ✅ BACKUP: Also set status on peer connect if no stream yet
-      if (!remoteStream) {
-        setCallStatus('Connected - waiting for video...');
-      }
+      setCallStatus('Connected');
     });
 
     peer.on('close', () => {
       console.log('Caller peer connection closed');
+      cleanupMonitoring();
       setCallStatus('Call ended');
       endVideoCall();
-    });
-
-    peer.on('error', (error: any) => {
-      console.error('Caller peer error:', error);
-      setCallStatus('Connection error: ' + error.message);
-      setTimeout(() => endVideoCall(), 3000);
     });
 
     // Notify other user about video call
@@ -734,15 +828,12 @@ const RemoteVideoElement = () => (
     });
 
     setCallStatus('Waiting for response...');
-    
-    // Clear initializing flag only after successful setup
     videoCallInitializingRef.current = false;
 
   } catch (error: any) {
     console.error('Error starting video call:', error);
     setCallStatus('Failed to start video call: ' + error.message);
     
-    // Clean up on error
     if (localStream) {
       localStream.getTracks().forEach(track => {
         try {
@@ -756,32 +847,17 @@ const RemoteVideoElement = () => (
     
     setIsVideoCallActive(false);
     setIsCallInitiator(false);
-    videoCallInitializingRef.current = false; // Clear flag on error
-    
-    // Auto-clear error message after 5 seconds
+    videoCallInitializingRef.current = false;
     setTimeout(() => setCallStatus(''), 5000);
   }
-}, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream, remoteStream]);
+}, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
 
   // ✅ UPDATED acceptVideoCall with deduplication and single-answer logic
  const acceptVideoCall = useCallback(async () => {
   console.log('🎯 acceptVideoCall CALLED');
-  console.log('Parameters check:', {
-    firebaseDb: !!firebaseDb,
-    activeFirebaseSessionPath: !!activeFirebaseSessionPath,
-    myUserId: !!myUserId,
-    incomingVideoCall: !!incomingVideoCall,
-    isVideoCallActive,
-    videoCallInitializing: videoCallInitializingRef.current
-  });
-
+  
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) {
-    console.error('❌ Missing requirements for acceptVideoCall:', {
-      firebaseDb: !!firebaseDb,
-      activeFirebaseSessionPath: !!activeFirebaseSessionPath,
-      myUserId: !!myUserId,
-      incomingVideoCall: !!incomingVideoCall
-    });
+    console.error('❌ Missing requirements for acceptVideoCall');
     return;
   }
 
@@ -790,20 +866,17 @@ const RemoteVideoElement = () => (
     return;
   }
 
-  console.log('✅ All checks passed, proceeding with accept...');
   videoCallInitializingRef.current = true;
   console.log('✅ Accepting video call from:', incomingVideoCall.from);
-  setCallStatus('Getting camera access...');
+  setCallStatus('Accepting call...');
 
-  // --- Deduplication state for incoming signals ---
   const processedSignalKeys = new Set();
   let hasSentAnswer = false;
   let offerProcessed = false;
 
   try {
-    // Clean up any existing streams first
+    // Clean up existing resources
     if (localStream) {
-      console.log('Cleaning up existing local stream...');
       localStream.getTracks().forEach(track => {
         try {
           track.stop();
@@ -825,13 +898,14 @@ const RemoteVideoElement = () => (
       peerRef.current = null;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced wait time
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     setIsVideoCallActive(true);
     setIsCallInitiator(false);
     setIncomingVideoCall(null);
-    setCallStatus('Setting up video...');
+    setCallStatus('Getting camera access...');
 
+    // Get user media
     let stream: MediaStream;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -861,14 +935,15 @@ const RemoteVideoElement = () => (
 
     console.log('Got media stream for accepter, setting local video...');
     setLocalStream(stream);
-    setCallStatus('Connecting...');
+    setCallStatus('Setting up connection...');
     
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Reduced wait time
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // Get other user ID
     const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
       const pathParts = sessionPath.split('/');
       if (pathParts.length < 2) return null;
@@ -886,11 +961,6 @@ const RemoteVideoElement = () => (
       ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
       : null;
 
-    console.log('Accepter - Session path:', activeFirebaseSessionPath);
-    console.log('Accepter - My user ID:', myUserId);
-    console.log('Accepter - Detected other user ID:', otherUserId);
-    console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
-
     if (!otherUserId) {
       throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
     }
@@ -905,29 +975,43 @@ const RemoteVideoElement = () => (
     }
 
     const remoteUserId = otherUserId;
+    
+    // Create peer with enhanced configuration
     const peer = new SimplePeer({
       initiator: false,
       trickle: true,
       stream: stream,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-          { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-        ],
-        iceCandidatePoolSize: 10
-      }
+      config: getICEConfiguration()
     });
 
     peerRef.current = peer;
     const { ref, push, onChildAdded, onValue, serverTimestamp } = await import('firebase/database');
     const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
 
-    // Always send the first answer, only deduplicate outgoing answers
+    // Setup connection monitoring
+    const cleanupMonitoring = setupConnectionMonitoring(peer, 'Accepter');
+
+    // Enhanced error handling
+    peer.on('error', (error: any) => {
+      console.error('Accepter peer error:', error);
+      cleanupMonitoring();
+      
+      let errorMessage = 'Connection error';
+      if (error.message?.includes('Connection failed')) {
+        errorMessage = 'Connection failed - please check your network and try again';
+      } else if (error.message?.includes('ice')) {
+        errorMessage = 'Network connection issue - trying to reconnect...';
+      } else {
+        errorMessage = `Connection error: ${error.message}`;
+      }
+      
+      setCallStatus(errorMessage);
+      setTimeout(() => endVideoCall(), 3000);
+    });
+
+    // Enhanced signaling
     peer.on('signal', async (data: any) => {
       if (data.type === 'candidate') {
-        console.log('Accepter sending ICE candidate (full):', JSON.stringify(data));
         if (
           !data.candidate ||
           typeof data.candidate !== 'object' ||
@@ -936,14 +1020,11 @@ const RemoteVideoElement = () => (
           data.candidate.sdpMid === undefined ||
           data.candidate.sdpMLineIndex === undefined
         ) {
-          console.warn('Accepter: ICE candidate missing required fields, not sending:', data);
+          console.warn('Accepter: Invalid ICE candidate, not sending:', data);
           return;
         }
-      } else if (data.type === 'offer') {
-        console.log('Accepter sending offer');
-      } else if (data.type === 'answer') {
-        console.log('Accepter sending answer');
       }
+      
       try {
         if (data.type === 'answer') {
           if (hasSentAnswer) return;
@@ -962,10 +1043,9 @@ const RemoteVideoElement = () => (
       }
     });
 
+    // Process existing signals
     const remoteSignalPath = `${signalBasePath}/${remoteUserId}`;
-    console.log('Accepter listening for signals on path:', remoteSignalPath);
-
-    // Process existing signals (offers/candidates from caller)
+    
     try {
       const existingSignalsRef = ref(firebaseDb, remoteSignalPath);
       const existingSignalsSnapshot = await new Promise((resolve, reject) => {
@@ -975,6 +1055,7 @@ const RemoteVideoElement = () => (
           resolve(snapshot);
         }, { onlyOnce: true });
       });
+      
       const existingSignals = (existingSignalsSnapshot as any).val();
       if (existingSignals && peer && !peer.destroyed) {
         for (const [key, signalDataRaw] of Object.entries(existingSignals)) {
@@ -991,15 +1072,12 @@ const RemoteVideoElement = () => (
             await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
-      } else {
-        console.log('No existing signals found or peer destroyed');
       }
     } catch (error) {
       console.error('Error processing existing signals:', error);
     }
 
-    // Listen for new signals (offers/candidates from caller)
-    console.log('Accepter setting up listener for new signals...');
+    // Listen for new signals
     const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
       const key = snapshot.key;
       if (processedSignalKeys.has(key)) return;
@@ -1007,8 +1085,8 @@ const RemoteVideoElement = () => (
       const data = snapshot.val();
       if (!data || !data.signal || !peer || peer.destroyed) return;
       if (data.callId !== incomingVideoCall.callId) return;
+      
       if (data.signal.type === 'candidate') {
-        console.log('Accepter received ICE candidate (full):', JSON.stringify(data.signal));
         if (
           !data.signal.candidate ||
           typeof data.signal.candidate !== 'object' ||
@@ -1017,14 +1095,11 @@ const RemoteVideoElement = () => (
           data.signal.candidate.sdpMid === undefined ||
           data.signal.candidate.sdpMLineIndex === undefined
         ) {
-          console.warn('Accepter: Received ICE candidate missing required fields, ignoring:', data.signal);
+          console.warn('Accepter: Received invalid ICE candidate, ignoring:', data.signal);
           return;
         }
-      } else if (data.signal.type === 'offer') {
-        console.log('Accepter received offer');
-      } else if (data.signal.type === 'answer') {
-        console.log('Accepter received answer (should not happen for non-initiator)');
       }
+      
       try {
         if (data.signal.type === 'offer' && !offerProcessed) {
           peer.signal(data.signal);
@@ -1038,9 +1113,12 @@ const RemoteVideoElement = () => (
       }
     });
 
-    signalingCleanupRef.current = unsubscribe;
+    signalingCleanupRef.current = () => {
+      unsubscribe();
+      cleanupMonitoring();
+    };
 
-    // ✅ FIXED: Properly handle stream and connection events
+    // Enhanced stream handling
     peer.on('stream', (remoteStream: MediaStream) => {
       console.log('✅ Accepter received remote stream');
       setRemoteStream(remoteStream);
@@ -1048,38 +1126,28 @@ const RemoteVideoElement = () => (
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated');
       }
-      // ✅ CRITICAL FIX: Update status to Connected when stream is received
       setCallStatus('Connected');
-      console.log('✅ Call status updated to Connected');
     });
 
     peer.on('connect', () => {
       console.log('✅ Accepter peer connected');
-      // ✅ BACKUP: Also set connected status on peer connect
-      if (!remoteStream) {
-        setCallStatus('Connected - waiting for video...');
-      }
+      setCallStatus('Connected');
     });
 
     peer.on('close', () => {
       console.log('Accepter peer connection closed');
+      cleanupMonitoring();
       setCallStatus('Call ended');
       endVideoCall();
     });
 
-    peer.on('error', (error: any) => {
-      console.error('Accepter peer error:', error);
-      setCallStatus('Connection error: ' + error.message);
-      setTimeout(() => endVideoCall(), 3000);
-    });
-
-    // ✅ CRITICAL FIX: Clear the initializing flag here, not at the end
     videoCallInitializingRef.current = false;
-    console.log('✅ Video call setup completed, cleared initializing flag');
+    setCallStatus('Connecting...');
 
   } catch (error: any) {
     console.error('Error accepting video call:', error);
     setCallStatus('Failed to accept video call: ' + error.message);
+    
     if (localStream) {
       localStream.getTracks().forEach(track => {
         try {
@@ -1090,11 +1158,12 @@ const RemoteVideoElement = () => (
       });
       setLocalStream(null);
     }
+    
     setIsVideoCallActive(false);
     videoCallInitializingRef.current = false;
     setTimeout(() => setCallStatus(''), 5000);
   }
-}, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream, isVideoCallActive, myRole, remoteStream]);
+}, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream, isVideoCallActive, myRole]);
   // Enhanced endVideoCall with initialization flag reset
   const endVideoCall = useCallback(() => {
     console.log('Ending video call...');
@@ -1275,6 +1344,39 @@ const RemoteVideoElement = () => (
 
     initUser();
   }, []);
+
+  useEffect(() => {
+  if (peerRef.current && isVideoCallActive) {
+    const monitorConnection = setInterval(() => {
+      if (peerRef.current && !peerRef.current.destroyed) {
+        try {
+          // Get connection stats (this is a simplified version)
+          const connectionState = peerRef.current._pc?.connectionState;
+          const iceConnectionState = peerRef.current._pc?.iceConnectionState;
+          
+          console.log('Connection monitoring:', {
+            connectionState,
+            iceConnectionState,
+            connected: peerRef.current.connected
+          });
+          
+          // Update UI based on connection quality
+          if (connectionState === 'failed' || iceConnectionState === 'failed') {
+            setCallStatus('Connection lost - attempting to reconnect...');
+          } else if (connectionState === 'disconnected') {
+            setCallStatus('Connection interrupted...');
+          }
+        } catch (error) {
+          console.warn('Error monitoring connection:', error);
+        }
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(monitorConnection);
+    };
+  }
+}, [isVideoCallActive]);
 
   // Firebase status management with better throttling
   useEffect(() => {
