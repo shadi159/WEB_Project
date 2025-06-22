@@ -31,15 +31,6 @@ interface FirebaseConfig {
   appId?: string;
 }
 
-const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
-  if (myRole === 'mentor') {
-    return true;
-  } else if (myRole === 'user') {
-    return false;
-  }
-  return myUserId.localeCompare(otherUserId) < 0;
-};
-
 // Enhanced error handler that properly handles browser extension errors
 const errorHandlerCache = { current: null as any };
 
@@ -314,6 +305,15 @@ const MentorComponentCore = React.memo(() => {
     return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
   }, [userDetailsCache]);
 
+  const determineInitiator = useCallback((myUserId: string, otherUserId: string, myRole: string): boolean => {
+  if (myRole === 'mentor') {
+    return true;
+  } else if (myRole === 'user') {
+    return false;
+  }
+  return myUserId.localeCompare(otherUserId) < 0;
+}, []);
+  
 // Add a ref to track video call initialization state
 const videoCallInitializingRef = useRef(false);
 
