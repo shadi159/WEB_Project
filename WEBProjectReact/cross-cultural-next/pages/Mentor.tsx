@@ -514,8 +514,7 @@ const MentorComponentCore = React.memo(() => {
       // Wait for cleanup
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Create peer connection with enhanced config
-      // === DEBUG: Restrict ICE servers to only Google STUN for local debugging ===
+      // Create peer connection with TURN and STUN servers for robust connectivity
       const peer = new SimplePeer({
         initiator: true,
         trickle: true,
@@ -523,9 +522,10 @@ const MentorComponentCore = React.memo(() => {
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            // { urls: 'stun:global.stun.twilio.com:3478' },
-            // { urls: 'stun:stun1.l.google.com:19302' },
-            // { urls: 'stun:stun2.l.google.com:19302' }
+            // === TURN servers for production ===
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
           ],
           iceCandidatePoolSize: 10
         }
@@ -625,12 +625,12 @@ const MentorComponentCore = React.memo(() => {
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
-        setCallStatus('Connected');
+        setCallStatus('Connected'); // Ensure UI shows connected
       });
 
       peer.on('connect', () => {
         console.log('Caller peer connected');
-        setCallStatus('Connected');
+        setCallStatus('Connected'); // Ensure UI shows connected
       });
 
       peer.on('close', () => {
@@ -825,14 +825,15 @@ const MentorComponentCore = React.memo(() => {
       const remoteUserId = otherUserId;
       const peer = new SimplePeer({
         initiator: false,
-        trickle: true, // Switched back to true for production robustness
+        trickle: true,
         stream: stream,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            // { urls: 'stun:global.stun.twilio.com:3478' },
-            // { urls: 'stun:stun1.l.google.com:19302' },
-            // { urls: 'stun:stun2.l.google.com:19302' }
+            // === TURN servers for production ===
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
           ],
           iceCandidatePoolSize: 10
         }
@@ -966,12 +967,12 @@ const MentorComponentCore = React.memo(() => {
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
-        setCallStatus('Connected');
+        setCallStatus('Connected'); // Ensure UI shows connected
       });
 
       peer.on('connect', () => {
         console.log('Accepter peer connected');
-        setCallStatus('Connected');
+        setCallStatus('Connected'); // Ensure UI shows connected
       });
 
       peer.on('close', () => {
