@@ -305,17 +305,21 @@ const MentorComponentCore = React.memo(() => {
     return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
   }, [userDetailsCache]);
 
-  // Video call functions
-  // Video call functions - FIXED VERSION with single endVideoCall function
+// Add a ref to track video call initialization state
+const videoCallInitializingRef = useRef(false);
+
+// Fixed startVideoCall with race condition prevention
 const startVideoCall = useCallback(async () => {
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId) return;
   
-  // Prevent multiple simultaneous calls
-  if (isVideoCallActive) {
-    console.log('Video call already active, ignoring start request');
+  // Prevent multiple simultaneous calls - CRITICAL CHECK
+  if (isVideoCallActive || videoCallInitializingRef.current) {
+    console.log('Video call already active or initializing, ignoring start request');
     return;
   }
 
+  // Set initializing flag IMMEDIATELY to prevent race conditions
+  videoCallInitializingRef.current = true;
   console.log('Starting video call...');
   setCallStatus('Initializing...');
 
@@ -324,7 +328,11 @@ const startVideoCall = useCallback(async () => {
     if (localStream) {
       console.log('Cleaning up existing local stream...');
       localStream.getTracks().forEach(track => {
-        track.stop();
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Error stopping track:', e);
+        }
       });
       setLocalStream(null);
     }
@@ -333,34 +341,51 @@ const startVideoCall = useCallback(async () => {
     if (peerRef.current) {
       console.log('Cleaning up existing peer connection...');
       try {
-        peerRef.current.destroy();
+        if (!peerRef.current.destroyed) {
+          peerRef.current.destroy();
+        }
       } catch (e) {
         console.warn('Error destroying existing peer:', e);
       }
       peerRef.current = null;
     }
 
-    // Wait a moment for devices to be released
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait longer for devices to be completely released
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Double-check we're still supposed to start the call
+    if (!videoCallInitializingRef.current) {
+      console.log('Video call initialization was cancelled');
+      return;
+    }
 
     setIsVideoCallActive(true);
     setIsCallInitiator(true);
     setCallStatus('Requesting camera and microphone access...');
     
-    // Get user media with error handling
+    // Get user media with enhanced error handling
     let stream: MediaStream;
     try {
+      // Try to get available devices first
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasVideo = devices.some(device => device.kind === 'videoinput');
+      const hasAudio = devices.some(device => device.kind === 'audioinput');
+      
+      if (!hasVideo && !hasAudio) {
+        throw new Error('No camera or microphone devices found');
+      }
+
       stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+        video: hasVideo ? { 
           width: { ideal: 640 },
           height: { ideal: 480 },
           facingMode: 'user'
-        }, 
-        audio: {
+        } : false, 
+        audio: hasAudio ? {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        }
+        } : false
       });
     } catch (mediaError: any) {
       console.error('Media access error:', mediaError);
@@ -371,12 +396,18 @@ const startVideoCall = useCallback(async () => {
       } else if (mediaError.name === 'NotFoundError') {
         errorMessage = 'No camera or microphone found.';
       } else if (mediaError.name === 'NotReadableError') {
-        errorMessage = 'Camera/microphone is already in use by another application.';
+        errorMessage = 'Camera/microphone is already in use. Please close other applications using the camera and try again.';
+      } else if (mediaError.name === 'OverconstrainedError') {
+        errorMessage = 'Camera/microphone constraints not supported.';
       }
       
       setCallStatus(errorMessage);
       setIsVideoCallActive(false);
       setIsCallInitiator(false);
+      videoCallInitializingRef.current = false;
+      
+      // Auto-clear error after 5 seconds
+      setTimeout(() => setCallStatus(''), 5000);
       return;
     }
     
@@ -531,6 +562,9 @@ const startVideoCall = useCallback(async () => {
     });
 
     setCallStatus('Waiting for response...');
+    
+    // Clear initializing flag only after successful setup
+    videoCallInitializingRef.current = false;
 
   } catch (error: any) {
     console.error('Error starting video call:', error);
@@ -538,21 +572,36 @@ const startVideoCall = useCallback(async () => {
     
     // Clean up on error
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Error stopping track:', e);
+        }
+      });
       setLocalStream(null);
     }
     
     setIsVideoCallActive(false);
     setIsCallInitiator(false);
+    videoCallInitializingRef.current = false; // Clear flag on error
     
     // Auto-clear error message after 5 seconds
     setTimeout(() => setCallStatus(''), 5000);
   }
 }, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
 
+// Fixed acceptVideoCall with race condition prevention
 const acceptVideoCall = useCallback(async () => {
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) return;
 
+  // Prevent multiple simultaneous accepts
+  if (isVideoCallActive || videoCallInitializingRef.current) {
+    console.log('Video call already active or initializing, ignoring accept request');
+    return;
+  }
+
+  videoCallInitializingRef.current = true;
   console.log('Accepting video call from:', incomingVideoCall.from);
   setCallStatus('Accepting video call...');
 
@@ -560,46 +609,60 @@ const acceptVideoCall = useCallback(async () => {
     // Clean up any existing streams first
     if (localStream) {
       console.log('Cleaning up existing local stream...');
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Error stopping track:', e);
+        }
+      });
       setLocalStream(null);
     }
 
     // Clean up any existing peer
     if (peerRef.current) {
       try {
-        peerRef.current.destroy();
+        if (!peerRef.current.destroyed) {
+          peerRef.current.destroy();
+        }
       } catch (e) {
         console.warn('Error destroying existing peer:', e);
       }
       peerRef.current = null;
     }
 
-    // Wait for devices to be released
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait longer for devices to be released
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     setIsVideoCallActive(true);
     setIsCallInitiator(false);
     setIncomingVideoCall(null);
     
-    // Get user media
+    // Get user media with enhanced error handling
     let stream: MediaStream;
     try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasVideo = devices.some(device => device.kind === 'videoinput');
+      const hasAudio = devices.some(device => device.kind === 'audioinput');
+
       stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+        video: hasVideo ? { 
           width: { ideal: 640 },
           height: { ideal: 480 },
           facingMode: 'user'
-        }, 
-        audio: {
+        } : false, 
+        audio: hasAudio ? {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        }
+        } : false
       });
     } catch (mediaError: any) {
       console.error('Media access error:', mediaError);
-      setCallStatus('Failed to access camera/microphone');
+      setCallStatus('Failed to access camera/microphone: ' + mediaError.message);
       setIsVideoCallActive(false);
+      videoCallInitializingRef.current = false;
+      setTimeout(() => setCallStatus(''), 5000);
       return;
     }
     
@@ -611,7 +674,7 @@ const acceptVideoCall = useCallback(async () => {
     }
 
     // Wait longer before creating peer to ensure caller's signals are ready
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Create peer connection - accepter is never initiator
     const peer = new SimplePeer({
@@ -673,7 +736,6 @@ const acceptVideoCall = useCallback(async () => {
             signalData.role === 'caller'
           )
           .sort((a: any, b: any) => {
-            // Sort by timestamp if available
             const aTime = a.timestamp?.seconds || a.timestamp || 0;
             const bTime = b.timestamp?.seconds || b.timestamp || 0;
             return aTime - bTime;
@@ -684,7 +746,6 @@ const acceptVideoCall = useCallback(async () => {
           try {
             console.log('Processing existing signal:', (signalData as any).signal.type);
             peer.signal((signalData as any).signal);
-            // Small delay between signals to avoid overwhelming WebRTC
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (error: any) {
             console.error('Error processing existing signal:', error);
@@ -741,24 +802,37 @@ const acceptVideoCall = useCallback(async () => {
       setTimeout(() => endVideoCall(), 3000);
     });
 
+    // Clear initializing flag after successful setup
+    videoCallInitializingRef.current = false;
+
   } catch (error: any) {
     console.error('Error accepting video call:', error);
     setCallStatus('Failed to accept video call: ' + error.message);
     
     // Clean up on error
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.warn('Error stopping track:', e);
+        }
+      });
       setLocalStream(null);
     }
     
     setIsVideoCallActive(false);
+    videoCallInitializingRef.current = false;
     setTimeout(() => setCallStatus(''), 5000);
   }
-}, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream]);
+}, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream, isVideoCallActive]);
 
-// SINGLE endVideoCall function - consolidated and improved
+// Enhanced endVideoCall with initialization flag reset
 const endVideoCall = useCallback(() => {
   console.log('Ending video call...');
+
+  // Reset initialization flag immediately
+  videoCallInitializingRef.current = false;
 
   // Cleanup peer connection
   if (peerRef.current) {
@@ -771,7 +845,7 @@ const endVideoCall = useCallback(() => {
     }
     peerRef.current = null;
   }
-
+  
   // Cleanup signaling
   if (signalingCleanupRef.current) {
     try {
@@ -830,7 +904,12 @@ const toggleVideo = useCallback(() => {
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
       setIsVideoEnabled(videoTrack.enabled);
+      console.log('Video toggled:', videoTrack.enabled ? 'ON' : 'OFF');
+    } else {
+      console.warn('No video track found');
     }
+  } else {
+    console.warn('No local stream available for video toggle');
   }
 }, [localStream]);
 
@@ -840,7 +919,12 @@ const toggleAudio = useCallback(() => {
     if (audioTrack) {
       audioTrack.enabled = !audioTrack.enabled;
       setIsAudioEnabled(audioTrack.enabled);
+      console.log('Audio toggled:', audioTrack.enabled ? 'ON' : 'OFF');
+    } else {
+      console.warn('No audio track found');
     }
+  } else {
+    console.warn('No local stream available for audio toggle');
   }
 }, [localStream]);
 
