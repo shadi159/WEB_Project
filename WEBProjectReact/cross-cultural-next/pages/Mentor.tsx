@@ -616,6 +616,9 @@ const startVideoCall = useCallback(async () => {
 }, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
 
 // Fixed acceptVideoCall with race condition prevention
+// COMPLETE FIXED acceptVideoCall function
+// Replace your entire acceptVideoCall function with this:
+
 const acceptVideoCall = useCallback(async () => {
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) return;
 
@@ -657,34 +660,6 @@ const acceptVideoCall = useCallback(async () => {
 
     // Wait longer for devices to be released
     await new Promise(resolve => setTimeout(resolve, 2000));
-
-    const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
-    const pathParts = sessionPath.split('/');
-    if (pathParts.length < 2) return null;
-    
-    const sessionPart = pathParts[1];
-    const userIds = sessionPart.split('_');
-    
-    for (const id of userIds) {
-      if (id !== myUserId && !/^\d+$/.test(id)) {
-        return id;
-      }
-    }
-    return null;
-  };
-
-  const otherUserId = activeFirebaseSessionPath 
-    ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
-    : null;
-
-  console.log('Accepter - Detected other user ID:', otherUserId);
-  console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
-
-  if (!otherUserId) {
-    throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
-  }
-
-  const remoteUserId = otherUserId;
 
     setIsVideoCallActive(true);
     setIsCallInitiator(false);
@@ -728,6 +703,38 @@ const acceptVideoCall = useCallback(async () => {
     // Wait longer before creating peer to ensure caller's signals are ready
     await new Promise(resolve => setTimeout(resolve, 3000));
 
+    // FIXED: Add proper user ID detection
+    const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
+      const pathParts = sessionPath.split('/');
+      if (pathParts.length < 2) return null;
+      
+      const sessionPart = pathParts[1];
+      const userIds = sessionPart.split('_');
+      
+      for (const id of userIds) {
+        if (id !== myUserId && !/^\d+$/.test(id)) {
+          return id;
+        }
+      }
+      return null;
+    };
+
+    const otherUserId = activeFirebaseSessionPath 
+      ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
+      : null;
+
+    console.log('Accepter - Session path:', activeFirebaseSessionPath);
+    console.log('Accepter - My user ID:', myUserId);
+    console.log('Accepter - Detected other user ID:', otherUserId);
+    console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
+
+    if (!otherUserId) {
+      throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+    }
+
+    // Use the detected otherUserId for signaling
+    const remoteUserId = otherUserId;
+
     // Create peer connection - accepter is never initiator
     const peer = new SimplePeer({
       initiator: false,
@@ -766,8 +773,11 @@ const acceptVideoCall = useCallback(async () => {
       }
     });
 
-    // Process existing signals first
+    // FIXED: Use the correct remote user ID for signaling path
     const remoteSignalPath = `${signalBasePath}/${remoteUserId}`;
+    console.log('Accepter listening for signals on path:', remoteSignalPath);
+
+    // Process existing signals first
     console.log('Processing existing signals from caller...');
     
     try {
@@ -793,22 +803,25 @@ const acceptVideoCall = useCallback(async () => {
             return aTime - bTime;
           });
 
-        console.log(`Processing ${signals.length} existing signals`);
+        console.log(`Accepter processing ${signals.length} existing signals`);
         for (const signalData of signals) {
           try {
-            console.log('Processing existing signal:', (signalData as any).signal.type);
+            console.log('Accepter processing existing signal:', (signalData as any).signal.type);
             peer.signal((signalData as any).signal);
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (error: any) {
             console.error('Error processing existing signal:', error);
           }
         }
+      } else {
+        console.log('No existing signals found or peer destroyed');
       }
     } catch (error) {
       console.error('Error processing existing signals:', error);
     }
 
     // Listen for new signals
+    console.log('Accepter setting up listener for new signals...');
     const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
       const data = snapshot.val();
       if (!data || !data.signal || !peer || peer.destroyed) return;
@@ -819,7 +832,7 @@ const acceptVideoCall = useCallback(async () => {
       }
 
       try {
-        console.log('Processing new remote signal:', data.signal.type, 'from role:', data.role);
+        console.log('Accepter processing new remote signal:', data.signal.type, 'from role:', data.role);
         peer.signal(data.signal);
       } catch (error: any) {
         console.error('Error processing remote signal:', error);
