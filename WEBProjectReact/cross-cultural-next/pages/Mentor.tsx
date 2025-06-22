@@ -352,9 +352,9 @@ const MentorComponentCore = React.memo(() => {
       // Wait a moment for cleanup
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Create peer connection
+      // Create peer connection - caller is ALWAYS initiator
       const peer = new SimplePeer({
-        initiator: shouldBeInitiator,
+        initiator: true, // Always true for caller
         trickle: true,
         stream: stream,
         config: {
@@ -368,7 +368,6 @@ const MentorComponentCore = React.memo(() => {
       peerRef.current = peer;
 
       // Wait for the other peer to be ready
-      let isOtherPeerReady = false;
       const callId = Date.now();
 
       // Send our signals to Firebase with proper ordering
@@ -378,9 +377,10 @@ const MentorComponentCore = React.memo(() => {
             signal: data,
             timestamp: serverTimestamp(),
             callId: callId,
-            isInitiator: shouldBeInitiator
+            isInitiator: true,
+            role: 'caller'
           });
-          console.log('Sent signal:', data.type, 'as initiator:', shouldBeInitiator);
+          console.log('Caller sent signal:', data.type);
         } catch (error) {
           console.error('Error sending signal:', error);
         }
@@ -392,13 +392,13 @@ const MentorComponentCore = React.memo(() => {
         const data = snapshot.val();
         if (data && data.signal && peer && !peer.destroyed) {
           // Only process signals from the current call
-          if (data.callId && data.callId < callId - 5000) {
-            console.log('Ignoring old signal from previous call');
+          if (data.callId && data.callId !== callId) {
+            console.log('Ignoring signal from different call');
             return;
           }
 
           try {
-            console.log('Processing remote signal:', data.signal.type, 'from initiator:', data.isInitiator);
+            console.log('Processing remote signal:', data.signal.type, 'from role:', data.role);
             peer.signal(data.signal);
           } catch (error: any) {
             console.error('Error processing remote signal:', error);
@@ -414,7 +414,7 @@ const MentorComponentCore = React.memo(() => {
 
       // Handle remote stream
       peer.on('stream', (remoteStream: MediaStream) => {
-        console.log('Received remote stream');
+        console.log('Caller received remote stream');
         setRemoteStream(remoteStream);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
@@ -424,17 +424,17 @@ const MentorComponentCore = React.memo(() => {
 
       // Handle connection events
       peer.on('connect', () => {
-        console.log('Peer connected');
+        console.log('Caller peer connected');
         setCallStatus('Connected');
       });
 
       peer.on('close', () => {
-        console.log('Peer connection closed');
+        console.log('Caller peer connection closed');
         endVideoCall();
       });
 
       peer.on('error', (error: any) => {
-        console.error('Peer error:', error);
+        console.error('Caller peer error:', error);
         setCallStatus('Connection error');
         endVideoCall();
       });
@@ -444,7 +444,7 @@ const MentorComponentCore = React.memo(() => {
         type: 'video_call_request',
         from: myUserId,
         callId: callId,
-        initiatorRole: shouldBeInitiator,
+        initiatorRole: true, // Caller is always initiator
         timestamp: serverTimestamp()
       });
 
@@ -462,6 +462,9 @@ const MentorComponentCore = React.memo(() => {
 
     try {
       setCallStatus('Accepting video call...');
+      setIsVideoCallActive(true); // Set this immediately 
+      setIncomingVideoCall(null);
+      console.log('Accepting video call from:', incomingVideoCall.from);
       
       // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -469,27 +472,22 @@ const MentorComponentCore = React.memo(() => {
         audio: true 
       });
       
+      console.log('Got media stream for accepter, setting local video...');
       setLocalStream(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
-      setIsVideoCallActive(true);
-      setIncomingVideoCall(null);
+      // IMPORTANT: Accepter should ALWAYS be non-initiator
+      setIsCallInitiator(false);
+      console.log('Video call accepter is non-initiator');
 
-      // Use the OPPOSITE role from the caller to ensure only one initiator
-      const shouldBeInitiator = myRole === 'mentor' || (myRole === 'user' && myUserId < incomingVideoCall.from);
-      const actualInitiator = !incomingVideoCall.initiatorRole; // Always be opposite of caller
-      setIsCallInitiator(actualInitiator);
+      // Wait a moment before creating peer to ensure caller's signals are ready
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      console.log(`Video call accepter decision: ${actualInitiator} (caller was initiator: ${incomingVideoCall.initiatorRole}, myRole: ${myRole})`);
-
-      // Wait a moment before creating peer to ensure caller is ready
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Create peer connection with opposite role
+      // Create peer connection - accepter is NEVER initiator
       const peer = new SimplePeer({
-        initiator: actualInitiator,
+        initiator: false, // Always false for accepter
         trickle: true,
         stream: stream,
         config: {
@@ -503,7 +501,7 @@ const MentorComponentCore = React.memo(() => {
       peerRef.current = peer;
 
       // Setup signaling
-      const { ref, push, onChildAdded, serverTimestamp } = await import('firebase/database');
+      const { ref, push, onChildAdded, onValue, serverTimestamp } = await import('firebase/database');
       const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
 
       // Send our signals to Firebase
@@ -513,27 +511,52 @@ const MentorComponentCore = React.memo(() => {
             signal: data,
             timestamp: serverTimestamp(),
             callId: incomingVideoCall.callId,
-            isInitiator: actualInitiator
+            isInitiator: false,
+            role: 'accepter'
           });
-          console.log('Sent signal:', data.type, 'as initiator:', actualInitiator);
+          console.log('Accepter sent signal:', data.type);
         } catch (error) {
           console.error('Error sending signal:', error);
         }
       });
 
-      // Listen for remote signals with proper filtering
+      // Listen for remote signals - First process any existing signals
       const remoteSignalPath = `${signalBasePath}/${incomingVideoCall.from}`;
+      console.log('Listening for signals from caller at:', remoteSignalPath);
+      
+      // Get all existing signals first
+      const existingSignalsRef = ref(firebaseDb, remoteSignalPath);
+      const existingSignalsSnapshot = await new Promise((resolve) => {
+        onValue(existingSignalsRef, resolve, { onlyOnce: true });
+      });
+      
+      const existingSignals = (existingSignalsSnapshot as any).val();
+      if (existingSignals && peer && !peer.destroyed) {
+        console.log('Processing existing signals:', Object.keys(existingSignals).length);
+        Object.values(existingSignals).forEach((signalData: any) => {
+          if (signalData.callId === incomingVideoCall.callId && signalData.role === 'caller') {
+            try {
+              console.log('Processing existing signal:', signalData.signal.type);
+              peer.signal(signalData.signal);
+            } catch (error: any) {
+              console.error('Error processing existing signal:', error);
+            }
+          }
+        });
+      }
+
+      // Then listen for new signals
       const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
         const data = snapshot.val();
         if (data && data.signal && peer && !peer.destroyed) {
           // Only process signals from the current call
-          if (data.callId && data.callId !== incomingVideoCall.callId) {
+          if (data.callId !== incomingVideoCall.callId) {
             console.log('Ignoring signal from different call');
             return;
           }
 
           try {
-            console.log('Processing remote signal:', data.signal.type, 'from initiator:', data.isInitiator);
+            console.log('Processing new remote signal:', data.signal.type, 'from role:', data.role);
             peer.signal(data.signal);
           } catch (error: any) {
             console.error('Error processing remote signal:', error);
@@ -549,7 +572,7 @@ const MentorComponentCore = React.memo(() => {
 
       // Handle remote stream
       peer.on('stream', (remoteStream: MediaStream) => {
-        console.log('Received remote stream');
+        console.log('Accepter received remote stream');
         setRemoteStream(remoteStream);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
@@ -559,17 +582,17 @@ const MentorComponentCore = React.memo(() => {
 
       // Handle connection events
       peer.on('connect', () => {
-        console.log('Peer connected');
+        console.log('Accepter peer connected');
         setCallStatus('Connected');
       });
 
       peer.on('close', () => {
-        console.log('Peer connection closed');
+        console.log('Accepter peer connection closed');
         endVideoCall();
       });
 
       peer.on('error', (error: any) => {
-        console.error('Peer error:', error);
+        console.error('Accepter peer error:', error);
         setCallStatus('Connection error');
         endVideoCall();
       });
@@ -579,7 +602,7 @@ const MentorComponentCore = React.memo(() => {
       setCallStatus('Failed to accept video call');
       endVideoCall();
     }
-  }, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, myRole]);
+  }, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall]);
 
   const endVideoCall = useCallback(() => {
     console.log('Ending video call...');
@@ -931,7 +954,9 @@ const MentorComponentCore = React.memo(() => {
       const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
         try {
           const notification = snapshot.val();
+          console.log('Video call notification received:', notification);
           if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
+            console.log('Setting incoming video call:', notification);
             setIncomingVideoCall(notification);
           }
         } catch (err) {
@@ -945,7 +970,11 @@ const MentorComponentCore = React.memo(() => {
           const sessionStatus = snapshot.val();
           console.log('Session status update:', sessionStatus, 'for path:', path);
           
-          if (sessionStatus === 'ended' && activeFirebaseSessionPath === path) {
+          // Only end session if status is explicitly 'ended' AND we're not in an active video call
+          // AND this is actually the current active session
+          if (sessionStatus === 'ended' && 
+              activeFirebaseSessionPath === path && 
+              !isVideoCallActive) {
             console.log('Session ended by remote party for our active session');
             endSession();
           }
