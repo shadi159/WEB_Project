@@ -23,6 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "../app/components/ui/separator";
 import { useToast } from "../app/components/ui/use-toast";
 import Navbar from "../app/components/Navbar";
+// Import your logo component here
+// import Logo from "../app/components/Logo"; // Adjust the import path as needed
 
 interface UserProfile {
   _id: string;
@@ -43,6 +45,84 @@ interface UserProfile {
   };
 }
 
+// Professional Loading Component
+const ProfileLoadingScreen = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="text-center space-y-8">
+        {/* Logo Container with Animation */}
+        <div className="flex justify-center">
+          <div className="relative">
+            {/* Replace this div with your actual Logo component */}
+            {/* <Logo className="w-20 h-20 animate-pulse" /> */}
+            <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center animate-pulse">
+              <span className="text-white font-bold text-2xl">L</span>
+            </div>
+            
+            {/* Animated Ring */}
+            <div className="absolute inset-0 rounded-2xl border-4 border-blue-200 animate-spin opacity-20"></div>
+            <div className="absolute inset-2 rounded-xl border-2 border-purple-200 animate-ping opacity-30"></div>
+          </div>
+        </div>
+        
+        {/* Loading Text */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold text-gray-800 animate-fade-in">
+            Loading Your Profile
+          </h2>
+          <p className="text-gray-600 animate-fade-in-delay">
+            Please wait while we fetch your information...
+          </p>
+        </div>
+        
+        {/* Progress Indicators */}
+        <div className="space-y-3">
+          <div className="flex justify-center space-x-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="w-64 h-1 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full animate-progress"></div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Custom CSS for animations */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fade-in-delay {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes progress {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
+        .animate-fade-in {
+          animation: fade-in 0.6s ease-out;
+        }
+        
+        .animate-fade-in-delay {
+          animation: fade-in-delay 0.6s ease-out 0.3s both;
+        }
+        
+        .animate-progress {
+          animation: progress 2s ease-in-out infinite;
+        }
+      `}</style>
+    </div>
+  );
+};
+
 export default function Profile() {
   const router = useRouter();
   const { toast } = useToast();
@@ -55,55 +135,54 @@ export default function Profile() {
   const [fieldOptions, setFieldOptions] = useState<string[]>([]);
   const [levelOptions, setLevelOptions] = useState<string[]>([]);
 
-
   // Fetch user data on mount
- useEffect(() => {
-  const token = localStorage.getItem("token");
+  useEffect(() => {
+    const token = localStorage.getItem("token");
 
-  // Redirect if no token
-  if (!token) {
-    toast({ title: "Please sign in", description: "Redirecting..." });
-    router.push("/SignIn");
-    return;
-  }
-
-  const fetchData = async () => {
-    try {
-      // Fetch profile
-      const profileRes = await fetch("/api/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (profileRes.status === 401) throw new Error("Unauthorized");
-
-      const profileData = await profileRes.json();
-      setProfile(profileData.user);
-
-      // Fetch dropdown options
-      // In Profile.tsx useEffect
-      const [fieldsRes, levelsRes] = await Promise.all([
-        fetch(`/api/fields/fieldOfStudy?nocache=${Date.now()}`), // Cache busting
-        fetch(`/api/fields/educationalLevels?nocache=${Date.now()}`),
-      ]);
-
-      const fieldsData = await fieldsRes.json();
-      const levelsData = await levelsRes.json();
-
-      // ✅ Check array format to avoid silent failure
-      setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map(f => f.name) : []);
-      setLevelOptions(Array.isArray(levelsData) ? levelsData.map(l => l.level) : []);
-    } catch (err: any) {
-      console.error("Profile fetch error:", err);
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    // Redirect if no token
+    if (!token) {
+      toast({ title: "Please sign in", description: "Redirecting..." });
       router.push("/SignIn");
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
 
-  fetchData();
-}, [router, toast]);
+    const fetchData = async () => {
+      try {
+        // Fetch profile
+        const profileRes = await fetch("/api/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
+        if (profileRes.status === 401) throw new Error("Unauthorized");
+
+        const profileData = await profileRes.json();
+        setProfile(profileData.user);
+
+        // Fetch dropdown options
+        const [fieldsRes, levelsRes] = await Promise.all([
+          fetch(`/api/fields/fieldOfStudy?nocache=${Date.now()}`),
+          fetch(`/api/fields/educationalLevels?nocache=${Date.now()}`),
+        ]);
+
+        const fieldsData = await fieldsRes.json();
+        const levelsData = await levelsRes.json();
+
+        setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map(f => f.name) : []);
+        setLevelOptions(Array.isArray(levelsData) ? levelsData.map(l => l.level) : []);
+      } catch (err: any) {
+        console.error("Profile fetch error:", err);
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+        router.push("/SignIn");
+      } finally {
+        // Add a small delay to show the loading animation
+        setTimeout(() => {
+          setLoading(false);
+        }, 1000);
+      }
+    };
+
+    fetchData();
+  }, [router, toast]);
 
   // Handlers
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -129,61 +208,64 @@ export default function Profile() {
     );
   };
 
-const saveProfile = async () => {
-  if (!profile) return;
-  setSaving(true);
-  try {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      toast({ title: "Error", description: "Session expired. Please sign in again.", variant: "destructive" });
-      router.push("/SignIn");
-      return;
-    }
+  const saveProfile = async () => {
+    if (!profile) return;
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({ title: "Error", description: "Session expired. Please sign in again.", variant: "destructive" });
+        router.push("/SignIn");
+        return;
+      }
 
-    // 1. Initial save request
-    const saveRes = await fetch("/api/profile", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(profile),
-    });
-    
-    if (!saveRes.ok) {
-      const errorData = await saveRes.json();
-      throw new Error(errorData.message || "Failed to update profile");
-    }
+      // 1. Initial save request
+      const saveRes = await fetch("/api/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profile),
+      });
+      
+      if (!saveRes.ok) {
+        const errorData = await saveRes.json();
+        throw new Error(errorData.message || "Failed to update profile");
+      }
 
-    // 2. Force refresh with cache-busting
-    const refreshRes = await fetch(`/api/profile?ts=${Date.now()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    
-    if (!refreshRes.ok) {
-      console.warn("Refresh failed, using original response data");
-      const saveData = await saveRes.json();
-      setProfile(saveData.user);
-    } else {
-      const refreshData = await refreshRes.json();
-      setProfile(refreshData.user);
-    }
+      // 2. Force refresh with cache-busting
+      const refreshRes = await fetch(`/api/profile?ts=${Date.now()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (!refreshRes.ok) {
+        console.warn("Refresh failed, using original response data");
+        const saveData = await saveRes.json();
+        setProfile(saveData.user);
+      } else {
+        const refreshData = await refreshRes.json();
+        setProfile(refreshData.user);
+      }
 
-    setIsEditing(false);
-    toast({ title: "Saved", description: "Profile updated successfully" });
-  } catch (err: any) {
-    console.error("Save error:", err);
-    toast({
-      title: "Error",
-      description: err.message || "Failed to save changes",
-      variant: "destructive",
-    });
-  } finally {
-    setSaving(false);
+      setIsEditing(false);
+      toast({ title: "Saved", description: "Profile updated successfully" });
+    } catch (err: any) {
+      console.error("Save error:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to save changes",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Show loading screen while fetching data
+  if (loading) {
+    return <ProfileLoadingScreen />;
   }
-};
-
-  if (loading) return <div>Loading...</div>;
 
   return (
     <div className="min-h-screen bg-origin-padding bg-background">
@@ -327,19 +409,57 @@ const saveProfile = async () => {
                         rows={4}
                       />
                     </div>
-                      <div className="mt-6">
-                      <h3 className="font-medium mb-2">Education System Comparison</h3>
-                      <Button
-                        className="w-full"
-                        variant="default"
-                        onClick={() => router.push('/Compare-education')}
-                        disabled={isEditing}
-                      >
-                        Compare Education Systems
-                      </Button>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Compare education systems between your home and destination country
-                      </p>
+                    <div className="mt-6">
+                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:border-blue-300">
+                        {/* Background Pattern */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5"></div>
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-400/10 to-purple-400/10 rounded-full -mr-10 -mt-10"></div>
+                        
+                        {/* Content */}
+                        <div className="relative">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-lg text-gray-800 mb-2">
+                                Education System Comparison
+                              </h3>
+                              <p className="text-sm text-gray-600 leading-relaxed">
+                                Get detailed insights comparing education systems between your home and destination country. 
+                                Understand requirements, equivalencies, and pathways.
+                              </p>
+                            </div>
+                            <div className="ml-4 p-2 bg-white rounded-lg shadow-sm">
+                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2 text-xs text-gray-500">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">
+                                Free Tool
+                              </span>
+                              <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                                Instant Results
+                              </span>
+                            </div>
+                            
+                            <Button
+                              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium px-6 py-2 rounded-lg shadow-sm transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                              onClick={() => router.push('/Compare-education')}
+                              disabled={isEditing}
+                            >
+                              <span className="flex items-center space-x-2">
+                                <span>Compare Now</span>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                              </span>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </TabsContent>
@@ -380,7 +500,7 @@ const saveProfile = async () => {
                           <SelectValue placeholder="Select field" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60 overflow-auto bg-gray-50">
-                            {fieldOptions.map((field) => (
+                          {fieldOptions.map((field) => (
                             <SelectItem key={field} value={field}>
                               {field}
                             </SelectItem>
@@ -389,7 +509,6 @@ const saveProfile = async () => {
                       </Select>
                     </div>
                     <Separator />
-                    {/* Documents Section (if needed) */}
                   </CardContent>
                 </TabsContent>
                 {/* Preferences Tab */}
@@ -399,7 +518,6 @@ const saveProfile = async () => {
                     <CardDescription>Manage your notification and content preferences</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/** Preference toggles **/}
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
                         <h4 className="font-medium">Email Notifications</h4>
