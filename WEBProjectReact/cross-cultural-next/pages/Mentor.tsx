@@ -643,7 +643,7 @@ const MentorComponentCore = React.memo(() => {
     }
   }, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
 
-  // ✅ UPDATED acceptVideoCall with enhanced debugging
+  // ✅ UPDATED acceptVideoCall with deduplication and single-answer logic
   const acceptVideoCall = useCallback(async () => {
     console.log('🎯 acceptVideoCall CALLED');
     console.log('Parameters check:', {
@@ -675,6 +675,10 @@ const MentorComponentCore = React.memo(() => {
     videoCallInitializingRef.current = true;
     console.log('✅ Accepting video call from:', incomingVideoCall.from);
     setCallStatus('Accepting video call...');
+
+    // --- Deduplication state ---
+    const processedSignalKeys = new Set();
+    let hasSentAnswer = false;
 
     try {
       // Clean up any existing streams first
@@ -756,7 +760,7 @@ const MentorComponentCore = React.memo(() => {
         const userIds = sessionPart.split('_');
         
         for (const id of userIds) {
-          if (id !== myUserId && !/^\d+$/.test(id)) {
+          if (id !== myUserId && !/^[0-9]+$/.test(id)) {
             return id;
           }
         }
@@ -813,6 +817,11 @@ const MentorComponentCore = React.memo(() => {
       // Send our signals
       peer.on('signal', async (data: any) => {
         try {
+          // Only send one answer
+          if (data.type === 'answer') {
+            if (hasSentAnswer) return;
+            hasSentAnswer = true;
+          }
           console.log('Accepter sending signal:', data.type);
           await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
             signal: data,
@@ -832,7 +841,6 @@ const MentorComponentCore = React.memo(() => {
 
       // Process existing signals first
       console.log('Processing existing signals from caller...');
-      
       try {
         const existingSignalsRef = ref(firebaseDb, remoteSignalPath);
         const existingSignalsSnapshot = await new Promise((resolve, reject) => {
@@ -842,14 +850,14 @@ const MentorComponentCore = React.memo(() => {
             resolve(snapshot);
           }, { onlyOnce: true });
         });
-        
         const existingSignals = (existingSignalsSnapshot as any).val();
         if (existingSignals && peer && !peer.destroyed) {
-          const signals = Object.values(existingSignals)
-            .filter((signalData: any) => 
-              signalData.callId === incomingVideoCall.callId && 
-              signalData.role === 'caller'
-            )
+          const signals = Object.entries(existingSignals)
+            .filter(([key, signalData]: [string, any]) => {
+              processedSignalKeys.add(key);
+              return signalData.callId === incomingVideoCall.callId && signalData.role === 'caller';
+            })
+            .map(([_, signalData]) => signalData)
             .sort((a: any, b: any) => {
               const aTime = a.timestamp?.seconds || a.timestamp || 0;
               const bTime = b.timestamp?.seconds || b.timestamp || 0;
@@ -859,8 +867,13 @@ const MentorComponentCore = React.memo(() => {
           console.log(`Accepter processing ${signals.length} existing signals`);
           for (const signalData of signals) {
             try {
-              console.log('Accepter processing existing signal:', (signalData as any).signal.type);
-              peer.signal((signalData as any).signal);
+              const data = signalData as { signal: { type: string } };
+              if (data.signal.type === 'offer' && !hasSentAnswer) {
+                peer.signal(data.signal);
+                hasSentAnswer = true;
+              } else if (data.signal.type !== 'offer') {
+                peer.signal(data.signal);
+              }
               await new Promise(resolve => setTimeout(resolve, 100));
             } catch (error: any) {
               console.error('Error processing existing signal:', error);
@@ -876,17 +889,22 @@ const MentorComponentCore = React.memo(() => {
       // Listen for new signals
       console.log('Accepter setting up listener for new signals...');
       const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
+        const key = snapshot.key;
+        if (processedSignalKeys.has(key)) return;
+        processedSignalKeys.add(key);
         const data = snapshot.val();
         if (!data || !data.signal || !peer || peer.destroyed) return;
-        
         if (data.callId !== incomingVideoCall.callId) {
           console.log('Ignoring signal from different call');
           return;
         }
-
         try {
-          console.log('Accepter processing new remote signal:', data.signal.type, 'from role:', data.role);
-          peer.signal(data.signal);
+          if (data.signal.type === 'offer' && !hasSentAnswer) {
+            peer.signal(data.signal);
+            hasSentAnswer = true;
+          } else if (data.signal.type !== 'offer') {
+            peer.signal(data.signal);
+          }
         } catch (error: any) {
           console.error('Error processing remote signal:', error);
         }
@@ -926,7 +944,6 @@ const MentorComponentCore = React.memo(() => {
     } catch (error: any) {
       console.error('Error accepting video call:', error);
       setCallStatus('Failed to accept video call: ' + error.message);
-      
       // Clean up on error
       if (localStream) {
         localStream.getTracks().forEach(track => {
@@ -938,7 +955,6 @@ const MentorComponentCore = React.memo(() => {
         });
         setLocalStream(null);
       }
-      
       setIsVideoCallActive(false);
       videoCallInitializingRef.current = false;
       setTimeout(() => setCallStatus(''), 5000);
