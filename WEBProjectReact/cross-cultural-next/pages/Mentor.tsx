@@ -31,6 +31,17 @@ interface FirebaseConfig {
   appId?: string;
 }
 
+const determineInitiator = useCallback((myUserId: string, otherUserId: string, myRole: string): boolean => {
+  // Use a deterministic rule: mentor always initiates, but if both same role, use lexicographic order
+  if (myRole === 'mentor') {
+    return true;
+  } else if (myRole === 'user') {
+    return false;
+  }
+  // Fallback: lexicographic comparison of user IDs for same roles
+  return myUserId.localeCompare(otherUserId) < 0;
+}, []);
+
 // Enhanced error handler that properly handles browser extension errors
 const errorHandlerCache = { current: null as any };
 
@@ -471,8 +482,15 @@ const startVideoCall = useCallback(async () => {
     throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
   }
 
-    console.log(`Video call initiator decision: true (myRole: ${myRole}, myUserId: ${myUserId}, otherUserId: ${otherUserId})`);
+    const shouldInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
+    console.log(`Video call initiator decision: ${shouldInitiate} (myRole: ${myRole}, myUserId: ${myUserId}, otherUserId: ${otherUserId})`);
 
+    if (!shouldInitiate) {
+      console.log('This user should not initiate - waiting for other user to initiate');
+      setCallStatus('Waiting for other user to start video call...');
+      videoCallInitializingRef.current = false;
+      return;
+    }
     // Clear any existing signaling data
     const { ref, set, push, onChildAdded, serverTimestamp, remove } = await import('firebase/database');
     const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
@@ -719,6 +737,8 @@ const acceptVideoCall = useCallback(async () => {
       return null;
     };
 
+
+
     const otherUserId = activeFirebaseSessionPath 
       ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
       : null;
@@ -727,6 +747,19 @@ const acceptVideoCall = useCallback(async () => {
     console.log('Accepter - My user ID:', myUserId);
     console.log('Accepter - Detected other user ID:', otherUserId);
     console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
+
+    if (!otherUserId) {
+      throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+    }
+
+    const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
+    if (shouldWeInitiate) {
+      console.log('We should be the initiator, not accepting');
+      setCallStatus('Error: Role conflict');
+      videoCallInitializingRef.current = false;
+      setTimeout(() => setCallStatus(''), 3000);
+      return;
+    }
 
     if (!otherUserId) {
       throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
@@ -1266,20 +1299,34 @@ const toggleAudio = useCallback(() => {
         console.error('Messages listener error:', error);
       });
 
-      // Listen for video call notifications
-      const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
-        try {
-          const notification = snapshot.val();
-          console.log('Video call notification received:', notification);
-          if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
-            console.log('Setting incoming video call:', notification);
-            setIncomingVideoCall(notification);
+     const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
+      try {
+        const notification = snapshot.val();
+        console.log('Video call notification received:', notification);
+        
+        if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
+          // Get the other user ID from the notification
+          const otherUserId = notification.from;
+          
+          if (!otherUserId || !myUserId) {  // ✅ FIX: Check both IDs
+            console.warn('Missing user IDs:', { otherUserId, myUserId });
+            return;
           }
-        } catch (err) {
-          console.error('Video call notification error:', err);
+          
+          // Check if we should be the initiator instead
+          const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');  // ✅ Now both are guaranteed to be strings
+          if (shouldWeInitiate) {
+            console.log('We should initiate, ignoring incoming call request');
+            return;
+          }
+          
+          console.log('Setting incoming video call:', notification);
+          setIncomingVideoCall(notification);
         }
-      });
-
+      } catch (err) {
+        console.error('Video call notification error:', err);
+      }
+    });
       const sessionRef = ref(firebaseDb, `${path}/status`);
       const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
         try {
