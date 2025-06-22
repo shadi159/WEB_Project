@@ -23,8 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "../app/components/ui/separator";
 import { useToast } from "../app/components/ui/use-toast";
 import Navbar from "../app/components/Navbar";
-// Import your logo component here
-// import Logo from "../app/components/Logo"; // Adjust the import path as needed
+import Logo from "../app/components/Logo"; 
 
 interface UserProfile {
   _id: string;
@@ -56,7 +55,7 @@ const ProfileLoadingScreen = () => {
             {/* Replace this div with your actual Logo component */}
             {/* <Logo className="w-20 h-20 animate-pulse" /> */}
             <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center animate-pulse">
-              <span className="text-white font-bold text-2xl">L</span>
+              <Logo className="w-16 h-16"/>
             </div>
             
             {/* Animated Ring */}
@@ -410,10 +409,10 @@ export default function Profile() {
                       />
                     </div>
                     <div className="mt-6">
-                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:border-blue-300">
+                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gradient-to-r from-blue-50 to-teal-50 p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:border-blue-300">
                         {/* Background Pattern */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5"></div>
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-400/10 to-purple-400/10 rounded-full -mr-10 -mt-10"></div>
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-teal-500/5"></div>
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-400/10 to-teal-400/10 rounded-full -mr-10 -mt-10"></div>
                         
                         {/* Content */}
                         <div className="relative">
@@ -446,7 +445,7 @@ export default function Profile() {
                             </div>
                             
                             <Button
-                              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium px-6 py-2 rounded-lg shadow-sm transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                              className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-700 hover:to-teal-700 text-white font-medium px-6 py-2 rounded-lg shadow-sm transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                               onClick={() => router.push('/Compare-education')}
                               disabled={isEditing}
                             >
@@ -574,7 +573,7 @@ export default function Profile() {
                       Cancel
                     </Button>
                     <Button
-                      className="bg-blue-500 hover:bg-purple-500"
+                      className="bg-blue-500 hover:bg-teal-500"
                       onClick={saveProfile}
                       disabled={saving}
                     >
