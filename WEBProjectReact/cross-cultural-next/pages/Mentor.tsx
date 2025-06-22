@@ -1298,33 +1298,33 @@ const toggleAudio = useCallback(() => {
       });
 
      const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
-      try {
-        const notification = snapshot.val();
-        console.log('Video call notification received:', notification);
-        
-        if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
-          // Get the other user ID from the notification
-          const otherUserId = notification.from;
+        try {
+          const notification = snapshot.val();
+          console.log('Video call notification received:', notification);
           
-          if (!otherUserId || !myUserId) {  // ✅ FIX: Check both IDs
-            console.warn('Missing user IDs:', { otherUserId, myUserId });
-            return;
+          if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
+            const otherUserId = notification.from;
+            
+            if (!otherUserId || !myUserId) {
+              console.warn('Missing user IDs:', { otherUserId, myUserId });
+              return;
+            }
+            
+            // ✅ CORRECT LOGIC: Only accept if we're NOT supposed to initiate
+            const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
+            if (shouldWeInitiate) {
+              console.log('We should initiate, ignoring incoming call request because we should be the caller');
+              return;
+            }
+            
+            // ✅ If we reach here, we're the receiver and should show the incoming call
+            console.log('We should NOT initiate, accepting incoming video call:', notification);
+            setIncomingVideoCall(notification);
           }
-          
-          // Check if we should be the initiator instead
-          const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');  // ✅ Now both are guaranteed to be strings
-          if (shouldWeInitiate) {
-            console.log('We should initiate, ignoring incoming call request');
-            return;
-          }
-          
-          console.log('Setting incoming video call:', notification);
-          setIncomingVideoCall(notification);
+        } catch (err) {
+          console.error('Video call notification error:', err);
         }
-      } catch (err) {
-        console.error('Video call notification error:', err);
-      }
-    });
+      });
       const sessionRef = ref(firebaseDb, `${path}/status`);
       const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
         try {
@@ -1674,7 +1674,20 @@ const toggleAudio = useCallback(() => {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
+    <div>
+    {/* ✅ FIXED NAVBAR AT TOP */}
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
+      <Navbar />
+    </div>
+    
+    {/* ✅ MAIN CONTENT WITH TOP PADDING TO ACCOUNT FOR FIXED NAVBAR */}
+    <div style={{ 
+      paddingTop: '80px', // Adjust based on your navbar height
+      padding: '20px', 
+      maxWidth: '1200px', 
+      margin: '0 auto', 
+      fontFamily: 'Arial, sans-serif' 
+    }}>
       <h1 style={{ color: '#333', marginBottom: '30px' }}>Mentor/User Chat & Video Dashboard</h1>
       
       {/* Error notification */}
@@ -2389,6 +2402,7 @@ const toggleAudio = useCallback(() => {
           }
         }
       `}</style>
+    </div>
     </div>
   );
 });
