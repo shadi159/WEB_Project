@@ -515,17 +515,17 @@ const MentorComponentCore = React.memo(() => {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Create peer connection with enhanced config
-      // === DEBUG: Set trickle to true for robust ICE exchange ===
+      // === DEBUG: Restrict ICE servers to only Google STUN for local debugging ===
       const peer = new SimplePeer({
         initiator: true,
-        trickle: true, // Switched back to true for production robustness
+        trickle: true,
         stream: stream,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            // { urls: 'stun:global.stun.twilio.com:3478' },
+            // { urls: 'stun:stun1.l.google.com:19302' },
+            // { urls: 'stun:stun2.l.google.com:19302' }
           ],
           iceCandidatePoolSize: 10
         }
@@ -537,7 +537,11 @@ const MentorComponentCore = React.memo(() => {
       // Enhanced signaling with better error handling
       peer.on('signal', async (data: any) => {
         if (data.type === 'candidate') {
-          console.log('Caller sending ICE candidate:', data.candidate, data.sdpMid, data.sdpMLineIndex);
+          console.log('Caller sending ICE candidate (full):', JSON.stringify(data));
+          if (!data.candidate || typeof data.candidate !== 'string' || data.sdpMid === undefined || data.sdpMLineIndex === undefined) {
+            console.warn('Caller: ICE candidate missing required fields, not sending:', data);
+            return;
+          }
         } else if (data.type === 'offer') {
           console.log('Caller sending offer');
         } else if (data.type === 'answer') {
@@ -572,7 +576,11 @@ const MentorComponentCore = React.memo(() => {
         }
 
         if (data.signal.type === 'candidate') {
-          console.log('Caller received ICE candidate:', data.signal.candidate, data.signal.sdpMid, data.signal.sdpMLineIndex);
+          console.log('Caller received ICE candidate (full):', JSON.stringify(data.signal));
+          if (!data.signal.candidate || typeof data.signal.candidate !== 'string' || data.signal.sdpMid === undefined || data.signal.sdpMLineIndex === undefined) {
+            console.warn('Caller: Received ICE candidate missing required fields, ignoring:', data.signal);
+            return;
+          }
         } else if (data.signal.type === 'answer') {
           console.log('Caller received answer');
         } else if (data.signal.type === 'offer') {
@@ -806,9 +814,9 @@ const MentorComponentCore = React.memo(() => {
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            // { urls: 'stun:global.stun.twilio.com:3478' },
+            // { urls: 'stun:stun1.l.google.com:19302' },
+            // { urls: 'stun:stun2.l.google.com:19302' }
           ],
           iceCandidatePoolSize: 10
         }
@@ -821,7 +829,11 @@ const MentorComponentCore = React.memo(() => {
       // Always send the first answer, only deduplicate outgoing answers
       peer.on('signal', async (data: any) => {
         if (data.type === 'candidate') {
-          console.log('Accepter sending ICE candidate:', data.candidate, data.sdpMid, data.sdpMLineIndex);
+          console.log('Accepter sending ICE candidate (full):', JSON.stringify(data));
+          if (!data.candidate || typeof data.candidate !== 'string' || data.sdpMid === undefined || data.sdpMLineIndex === undefined) {
+            console.warn('Accepter: ICE candidate missing required fields, not sending:', data);
+            return;
+          }
         } else if (data.type === 'offer') {
           console.log('Accepter sending offer');
         } else if (data.type === 'answer') {
@@ -891,7 +903,11 @@ const MentorComponentCore = React.memo(() => {
         if (!data || !data.signal || !peer || peer.destroyed) return;
         if (data.callId !== incomingVideoCall.callId) return;
         if (data.signal.type === 'candidate') {
-          console.log('Accepter received ICE candidate:', data.signal.candidate, data.signal.sdpMid, data.signal.sdpMLineIndex);
+          console.log('Accepter received ICE candidate (full):', JSON.stringify(data.signal));
+          if (!data.signal.candidate || typeof data.signal.candidate !== 'string' || data.signal.sdpMid === undefined || data.signal.sdpMLineIndex === undefined) {
+            console.warn('Accepter: Received ICE candidate missing required fields, ignoring:', data.signal);
+            return;
+          }
         } else if (data.signal.type === 'offer') {
           console.log('Accepter received offer');
         } else if (data.signal.type === 'answer') {
