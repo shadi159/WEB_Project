@@ -658,6 +658,34 @@ const acceptVideoCall = useCallback(async () => {
     // Wait longer for devices to be released
     await new Promise(resolve => setTimeout(resolve, 2000));
 
+    const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
+    const pathParts = sessionPath.split('/');
+    if (pathParts.length < 2) return null;
+    
+    const sessionPart = pathParts[1];
+    const userIds = sessionPart.split('_');
+    
+    for (const id of userIds) {
+      if (id !== myUserId && !/^\d+$/.test(id)) {
+        return id;
+      }
+    }
+    return null;
+  };
+
+  const otherUserId = activeFirebaseSessionPath 
+    ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
+    : null;
+
+  console.log('Accepter - Detected other user ID:', otherUserId);
+  console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
+
+  if (!otherUserId) {
+    throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+  }
+
+  const remoteUserId = otherUserId;
+
     setIsVideoCallActive(true);
     setIsCallInitiator(false);
     setIncomingVideoCall(null);
@@ -739,7 +767,7 @@ const acceptVideoCall = useCallback(async () => {
     });
 
     // Process existing signals first
-    const remoteSignalPath = `${signalBasePath}/${incomingVideoCall.from}`;
+    const remoteSignalPath = `${signalBasePath}/${remoteUserId}`;
     console.log('Processing existing signals from caller...');
     
     try {
