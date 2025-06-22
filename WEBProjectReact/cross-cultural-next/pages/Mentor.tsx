@@ -37,14 +37,12 @@ const errorHandlerCache = { current: null as any };
 const getErrorHandler = (setErrors: React.Dispatch<React.SetStateAction<string[]>>) => {
   if (!errorHandlerCache.current) {
     const handleError = (message: string) => {
-      // More comprehensive browser extension error detection
       if (message.includes('message channel closed') || 
           message.includes('Extension context invalidated') ||
           message.includes('listener indicated an asynchronous response') ||
           message.includes('chrome-extension://') ||
           message.includes('moz-extension://') ||
           message.includes('Attempting to use a disconnected port object')) {
-        // Silently handle these errors without adding to error list
         return true;
       }
       return false;
@@ -151,31 +149,25 @@ const MentorComponentInner = React.memo(() => {
   }
 
   useEffect(() => {
-    // Prevent multiple initializations
     if (initRef.current) return;
     initRef.current = true;
 
     const loadDependencies = async () => {
       try {
-        // Validate config first
         const firebaseConfig = validateFirebaseConfig();
         if (!firebaseConfig) {
           throw new Error('Invalid Firebase configuration. Please check environment variables.');
         }
 
-        // Dynamic imports for Firebase
         const { initializeApp, getApps } = await import('firebase/app');
         const { getDatabase } = await import('firebase/database');
         
-        // Initialize Firebase
         const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
         const firebaseDb = getDatabase(app);
         
-        // Store in window for global access
         (window as any).firebaseDb = firebaseDb;
         setFirebaseLoaded(true);
 
-        // Load simple-peer
         const SimplePeer = await import('simple-peer');
         (window as any).SimplePeer = SimplePeer.default || SimplePeer;
         setSimplePeerLoaded(true);
@@ -213,7 +205,6 @@ const MentorComponentInner = React.memo(() => {
 
 // Core component with video functionality
 const MentorComponentCore = React.memo(() => {
-  // Get Firebase instance from window
   const firebaseDb = (window as any).firebaseDb;
   const SimplePeer = (window as any).SimplePeer;
 
@@ -256,6 +247,8 @@ const MentorComponentCore = React.memo(() => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<any>(null);
   const signalingCleanupRef = useRef<(() => void) | null>(null);
+  const videoCallInitializingRef = useRef(false);
+  const currentCallIdRef = useRef<number | null>(null);
 
   // Sync ref with state
   useEffect(() => {
@@ -305,656 +298,111 @@ const MentorComponentCore = React.memo(() => {
     return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
   }, [userDetailsCache]);
 
-  // ✅ UPDATED determineInitiator with enhanced debugging
-  const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
+  // FIXED: Simplified and clearer role-based initiation
+  const determineInitiator = useCallback((myUserId: string, otherUserId: string, myRole: string): boolean => {
     console.log('🔍 determineInitiator called with:', { myUserId, otherUserId, myRole });
     
-    // ✅ CRITICAL: Mentor ALWAYS initiates
+    // ALWAYS: Mentor initiates, User receives
     if (myRole === 'mentor') {
-      console.log('✅ MENTOR ROLE detected - should initiate: TRUE');
+      console.log('✅ MENTOR ROLE - should initiate: TRUE');
       return true;
-    } 
-    // ✅ CRITICAL: User NEVER initiates (always receives)
-    else if (myRole === 'user') {
-      console.log('✅ USER ROLE detected - should initiate: FALSE (will receive calls)');
+    } else if (myRole === 'user') {
+      console.log('✅ USER ROLE - should initiate: FALSE (will receive)');
       return false;
     }
     
-    // Fallback for same roles (shouldn't happen in your case)
+    // Fallback (should not happen)
     const result = myUserId.localeCompare(otherUserId) < 0;
-    console.log('⚠️ FALLBACK: Same roles - lexicographic comparison result:', result);
+    console.log('⚠️ FALLBACK: lexicographic comparison result:', result);
     return result;
-  };
-  
-  // Add a ref to track video call initialization state
-  const videoCallInitializingRef = useRef(false);
+  }, []);
 
-  // Fixed startVideoCall with race condition prevention
-  const startVideoCall = useCallback(async () => {
-    if (!firebaseDb || !activeFirebaseSessionPath || !myUserId) return;
-    
-    // Prevent multiple simultaneous calls - CRITICAL CHECK
-    if (isVideoCallActive || videoCallInitializingRef.current) {
-      console.log('Video call already active or initializing, ignoring start request');
-      return;
-    }
-
-    // Set initializing flag IMMEDIATELY to prevent race conditions
-    videoCallInitializingRef.current = true;
-    console.log('Starting video call...');
-    setCallStatus('Initializing...');
-
+  // FIXED: Extract other user ID from session path
+  const getOtherUserIdFromSessionPath = useCallback((sessionPath: string, myUserId: string): string | null => {
     try {
-      // First, clean up any existing streams to avoid "device in use" errors
-      if (localStream) {
-        console.log('Cleaning up existing local stream...');
-        localStream.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (e) {
-            console.warn('Error stopping track:', e);
-          }
-        });
-        setLocalStream(null);
-      }
-
-      // Clean up any existing peer connection
-      if (peerRef.current) {
-        console.log('Cleaning up existing peer connection...');
-        try {
-          if (!peerRef.current.destroyed) {
-            peerRef.current.destroy();
-          }
-        } catch (e) {
-          console.warn('Error destroying existing peer:', e);
-        }
-        peerRef.current = null;
-      }
-
-      // Wait longer for devices to be completely released
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Double-check we're still supposed to start the call
-      if (!videoCallInitializingRef.current) {
-        console.log('Video call initialization was cancelled');
-        return;
-      }
-
-      setIsVideoCallActive(true);
-      setIsCallInitiator(true);
-      setCallStatus('Requesting camera and microphone access...');
+      const pathParts = sessionPath.split('/');
+      if (pathParts.length < 2) return null;
       
-      // Get user media with enhanced error handling
-      let stream: MediaStream;
-      try {
-        // Try to get available devices first
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasVideo = devices.some(device => device.kind === 'videoinput');
-        const hasAudio = devices.some(device => device.kind === 'audioinput');
-        
-        if (!hasVideo && !hasAudio) {
-          throw new Error('No camera or microphone devices found');
-        }
+      const sessionPart = pathParts[1];
+      const parts = sessionPart.split('_');
+      
+      // Find user IDs (not timestamp)
+      const userIds = parts.filter(part => part !== myUserId && !/^\d+$/.test(part));
+      return userIds.length > 0 ? userIds[0] : null;
+    } catch (error) {
+      console.error('Error extracting user ID from path:', error);
+      return null;
+    }
+  }, []);
 
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: hasVideo ? { 
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          } : false, 
-          audio: hasAudio ? {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } : false
-        });
-      } catch (mediaError: any) {
-        console.error('Media access error:', mediaError);
-        let errorMessage = 'Failed to access camera/microphone';
-        
-        if (mediaError.name === 'NotAllowedError') {
+  // FIXED: Improved media access with better error handling
+  const getMediaStream = useCallback(async (): Promise<MediaStream> => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasVideo = devices.some(device => device.kind === 'videoinput');
+      const hasAudio = devices.some(device => device.kind === 'audioinput');
+      
+      console.log('Available devices:', { hasVideo, hasAudio });
+
+      if (!hasVideo && !hasAudio) {
+        throw new Error('No camera or microphone devices found');
+      }
+
+      const constraints = {
+        video: hasVideo ? {
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+          facingMode: 'user',
+          frameRate: { ideal: 30, max: 30 }
+        } : false,
+        audio: hasAudio ? {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 48000
+        } : false
+      };
+
+      console.log('Requesting media with constraints:', constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('Media stream obtained:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+      
+      return stream;
+    } catch (error: any) {
+      console.error('Media access error:', error);
+      
+      let errorMessage = 'Failed to access camera/microphone';
+      switch (error.name) {
+        case 'NotAllowedError':
           errorMessage = 'Camera/microphone access denied. Please allow access and try again.';
-        } else if (mediaError.name === 'NotFoundError') {
+          break;
+        case 'NotFoundError':
           errorMessage = 'No camera or microphone found.';
-        } else if (mediaError.name === 'NotReadableError') {
-          errorMessage = 'Camera/microphone is already in use. Please close other applications using the camera and try again.';
-        } else if (mediaError.name === 'OverconstrainedError') {
+          break;
+        case 'NotReadableError':
+          errorMessage = 'Camera/microphone is already in use. Please close other applications and try again.';
+          break;
+        case 'OverconstrainedError':
           errorMessage = 'Camera/microphone constraints not supported.';
-        }
-        
-        setCallStatus(errorMessage);
-        setIsVideoCallActive(false);
-        setIsCallInitiator(false);
-        videoCallInitializingRef.current = false;
-        
-        // Auto-clear error after 5 seconds
-        setTimeout(() => setCallStatus(''), 5000);
-        return;
+          break;
       }
       
-      console.log('Got media stream, setting local video...');
-      setLocalStream(stream);
-      
-      // Set local video with error handling
-      if (localVideoRef.current) {
-        try {
-          localVideoRef.current.srcObject = stream;
-          // Wait for video to start playing
-          await new Promise((resolve, reject) => {
-            if (!localVideoRef.current) {
-              reject(new Error('Video element not found'));
-              return;
-            }
-            
-            localVideoRef.current.onloadedmetadata = () => resolve(true);
-            localVideoRef.current.onerror = reject;
-            
-            // Timeout after 5 seconds
-            setTimeout(() => reject(new Error('Video load timeout')), 5000);
-          });
-        } catch (videoError) {
-          console.error('Error setting local video:', videoError);
-        }
-      }
-
-      setCallStatus('Initializing video call...');
-
-      // Determine other user ID
-      const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
-        // Session path format: live_sessions/userId1_userId2_timestamp
-        // Extract the part after 'live_sessions/'
-        const pathParts = sessionPath.split('/');
-        if (pathParts.length < 2) return null;
-        
-        const sessionPart = pathParts[1]; // Gets "userId1_userId2_timestamp"
-        const userIds = sessionPart.split('_');
-        
-        // Find the other user ID (not mine and not the timestamp)
-        for (const id of userIds) {
-          // Skip if it's my ID, or if it looks like a timestamp (all numbers)
-          if (id !== myUserId && !/^\d+$/.test(id)) {
-            return id;
-          }
-        }
-        
-        return null;
-      };
-
-      const otherUserId = activeFirebaseSessionPath 
-        ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
-        : null;
-
-      console.log('Session path:', activeFirebaseSessionPath);
-      console.log('My user ID:', myUserId);
-      console.log('Detected other user ID:', otherUserId);
-
-      if (!otherUserId) {
-        throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
-      }
-
-      const shouldInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-      console.log(`Video call initiator decision: ${shouldInitiate} (myRole: ${myRole}, myUserId: ${myUserId}, otherUserId: ${otherUserId})`);
-
-      if (!shouldInitiate) {
-        console.log('This user should not initiate - waiting for other user to initiate');
-        setCallStatus('Waiting for other user to start video call...');
-        videoCallInitializingRef.current = false;
-        return;
-      }
-      // Clear any existing signaling data
-      const { ref, set, push, onChildAdded, serverTimestamp, remove } = await import('firebase/database');
-      const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
-      
-      try {
-        await remove(ref(firebaseDb, signalBasePath));
-      } catch (removeError) {
-        console.warn('Error clearing signaling data:', removeError);
-      }
-      
-      // Wait for cleanup
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Create peer connection with enhanced config
-      const peer = new SimplePeer({
-        initiator: true,
-        trickle: true,
-        stream: stream,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10
-        }
-      });
-
-      peerRef.current = peer;
-      const callId = Date.now();
-
-      // Enhanced signaling with better error handling
-      peer.on('signal', async (data: any) => {
-        try {
-          console.log('Caller sending signal:', data.type);
-          await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
-            signal: data,
-            timestamp: serverTimestamp(),
-            callId: callId,
-            isInitiator: true,
-            role: 'caller'
-          });
-        } catch (error) {
-          console.error('Error sending signal:', error);
-        }
-      });
-
-      // Listen for remote signals with improved filtering
-      const remoteSignalPath = `${signalBasePath}/${otherUserId}`;
-      let signalCount = 0;
-      
-      const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
-        const data = snapshot.val();
-        if (!data || !data.signal || !peer || peer.destroyed) return;
-        
-        // Only process signals from the current call
-        if (data.callId && data.callId !== callId) {
-          console.log('Ignoring signal from different call');
-          return;
-        }
-
-        try {
-          signalCount++;
-          console.log(`Processing remote signal #${signalCount}:`, data.signal.type, 'from role:', data.role);
-          peer.signal(data.signal);
-        } catch (error: any) {
-          console.error('Error processing remote signal:', error);
-          if (error?.message?.includes('have-remote-offer')) {
-            console.log('WebRTC state error - ending call');
-            endVideoCall();
-          }
-        }
-      });
-
-      signalingCleanupRef.current = unsubscribe;
-
-      // Enhanced peer event handlers
-      peer.on('stream', (remoteStream: MediaStream) => {
-        console.log('Caller received remote stream');
-        setRemoteStream(remoteStream);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-        }
-        setCallStatus('Connected');
-      });
-
-      peer.on('connect', () => {
-        console.log('Caller peer connected');
-        setCallStatus('Connected');
-      });
-
-      peer.on('close', () => {
-        console.log('Caller peer connection closed');
-        endVideoCall();
-      });
-
-      peer.on('error', (error: any) => {
-        console.error('Caller peer error:', error);
-        setCallStatus('Connection error: ' + error.message);
-        setTimeout(() => endVideoCall(), 3000);
-      });
-
-      // Notify other user about video call
-      await push(ref(firebaseDb, `${activeFirebaseSessionPath}/video_call_notifications`), {
-        type: 'video_call_request',
-        from: myUserId,
-        callId: callId,
-        initiatorRole: true,
-        timestamp: serverTimestamp()
-      });
-
-      setCallStatus('Waiting for response...');
-      
-      // Clear initializing flag only after successful setup
-      videoCallInitializingRef.current = false;
-
-    } catch (error: any) {
-      console.error('Error starting video call:', error);
-      setCallStatus('Failed to start video call: ' + error.message);
-      
-      // Clean up on error
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (e) {
-            console.warn('Error stopping track:', e);
-          }
-        });
-        setLocalStream(null);
-      }
-      
-      setIsVideoCallActive(false);
-      setIsCallInitiator(false);
-      videoCallInitializingRef.current = false; // Clear flag on error
-      
-      // Auto-clear error message after 5 seconds
-      setTimeout(() => setCallStatus(''), 5000);
+      throw new Error(errorMessage);
     }
-  }, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
+  }, []);
 
-  // ✅ UPDATED acceptVideoCall with enhanced debugging
-  const acceptVideoCall = useCallback(async () => {
-    console.log('🎯 acceptVideoCall CALLED');
-    console.log('Parameters check:', {
-      firebaseDb: !!firebaseDb,
-      activeFirebaseSessionPath: !!activeFirebaseSessionPath,
-      myUserId: !!myUserId,
-      incomingVideoCall: !!incomingVideoCall,
-      isVideoCallActive,
-      videoCallInitializing: videoCallInitializingRef.current
-    });
-
-    if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) {
-      console.error('❌ Missing requirements for acceptVideoCall:', {
-        firebaseDb: !!firebaseDb,
-        activeFirebaseSessionPath: !!activeFirebaseSessionPath,
-        myUserId: !!myUserId,
-        incomingVideoCall: !!incomingVideoCall
-      });
-      return;
-    }
-
-    // Prevent multiple simultaneous accepts
-    if (isVideoCallActive || videoCallInitializingRef.current) {
-      console.log('❌ Video call already active or initializing, ignoring accept request');
-      return;
-    }
-
-    console.log('✅ All checks passed, proceeding with accept...');
-    videoCallInitializingRef.current = true;
-    console.log('✅ Accepting video call from:', incomingVideoCall.from);
-    setCallStatus('Accepting video call...');
-
-    try {
-      // Clean up any existing streams first
-      if (localStream) {
-        console.log('Cleaning up existing local stream...');
-        localStream.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (e) {
-            console.warn('Error stopping track:', e);
-          }
-        });
-        setLocalStream(null);
-      }
-
-      // Clean up any existing peer
-      if (peerRef.current) {
-        try {
-          if (!peerRef.current.destroyed) {
-            peerRef.current.destroy();
-          }
-        } catch (e) {
-          console.warn('Error destroying existing peer:', e);
-        }
-        peerRef.current = null;
-      }
-
-      // Wait longer for devices to be released
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      setIsVideoCallActive(true);
-      setIsCallInitiator(false);
-      setIncomingVideoCall(null);
-      
-      // Get user media with enhanced error handling
-      let stream: MediaStream;
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasVideo = devices.some(device => device.kind === 'videoinput');
-        const hasAudio = devices.some(device => device.kind === 'audioinput');
-
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: hasVideo ? { 
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
-          } : false, 
-          audio: hasAudio ? {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          } : false
-        });
-      } catch (mediaError: any) {
-        console.error('Media access error:', mediaError);
-        setCallStatus('Failed to access camera/microphone: ' + mediaError.message);
-        setIsVideoCallActive(false);
-        videoCallInitializingRef.current = false;
-        setTimeout(() => setCallStatus(''), 5000);
-        return;
-      }
-      
-      console.log('Got media stream for accepter, setting local video...');
-      setLocalStream(stream);
-      
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      // Wait longer before creating peer to ensure caller's signals are ready
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // FIXED: Add proper user ID detection
-      const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
-        const pathParts = sessionPath.split('/');
-        if (pathParts.length < 2) return null;
-        
-        const sessionPart = pathParts[1];
-        const userIds = sessionPart.split('_');
-        
-        for (const id of userIds) {
-          if (id !== myUserId && !/^\d+$/.test(id)) {
-            return id;
-          }
-        }
-        return null;
-      };
-
-      const otherUserId = activeFirebaseSessionPath 
-        ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
-        : null;
-
-      console.log('Accepter - Session path:', activeFirebaseSessionPath);
-      console.log('Accepter - My user ID:', myUserId);
-      console.log('Accepter - Detected other user ID:', otherUserId);
-      console.log('Accepter - incomingVideoCall.from:', incomingVideoCall.from);
-
-      if (!otherUserId) {
-        throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
-      }
-
-      const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-      if (shouldWeInitiate) {
-        console.log('We should be the initiator, not accepting');
-        setCallStatus('Error: Role conflict');
-        videoCallInitializingRef.current = false;
-        setTimeout(() => setCallStatus(''), 3000);
-        return;
-      }
-
-      // Use the detected otherUserId for signaling
-      const remoteUserId = otherUserId;
-
-      // Create peer connection - accepter is never initiator
-      const peer = new SimplePeer({
-        initiator: false,
-        trickle: true,
-        stream: stream,
-        config: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10
-        }
-      });
-
-      peerRef.current = peer;
-
-      // Setup signaling
-      const { ref, push, onChildAdded, onValue, serverTimestamp } = await import('firebase/database');
-      const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
-
-      // Send our signals
-      peer.on('signal', async (data: any) => {
-        try {
-          console.log('Accepter sending signal:', data.type);
-          await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
-            signal: data,
-            timestamp: serverTimestamp(),
-            callId: incomingVideoCall.callId,
-            isInitiator: false,
-            role: 'accepter'
-          });
-        } catch (error) {
-          console.error('Error sending signal:', error);
-        }
-      });
-
-      // FIXED: Use the correct remote user ID for signaling path
-      const remoteSignalPath = `${signalBasePath}/${remoteUserId}`;
-      console.log('Accepter listening for signals on path:', remoteSignalPath);
-
-      // Process existing signals first
-      console.log('Processing existing signals from caller...');
-      
-      try {
-        const existingSignalsRef = ref(firebaseDb, remoteSignalPath);
-        const existingSignalsSnapshot = await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Timeout')), 5000);
-          onValue(existingSignalsRef, (snapshot) => {
-            clearTimeout(timeout);
-            resolve(snapshot);
-          }, { onlyOnce: true });
-        });
-        
-        const existingSignals = (existingSignalsSnapshot as any).val();
-        if (existingSignals && peer && !peer.destroyed) {
-          const signals = Object.values(existingSignals)
-            .filter((signalData: any) => 
-              signalData.callId === incomingVideoCall.callId && 
-              signalData.role === 'caller'
-            )
-            .sort((a: any, b: any) => {
-              const aTime = a.timestamp?.seconds || a.timestamp || 0;
-              const bTime = b.timestamp?.seconds || b.timestamp || 0;
-              return aTime - bTime;
-            });
-
-          console.log(`Accepter processing ${signals.length} existing signals`);
-          for (const signalData of signals) {
-            try {
-              console.log('Accepter processing existing signal:', (signalData as any).signal.type);
-              peer.signal((signalData as any).signal);
-              await new Promise(resolve => setTimeout(resolve, 100));
-            } catch (error: any) {
-              console.error('Error processing existing signal:', error);
-            }
-          }
-        } else {
-          console.log('No existing signals found or peer destroyed');
-        }
-      } catch (error) {
-        console.error('Error processing existing signals:', error);
-      }
-
-      // Listen for new signals
-      console.log('Accepter setting up listener for new signals...');
-      const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
-        const data = snapshot.val();
-        if (!data || !data.signal || !peer || peer.destroyed) return;
-        
-        if (data.callId !== incomingVideoCall.callId) {
-          console.log('Ignoring signal from different call');
-          return;
-        }
-
-        try {
-          console.log('Accepter processing new remote signal:', data.signal.type, 'from role:', data.role);
-          peer.signal(data.signal);
-        } catch (error: any) {
-          console.error('Error processing remote signal:', error);
-        }
-      });
-
-      signalingCleanupRef.current = unsubscribe;
-
-      // Enhanced peer event handlers
-      peer.on('stream', (remoteStream: MediaStream) => {
-        console.log('Accepter received remote stream');
-        setRemoteStream(remoteStream);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-        }
-        setCallStatus('Connected');
-      });
-
-      peer.on('connect', () => {
-        console.log('Accepter peer connected');
-        setCallStatus('Connected');
-      });
-
-      peer.on('close', () => {
-        console.log('Accepter peer connection closed');
-        endVideoCall();
-      });
-
-      peer.on('error', (error: any) => {
-        console.error('Accepter peer error:', error);
-        setCallStatus('Connection error: ' + error.message);
-        setTimeout(() => endVideoCall(), 3000);
-      });
-
-      // Clear initializing flag after successful setup
-      videoCallInitializingRef.current = false;
-
-    } catch (error: any) {
-      console.error('Error accepting video call:', error);
-      setCallStatus('Failed to accept video call: ' + error.message);
-      
-      // Clean up on error
-      if (localStream) {
-        localStream.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (e) {
-            console.warn('Error stopping track:', e);
-          }
-        });
-        setLocalStream(null);
-      }
-      
-      setIsVideoCallActive(false);
-      videoCallInitializingRef.current = false;
-      setTimeout(() => setCallStatus(''), 5000);
-    }
-  }, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream, isVideoCallActive, myRole]);
-
-  // Enhanced endVideoCall with initialization flag reset
-  const endVideoCall = useCallback(() => {
-    console.log('Ending video call...');
-
-    // Reset initialization flag immediately
+  // FIXED: Enhanced cleanup with proper stream disposal
+  const cleanupVideoCall = useCallback((reason = 'Manual cleanup') => {
+    console.log(`🧹 Cleaning up video call - Reason: ${reason}`);
+    
+    // Reset state flags immediately
     videoCallInitializingRef.current = false;
+    currentCallIdRef.current = null;
 
     // Cleanup peer connection
     if (peerRef.current) {
       try {
+        console.log('Destroying peer connection...');
         if (!peerRef.current.destroyed) {
           peerRef.current.destroy();
         }
@@ -964,9 +412,10 @@ const MentorComponentCore = React.memo(() => {
       peerRef.current = null;
     }
     
-    // Cleanup signaling
+    // Cleanup signaling listeners
     if (signalingCleanupRef.current) {
       try {
+        console.log('Cleaning up signaling listeners...');
         signalingCleanupRef.current();
       } catch (error) {
         console.warn('Error cleaning up signaling:', error);
@@ -974,9 +423,10 @@ const MentorComponentCore = React.memo(() => {
       signalingCleanupRef.current = null;
     }
 
-    // Stop local media tracks with better error handling
+    // Stop and cleanup local media
     if (localStream) {
       try {
+        console.log('Stopping local media tracks...');
         localStream.getTracks().forEach(track => {
           try {
             if (track.readyState !== 'ended') {
@@ -986,13 +436,13 @@ const MentorComponentCore = React.memo(() => {
             console.warn('Error stopping track:', trackError);
           }
         });
-      } catch (streamError) {
-        console.warn('Error stopping stream:', streamError);
+      } catch (error) {
+        console.warn('Error stopping local stream:', error);
       }
       setLocalStream(null);
     }
 
-    // Clear video elements safely
+    // Clear video elements
     try {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
@@ -1004,7 +454,7 @@ const MentorComponentCore = React.memo(() => {
       console.warn('Error clearing video elements:', error);
     }
 
-    // Reset state
+    // Reset all video call state
     setRemoteStream(null);
     setIsVideoCallActive(false);
     setIsCallInitiator(false);
@@ -1013,21 +463,452 @@ const MentorComponentCore = React.memo(() => {
     setIsVideoEnabled(true);
     setIsAudioEnabled(true);
 
-    console.log('Video call cleanup complete');
+    console.log('✅ Video call cleanup complete');
   }, [localStream]);
 
+  // FIXED: Robust startVideoCall with improved signaling
+  const startVideoCall = useCallback(async () => {
+    if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !myRole) {
+      console.error('❌ Missing requirements for video call');
+      return;
+    }
+    
+    if (isVideoCallActive || videoCallInitializingRef.current) {
+      console.log('❌ Video call already active or initializing');
+      return;
+    }
+
+    videoCallInitializingRef.current = true;
+    const callId = Date.now();
+    currentCallIdRef.current = callId;
+    
+    console.log(`🎬 Starting video call with ID: ${callId}`);
+    setCallStatus('Initializing...');
+
+    try {
+      // Clean up any existing resources
+      cleanupVideoCall('Starting new call');
+      
+      // Wait for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Double-check we should still start
+      if (!videoCallInitializingRef.current || currentCallIdRef.current !== callId) {
+        console.log('❌ Call initialization cancelled');
+        return;
+      }
+
+      // Get other user ID
+      const otherUserId = getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId);
+      if (!otherUserId) {
+        throw new Error('Could not determine other user ID');
+      }
+
+      // Verify we should initiate
+      const shouldInitiate = determineInitiator(myUserId, otherUserId, myRole);
+      if (!shouldInitiate) {
+        console.log('❌ This user should not initiate video call');
+        setCallStatus('Waiting for other user to start video call...');
+        videoCallInitializingRef.current = false;
+        return;
+      }
+
+      setCallStatus('Requesting camera and microphone access...');
+      
+      // Get media stream
+      const stream = await getMediaStream();
+      
+      // Check if call was cancelled while getting media
+      if (!videoCallInitializingRef.current || currentCallIdRef.current !== callId) {
+        console.log('❌ Call cancelled during media access');
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      setLocalStream(stream);
+      setIsVideoCallActive(true);
+      setIsCallInitiator(true);
+      
+      // Set local video
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        try {
+          await localVideoRef.current.play();
+        } catch (playError) {
+          console.warn('Local video play error (non-critical):', playError);
+        }
+      }
+
+      setCallStatus('Creating connection...');
+
+      // Create peer with improved configuration
+      const peer = new SimplePeer({
+        initiator: true,
+        trickle: true,
+        stream: stream,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10
+        }
+      });
+
+      peerRef.current = peer;
+
+      // Setup Firebase signaling
+      const { ref, set, push, onChildAdded, serverTimestamp, remove } = await import('firebase/database');
+      const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
+      
+      // Clear old signaling data
+      try {
+        await remove(ref(firebaseDb, signalBasePath));
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (removeError) {
+        console.warn('Error clearing old signals:', removeError);
+      }
+
+      // Send our signals to Firebase
+      peer.on('signal', async (data: any) => {
+        try {
+          if (currentCallIdRef.current !== callId) {
+            console.log('⚠️ Ignoring signal from cancelled call');
+            return;
+          }
+          
+          console.log(`📤 Caller sending signal: ${data.type}`);
+          await push(ref(firebaseDb, `${signalBasePath}/caller`), {
+            signal: data,
+            timestamp: serverTimestamp(),
+            callId: callId,
+            from: myUserId,
+            role: 'caller'
+          });
+        } catch (error) {
+          console.error('❌ Error sending signal:', error);
+        }
+      });
+
+      // Listen for accepter signals
+      const accepterSignalPath = `${signalBasePath}/accepter`;
+      let signalCount = 0;
+      
+      const unsubscribe = onChildAdded(ref(firebaseDb, accepterSignalPath), (snapshot) => {
+        const data = snapshot.val();
+        if (!data || !data.signal || !peer || peer.destroyed) return;
+        
+        // Only process signals from current call
+        if (data.callId !== callId) {
+          console.log('⚠️ Ignoring signal from different call');
+          return;
+        }
+
+        try {
+          signalCount++;
+          console.log(`📥 Caller processing signal #${signalCount}: ${data.signal.type}`);
+          peer.signal(data.signal);
+        } catch (error: any) {
+          console.error('❌ Error processing remote signal:', error);
+          if (error.message?.includes('cannot set remote description')) {
+            setCallStatus('Connection error - please try again');
+            setTimeout(() => cleanupVideoCall('Signal processing error'), 2000);
+          }
+        }
+      });
+
+      signalingCleanupRef.current = unsubscribe;
+
+      // Enhanced peer event handlers
+      peer.on('stream', (remoteStream: MediaStream) => {
+        console.log('🎥 Caller received remote stream');
+        setRemoteStream(remoteStream);
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play().catch(console.warn);
+        }
+        setCallStatus('Connected');
+      });
+
+      peer.on('connect', () => {
+        console.log('🔗 Caller peer connected');
+        setCallStatus('Connected');
+      });
+
+      peer.on('close', () => {
+        console.log('🔌 Caller peer connection closed');
+        cleanupVideoCall('Peer connection closed');
+      });
+
+      peer.on('error', (error: any) => {
+        console.error('💥 Caller peer error:', error);
+        setCallStatus(`Connection error: ${error.message}`);
+        setTimeout(() => cleanupVideoCall('Peer error'), 3000);
+      });
+
+      // Send video call notification
+      setCallStatus('Sending call notification...');
+      await push(ref(firebaseDb, `${activeFirebaseSessionPath}/video_call_notifications`), {
+        type: 'video_call_request',
+        from: myUserId,
+        to: otherUserId,
+        callId: callId,
+        timestamp: serverTimestamp()
+      });
+
+      setCallStatus('Calling...');
+      console.log('📞 Video call initiated successfully');
+      
+      // Clear initializing flag
+      videoCallInitializingRef.current = false;
+
+      // Set a timeout for call response
+      setTimeout(() => {
+        if (currentCallIdRef.current === callId && !remoteStream && peer && !peer.destroyed) {
+          setCallStatus('No response - call timeout');
+          setTimeout(() => cleanupVideoCall('Call timeout'), 2000);
+        }
+      }, 30000); // 30 second timeout
+
+    } catch (error: any) {
+      console.error('💥 Error starting video call:', error);
+      setCallStatus(`Failed to start call: ${error.message}`);
+      cleanupVideoCall(`Start call error: ${error.message}`);
+      setTimeout(() => setCallStatus(''), 5000);
+    }
+  }, [firebaseDb, activeFirebaseSessionPath, myUserId, myRole, isVideoCallActive, determineInitiator, getOtherUserIdFromSessionPath, getMediaStream, cleanupVideoCall, remoteStream]);
+
+  // FIXED: Enhanced acceptVideoCall with better synchronization
+  const acceptVideoCall = useCallback(async () => {
+    console.log('📞 Accepting video call...');
+    
+    if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) {
+      console.error('❌ Missing requirements for accepting call');
+      return;
+    }
+
+    if (isVideoCallActive || videoCallInitializingRef.current) {
+      console.log('❌ Video call already active');
+      return;
+    }
+
+    videoCallInitializingRef.current = true;
+    const callId = incomingVideoCall.callId;
+    currentCallIdRef.current = callId;
+    
+    console.log(`📞 Accepting call with ID: ${callId}`);
+    setCallStatus('Accepting call...');
+
+    try {
+      // Clean up any existing resources
+      cleanupVideoCall('Accepting new call');
+      
+      // Clear incoming call notification
+      setIncomingVideoCall(null);
+      
+      // Wait for cleanup
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Double-check we should still accept
+      if (!videoCallInitializingRef.current || currentCallIdRef.current !== callId) {
+        console.log('❌ Call acceptance cancelled');
+        return;
+      }
+
+      setCallStatus('Requesting camera and microphone access...');
+      
+      // Get media stream
+      const stream = await getMediaStream();
+      
+      // Check if call was cancelled
+      if (!videoCallInitializingRef.current || currentCallIdRef.current !== callId) {
+        console.log('❌ Call cancelled during media access');
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      setLocalStream(stream);
+      setIsVideoCallActive(true);
+      setIsCallInitiator(false);
+      
+      // Set local video
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        try {
+          await localVideoRef.current.play();
+        } catch (playError) {
+          console.warn('Local video play error (non-critical):', playError);
+        }
+      }
+
+      setCallStatus('Connecting...');
+
+      // Wait longer for caller signals to be ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Create peer - accepter is never initiator
+      const peer = new SimplePeer({
+        initiator: false,
+        trickle: true,
+        stream: stream,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10
+        }
+      });
+
+      peerRef.current = peer;
+
+      // Setup Firebase signaling
+      const { ref, onValue, push, onChildAdded, serverTimestamp } = await import('firebase/database');
+      const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
+
+      // Send our signals to Firebase
+      peer.on('signal', async (data: any) => {
+        try {
+          if (currentCallIdRef.current !== callId) {
+            console.log('⚠️ Ignoring signal from cancelled call');
+            return;
+          }
+          
+          console.log(`📤 Accepter sending signal: ${data.type}`);
+          await push(ref(firebaseDb, `${signalBasePath}/accepter`), {
+            signal: data,
+            timestamp: serverTimestamp(),
+            callId: callId,
+            from: myUserId,
+            role: 'accepter'
+          });
+        } catch (error) {
+          console.error('❌ Error sending signal:', error);
+        }
+      });
+
+      // Process existing caller signals first
+      console.log('📥 Processing existing caller signals...');
+      const callerSignalPath = `${signalBasePath}/caller`;
+      
+      try {
+        const existingSignalsSnapshot = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout')), 10000);
+          onValue(ref(firebaseDb, callerSignalPath), (snapshot) => {
+            clearTimeout(timeout);
+            resolve(snapshot);
+          }, { onlyOnce: true });
+        });
+        
+        const existingSignals = (existingSignalsSnapshot as any).val();
+        if (existingSignals && !peer.destroyed) {
+          const signals = Object.values(existingSignals)
+            .filter((signalData: any) => 
+              signalData.callId === callId && 
+              signalData.role === 'caller'
+            )
+            .sort((a: any, b: any) => {
+              const aTime = a.timestamp?.seconds || a.timestamp || 0;
+              const bTime = b.timestamp?.seconds || b.timestamp || 0;
+              return aTime - bTime;
+            });
+
+          console.log(`📥 Processing ${signals.length} existing caller signals`);
+          for (const signalData of signals) {
+            try {
+              console.log(`📥 Processing existing signal: ${(signalData as any).signal.type}`);
+              peer.signal((signalData as any).signal);
+              await new Promise(resolve => setTimeout(resolve, 200)); // Wait between signals
+            } catch (error) {
+              console.error('❌ Error processing existing signal:', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error processing existing signals:', error);
+      }
+
+      // Listen for new caller signals
+      console.log('👂 Setting up listener for new caller signals...');
+      const unsubscribe = onChildAdded(ref(firebaseDb, callerSignalPath), (snapshot) => {
+        const data = snapshot.val();
+        if (!data || !data.signal || !peer || peer.destroyed) return;
+        
+        if (data.callId !== callId) {
+          console.log('⚠️ Ignoring signal from different call');
+          return;
+        }
+
+        try {
+          console.log(`📥 Accepter processing new signal: ${data.signal.type}`);
+          peer.signal(data.signal);
+        } catch (error: any) {
+          console.error('❌ Error processing new signal:', error);
+        }
+      });
+
+      signalingCleanupRef.current = unsubscribe;
+
+      // Enhanced peer event handlers
+      peer.on('stream', (remoteStream: MediaStream) => {
+        console.log('🎥 Accepter received remote stream');
+        setRemoteStream(remoteStream);
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play().catch(console.warn);
+        }
+        setCallStatus('Connected');
+      });
+
+      peer.on('connect', () => {
+        console.log('🔗 Accepter peer connected');
+        setCallStatus('Connected');
+      });
+
+      peer.on('close', () => {
+        console.log('🔌 Accepter peer connection closed');
+        cleanupVideoCall('Peer connection closed');
+      });
+
+      peer.on('error', (error: any) => {
+        console.error('💥 Accepter peer error:', error);
+        setCallStatus(`Connection error: ${error.message}`);
+        setTimeout(() => cleanupVideoCall('Peer error'), 3000);
+      });
+
+      console.log('✅ Call acceptance setup complete');
+      videoCallInitializingRef.current = false;
+
+    } catch (error: any) {
+      console.error('💥 Error accepting video call:', error);
+      setCallStatus(`Failed to accept call: ${error.message}`);
+      cleanupVideoCall(`Accept call error: ${error.message}`);
+      setTimeout(() => setCallStatus(''), 5000);
+    }
+  }, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, isVideoCallActive, getMediaStream, cleanupVideoCall]);
+
+  // FIXED: Simple endVideoCall wrapper
+  const endVideoCall = useCallback(() => {
+    cleanupVideoCall('User ended call');
+  }, [cleanupVideoCall]);
+
+  // Media control functions
   const toggleVideo = useCallback(() => {
     if (localStream) {
       const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoEnabled(videoTrack.enabled);
-        console.log('Video toggled:', videoTrack.enabled ? 'ON' : 'OFF');
-      } else {
-        console.warn('No video track found');
+        console.log('📹 Video toggled:', videoTrack.enabled ? 'ON' : 'OFF');
       }
-    } else {
-      console.warn('No local stream available for video toggle');
     }
   }, [localStream]);
 
@@ -1037,16 +918,12 @@ const MentorComponentCore = React.memo(() => {
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsAudioEnabled(audioTrack.enabled);
-        console.log('Audio toggled:', audioTrack.enabled ? 'ON' : 'OFF');
-      } else {
-        console.warn('No audio track found');
+        console.log('🎤 Audio toggled:', audioTrack.enabled ? 'ON' : 'OFF');
       }
-    } else {
-      console.warn('No local stream available for audio toggle');
     }
   }, [localStream]);
 
-  // Memoized computed values with proper dependencies
+  // Memoized computed values
   const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
   
   const onlineUsersList = useMemo(() => {
@@ -1057,7 +934,6 @@ const MentorComponentCore = React.memo(() => {
     }));
   }, [onlineUserStatuses, getUserDisplayName]);
 
-  // Memoized search results
   const memoizedSearchResults = useMemo(() => {
     return searchResults.map(user => ({
       ...user,
@@ -1065,7 +941,7 @@ const MentorComponentCore = React.memo(() => {
     }));
   }, [searchResults]);
 
-  // User initialization with session cleanup
+  // User initialization
   useEffect(() => {
     if (userInitRef.current) return;
     userInitRef.current = true;
@@ -1081,7 +957,6 @@ const MentorComponentCore = React.memo(() => {
         const userId = parsedUser._id || parsedUser.id;
         let userRole = parsedUser.role;
 
-        // Validate and fix role if needed
         if (!userRole || !['user', 'mentor'].includes(userRole)) {
           try {
             const token = localStorage.getItem('token');
@@ -1096,7 +971,7 @@ const MentorComponentCore = React.memo(() => {
               }
             }
           } catch {
-            // Fallback to default role
+            // Fallback
           }
           userRole = userRole || 'user';
         }
@@ -1115,11 +990,9 @@ const MentorComponentCore = React.memo(() => {
         setMyUserDetails(userDetails);
         setUserDetailsCache(prev => ({ ...prev, [userId]: userDetails }));
         
-        // Clear any existing session on fresh entry
         setActiveFirebaseSessionPath(null);
         activeSessionRef.current = null;
         setChatMessages([]);
-        console.log('User initialized - all sessions cleared');
         
         setIsInitialized(true);
         setIsLoading(false);
@@ -1135,7 +1008,7 @@ const MentorComponentCore = React.memo(() => {
     initUser();
   }, []);
 
-  // Firebase status management with better throttling
+  // Firebase status management
   useEffect(() => {
     if (!myUserId || !myUserDetails || !isInitialized || !firebaseDb) return;
 
@@ -1152,7 +1025,6 @@ const MentorComponentCore = React.memo(() => {
 
         const updateStatus = async (status: string) => {
           const now = Date.now();
-          // Increased throttle time to 5 seconds
           if (now - lastStatusUpdate < 5000) return;
           lastStatusUpdate = now;
 
@@ -1178,11 +1050,9 @@ const MentorComponentCore = React.memo(() => {
         const unsubscribe = onValue(connectedRef, (snapshot) => {
           if (!isActive) return;
 
-          // Clear any existing timeout
           if (connectionTimeout) clearTimeout(connectionTimeout);
 
           if (snapshot.val()) {
-            // Increased debounce time to 3 seconds
             connectionTimeout = setTimeout(() => {
               if (isActive) updateStatus('online');
             }, 3000);
@@ -1196,7 +1066,6 @@ const MentorComponentCore = React.memo(() => {
           if (connectionTimeout) clearTimeout(connectionTimeout);
           unsubscribe();
           
-          // Set offline status on cleanup
           if (myUserId && myUserDetails) {
             set(ref(firebaseDb, `user_statuses/${myUserId}`), {
               status: 'offline',
@@ -1221,7 +1090,7 @@ const MentorComponentCore = React.memo(() => {
     };
   }, [myUserId, myUserDetails, isInitialized, firebaseDb, addCleanup]);
 
-  // Search functionality with proper debouncing
+  // Search functionality
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -1252,13 +1121,16 @@ const MentorComponentCore = React.memo(() => {
     };
   }, [searchQuery]);
 
-  // Enhanced end session with better state management
+  // Session management
   const endSession = useCallback(async () => {
     console.log('Ending session...', activeSessionRef.current);
     
     try {
-      // Only end video call if we initiated the session end
-      // Don't end video call if session is ending due to external factors
+      // End video call if active
+      if (isVideoCallActive) {
+        cleanupVideoCall('Session ended');
+      }
+      
       const currentSessionPath = activeSessionRef.current;
       if (currentSessionPath && firebaseDb) {
         const { ref, set } = await import('firebase/database');
@@ -1266,7 +1138,6 @@ const MentorComponentCore = React.memo(() => {
           .catch((err: any) => console.error('Error setting session status:', err));
       }
       
-      // Clear session state
       setActiveFirebaseSessionPath(null);
       activeSessionRef.current = null;
       setChatMessages([]);
@@ -1274,22 +1145,20 @@ const MentorComponentCore = React.memo(() => {
     } catch (err) {
       console.error('Session cleanup error:', err);
     }
-  }, [firebaseDb]);
+  }, [firebaseDb, isVideoCallActive, cleanupVideoCall]);
 
   const setupSession = useCallback(async (path: string, sessionType: string) => {
     console.log(`Setting up ${sessionType} session at ${path}`);
     
-    // Don't setup if already active for this exact path
     if (activeSessionRef.current === path) {
-      console.log('Session already active for this path, skipping setup');
+      console.log('Session already active for this path');
       return;
     }
     
-    // Clear any existing session data
     setChatMessages([]);
 
     try {
-      const { ref, onValue, onChildAdded } = await import('firebase/database');
+      const { ref, onChildAdded, onValue } = await import('firebase/database');
       
       const messagesRef = ref(firebaseDb, `${path}/messages`);
       const videoCallNotificationsRef = ref(firebaseDb, `${path}/video_call_notifications`);
@@ -1315,64 +1184,35 @@ const MentorComponentCore = React.memo(() => {
         } catch (err) {
           console.error('Message processing error:', err);
         }
-      }, (error) => {
-        console.error('Messages listener error:', error);
       });
 
-      // ✅ UPDATED video call notification handler with enhanced debugging
+      // FIXED: Enhanced video call notification handler
       const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
         try {
           const notification = snapshot.val();
           
-          // ✅ ENHANCED DEBUGGING - Let's see EXACTLY what's happening
-          console.log('=== VIDEO CALL NOTIFICATION DEBUG ===');
-          console.log('Raw notification:', notification);
-          console.log('Notification from:', notification?.from);
-          console.log('My user ID:', myUserId);
-          console.log('Notification type:', notification?.type);
-          console.log('Is from me?', notification?.from === myUserId);
-          console.log('Is video request?', notification?.type === 'video_call_request');
-          console.log('Current myRole:', myRole);
-          console.log('Current incomingVideoCall state:', incomingVideoCall);
-          console.log('Current isVideoCallActive:', isVideoCallActive);
+          console.log('📞 Video call notification received:', notification);
           
-          if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
+          if (notification && 
+              notification.from !== myUserId && 
+              notification.type === 'video_call_request') {
+            
             const otherUserId = notification.from;
+            const shouldWeInitiate = determineInitiator(myUserId!, otherUserId, myRole!);
             
-            if (!otherUserId || !myUserId) {
-              console.log('❌ Missing user IDs:', { otherUserId, myUserId });
-              return;
-            }
-            
-            // ✅ CRITICAL DEBUG - Let's see the initiation decision
-            const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-            console.log('=== INITIATION DECISION ===');
-            console.log('shouldWeInitiate result:', shouldWeInitiate);
-            console.log('My role check:', myRole);
-            console.log('Role === mentor?', myRole === 'mentor');
-            console.log('Role === user?', myRole === 'user');
+            console.log('📞 Should we initiate?', shouldWeInitiate);
             
             if (shouldWeInitiate) {
-              console.log('❌ BLOCKING: We should initiate, ignoring incoming call');
+              console.log('❌ We should initiate, ignoring incoming call notification');
               return;
             }
             
-            // ✅ THIS IS WHERE THE USER SHOULD SET THE INCOMING CALL
-            console.log('✅ ACCEPTING: Setting incoming video call for USER role');
-            console.log('About to call setIncomingVideoCall with:', notification);
-            setIncomingVideoCall(notification);
-            console.log('✅ setIncomingVideoCall called successfully');
-          } else {
-            console.log('❌ NOTIFICATION FILTERED OUT');
-            console.log('Reasons:', {
-              hasNotification: !!notification,
-              isFromOtherUser: notification?.from !== myUserId,
-              isVideoRequest: notification?.type === 'video_call_request',
-              fromUser: notification?.from,
-              myUserId: myUserId
-            });
+            // Only users should receive incoming call notifications
+            if (myRole === 'user') {
+              console.log('✅ Setting incoming video call for user');
+              setIncomingVideoCall(notification);
+            }
           }
-          console.log('=== END VIDEO CALL NOTIFICATION DEBUG ===');
         } catch (err) {
           console.error('Video call notification error:', err);
         }
@@ -1382,26 +1222,19 @@ const MentorComponentCore = React.memo(() => {
       const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
         try {
           const sessionStatus = snapshot.val();
-          console.log('Session status update:', sessionStatus, 'for path:', path);
           
-          // Only end session if status is explicitly 'ended' AND we're not in an active video call
-          // AND this is actually the current active session
           if (sessionStatus === 'ended' && 
               activeFirebaseSessionPath === path && 
               !isVideoCallActive) {
-            console.log('Session ended by remote party for our active session');
+            console.log('Session ended by remote party');
             endSession();
           }
         } catch (err) {
           console.error('Session status error:', err);
         }
-      }, (error) => {
-        console.error('Session listener error:', error);
       });
 
-      // Store cleanup functions
       const sessionCleanup = () => {
-        console.log('Cleaning up session listeners for:', path);
         try {
           messagesUnsubscribe();
           videoCallUnsubscribe();
@@ -1416,9 +1249,9 @@ const MentorComponentCore = React.memo(() => {
     } catch (err) {
       console.error('Session setup error:', err);
     }
-  }, [addCleanup, endSession, firebaseDb, activeFirebaseSessionPath, myUserId, myRole, incomingVideoCall, isVideoCallActive]);
+  }, [addCleanup, endSession, firebaseDb, activeFirebaseSessionPath, myUserId, myRole, isVideoCallActive, determineInitiator]);
 
-  // Enhanced Firebase listeners with better session management
+  // Firebase listeners
   useEffect(() => {
     if (!isInitialized || !myUserId || !myRole || !firebaseDb) return;
 
@@ -1427,7 +1260,6 @@ const MentorComponentCore = React.memo(() => {
     let listenersSetup = false;
 
     const setupListeners = async () => {
-      // Prevent multiple listener setups
       if (listenersSetup) return;
       listenersSetup = true;
 
@@ -1438,7 +1270,6 @@ const MentorComponentCore = React.memo(() => {
         const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
         const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-        // Much better throttling for status updates
         let statusUpdateTimeout: NodeJS.Timeout | null = null;
         const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
           if (!isActive) return;
@@ -1446,30 +1277,18 @@ const MentorComponentCore = React.memo(() => {
           try {
             const newStatuses = snapshot.val() || {};
             
-            // Increased throttle time to 2 seconds
             if (statusUpdateTimeout) clearTimeout(statusUpdateTimeout);
             statusUpdateTimeout = setTimeout(() => {
               if (isActive) {
-                setOnlineUserStatuses((prevStatuses: any) => {
-                  // Only update if there's actually a change
-                  const prevString = JSON.stringify(prevStatuses);
-                  const newString = JSON.stringify(newStatuses);
-                  if (prevString !== newString) {
-                    return newStatuses;
-                  }
-                  return prevStatuses;
-                });
+                setOnlineUserStatuses(newStatuses);
               }
             }, 2000);
             
           } catch (err) {
             console.error('Status update error:', err);
           }
-        }, (error) => {
-          if (isActive) console.error('Status listener error:', error);
         });
 
-        // Better throttling for request updates
         let requestUpdateTimeout: NodeJS.Timeout | null = null;
         const requestsUnsubscribe = onValue(requestsRef, (snapshot) => {
           if (!isActive) return;
@@ -1482,31 +1301,18 @@ const MentorComponentCore = React.memo(() => {
               if (isActive) {
                 const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
                 const pending = requestsArray.filter(req => req.status === 'pending');
-                
-                setIncomingRequests((prevRequests: any) => {
-                  // Only update if there's actually a change
-                  const prevIds = prevRequests.map((r: any) => r.id).sort();
-                  const newIds = pending.map(r => r.id).sort();
-                  if (JSON.stringify(prevIds) !== JSON.stringify(newIds)) {
-                    return pending.filter(req => !processedRequests.has(req.id));
-                  }
-                  return prevRequests;
-                });
+                setIncomingRequests(pending.filter(req => !processedRequests.has(req.id)));
               }
             }, 1000);
             
           } catch (err) {
             console.error('Requests processing error:', err);
           }
-        }, (error) => {
-          if (isActive) console.error('Requests listener error:', error);
         });
         
-        // Initialize variables
         let processedResponseIds = new Set<string>();
         const listenerStartTime = Date.now();
 
-        // Better approach - listen for new responses with proper timestamp handling
         const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
           if (!isActive) return;
           
@@ -1516,58 +1322,46 @@ const MentorComponentCore = React.memo(() => {
             
             if (!response || !responseId) return;
             
-            // Prevent processing the same response multiple times
             if (processedResponseIds.has(responseId)) {
-              console.log('Response already processed:', responseId);
               return;
             }
             
-            // Better timestamp handling for Firebase timestamps
             let responseTime = 0;
             if (response.timestamp) {
-              // Handle different timestamp formats
               if (typeof response.timestamp === 'number') {
                 responseTime = response.timestamp;
               } else if (response.timestamp.toMillis) {
                 responseTime = response.timestamp.toMillis();
               } else if (response.timestamp.seconds) {
-                // Firestore timestamp format
                 responseTime = response.timestamp.seconds * 1000;
-              } else if (typeof response.timestamp === 'object' && response.timestamp.time) {
-                // Alternative timestamp format
-                responseTime = response.timestamp.time;
               }
             }
             
-            // More lenient time filtering - only ignore very old responses (older than 1 hour)
             const oneHourAgo = Date.now() - (60 * 60 * 1000);
             if (responseTime > 0 && responseTime < oneHourAgo) {
-              console.log('Ignoring very old response:', responseId, 'from', new Date(responseTime).toLocaleString());
+              console.log('Ignoring very old response:', responseId);
               return;
             }
             
-            // Only filter out responses that are clearly from before this session
-            const sessionStartThreshold = listenerStartTime - (5 * 60 * 1000); // 5 minutes before listener start
+            const sessionStartThreshold = listenerStartTime - (5 * 60 * 1000);
             if (responseTime > 0 && responseTime < sessionStartThreshold) {
-              console.log('Ignoring pre-session response:', responseId, 'from', new Date(responseTime).toLocaleString());
+              console.log('Ignoring pre-session response:', responseId);
               return;
             }
             
             processedResponseIds.add(responseId);
-            console.log('Processing response:', response.type, responseId, responseTime ? `from ${new Date(responseTime).toLocaleString()}` : '(no timestamp)');
+            console.log('Processing response:', response.type, responseId);
             
             if (response.type === 'session_accepted') {
               console.log('Session accepted:', response.firebaseSessionPath);
-              // Only set active session if we don't already have one
               if (!activeSessionRef.current) {
                 setActiveFirebaseSessionPath(response.firebaseSessionPath);
                 setupSession(response.firebaseSessionPath, response.sessionType);
               } else {
-                console.log('Session already active, ignoring new session request');
+                console.log('Session already active, ignoring');
               }
             } else if (response.type === 'session_ended') {
               console.log('Session ended by remote party');
-              // Only end if this response is for our current session
               if (activeSessionRef.current && response.firebaseSessionPath === activeSessionRef.current) {
                 endSession();
               }
@@ -1575,11 +1369,8 @@ const MentorComponentCore = React.memo(() => {
           } catch (err) {
             console.error('Response processing error:', err);
           }
-        }, (error) => {
-          if (isActive) console.error('Responses listener error:', error);
         });
 
-        // Store cleanup functions
         const cleanup = () => {
           isActive = false;
           listenersSetup = false;
@@ -1591,13 +1382,11 @@ const MentorComponentCore = React.memo(() => {
             requestsUnsubscribe();
             responsesUnsubscribe();
           } catch (err) {
-            console.warn('Listener cleanup error (non-critical):', err);
+            console.warn('Listener cleanup error:', err);
           }
         };
 
         addCleanup(cleanup);
-
-        return cleanup;
 
       } catch (err) {
         console.error('Firebase listeners setup error:', err);
@@ -1609,9 +1398,9 @@ const MentorComponentCore = React.memo(() => {
     return () => {
       isActive = false;
     };
-  }, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endSession, processedRequests]); // Stable dependencies
+  }, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endSession, processedRequests]);
 
-  // Stable callback functions
+  // Helper functions
   const handleSelectUser = useCallback((user: UserDetails) => {
     const input = document.getElementById('targetUserId') as HTMLInputElement;
     if (input) input.value = user.id;
@@ -1702,9 +1491,10 @@ const MentorComponentCore = React.memo(() => {
   useEffect(() => {
     return () => {
       clearAllCleanup();
+      cleanupVideoCall('Component unmounting');
       endSession();
     };
-  }, [clearAllCleanup, endSession]);
+  }, [clearAllCleanup, cleanupVideoCall, endSession]);
 
   // Loading states
   if (userError) {
@@ -1728,14 +1518,14 @@ const MentorComponentCore = React.memo(() => {
 
   return (
     <div>
-      {/* ✅ FIXED NAVBAR AT TOP */}
+      {/* Fixed navbar */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
         <Navbar />
       </div>
       
-      {/* ✅ MAIN CONTENT WITH TOP PADDING TO ACCOUNT FOR FIXED NAVBAR */}
+      {/* Main content */}
       <div style={{ 
-        paddingTop: '80px', // Adjust based on your navbar height
+        paddingTop: '80px',
         padding: '20px', 
         maxWidth: '1200px', 
         margin: '0 auto', 
@@ -1743,7 +1533,7 @@ const MentorComponentCore = React.memo(() => {
       }}>
         <h1 style={{ color: '#333', marginBottom: '30px' }}>Mentor/User Chat & Video Dashboard</h1>
         
-        {/* 🔍 TEMPORARY DEBUG INFO - Remove this later */}
+        {/* Debug info */}
         <div style={{ 
           padding: '10px', 
           backgroundColor: '#f0f0f0', 
@@ -1757,12 +1547,13 @@ const MentorComponentCore = React.memo(() => {
           Incoming Video Call: {incomingVideoCall ? 'YES' : 'NO'}<br/>
           Video Call Active: {isVideoCallActive ? 'YES' : 'NO'}<br/>
           Active Session: {activeFirebaseSessionPath ? 'YES' : 'NO'}<br/>
+          Call Status: {callStatus || 'None'}<br/>
           {incomingVideoCall && (
             <>Call From: {incomingVideoCall.from} | Call ID: {incomingVideoCall.callId}</>
           )}
         </div>
         
-        {/* Error notification */}
+        {/* Error notifications */}
         {errors.length > 0 && (
           <div style={{ 
             marginBottom: '20px', 
@@ -1774,7 +1565,7 @@ const MentorComponentCore = React.memo(() => {
           }}>
             <strong>ℹ️ Browser Extension Notices</strong>
             <p style={{ margin: '5px 0 0 0' }}>
-              {errors.length} non-critical errors have been suppressed (browser extensions). 
+              {errors.length} non-critical errors suppressed. 
               <button 
                 onClick={() => setErrors([])}
                 style={{ 
@@ -1794,7 +1585,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         )}
         
-        {/* User Info Card */}
+        {/* User profile card */}
         <div style={{ 
           marginBottom: '30px', 
           padding: '20px', 
@@ -1816,7 +1607,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         </div>
 
-        {/* ✅ UPDATED Incoming Video Call Notification with enhanced debugging */}
+        {/* FIXED: Incoming video call notification */}
         {incomingVideoCall && !isVideoCallActive && (
           <div style={{ 
             marginBottom: '30px', 
@@ -1826,44 +1617,21 @@ const MentorComponentCore = React.memo(() => {
             backgroundColor: '#d1ecf1',
             animation: 'pulse 2s infinite'
           }}>
-            <div>
-              <h2 style={{ color: '#0c5460', margin: '0 0 10px 0' }}>
-                📹 Incoming Video Call (DEBUG: {JSON.stringify(incomingVideoCall)})
-              </h2>
-              <p style={{ margin: 0, fontSize: '16px', color: '#0c5460' }}>
-                From: {getUserDisplayName(incomingVideoCall.from)}
-              </p>
-              <p style={{ fontSize: '12px', color: '#6c757d' }}>
-                Call ID: {incomingVideoCall.callId} | Role: {myRole}
-              </p>
-            </div>
+            <h2 style={{ color: '#0c5460', margin: '0 0 10px 0' }}>
+              📹 Incoming Video Call
+            </h2>
+            <p style={{ margin: 0, fontSize: '16px', color: '#0c5460' }}>
+              From: {getUserDisplayName(incomingVideoCall.from)}
+            </p>
+            <p style={{ fontSize: '12px', color: '#6c757d', margin: '5px 0' }}>
+              Call ID: {incomingVideoCall.callId}
+            </p>
             <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
               <button 
-                onClick={() => {
-                  console.log('🔴 ACCEPT BUTTON CLICKED');
-                  acceptVideoCall();
-                }}
+                onClick={acceptVideoCall}
                 style={{ 
                   padding: '12px 24px', 
                   backgroundColor: '#28a745', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                📹 Accept Call
-              </button>
-              <button 
-                onClick={() => {
-                  console.log('🔴 DECLINE BUTTON CLICKED');
-                  setIncomingVideoCall(null);
-                }}
-                style={{ 
-                  padding: '12px 24px', 
-                  backgroundColor: '#dc3545', 
                   color: 'white', 
                   border: 'none', 
                   borderRadius: '6px',
@@ -1878,7 +1646,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         )}
 
-        {/* Mentor Controls */}
+        {/* Mentor controls */}
         {myRole === 'mentor' && (
           <div style={{ 
             marginBottom: '30px', 
@@ -2027,7 +1795,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         )}
 
-        {/* Incoming Requests */}
+        {/* Incoming requests */}
         {myRole === 'user' && incomingRequests.length > 0 && (
           <div style={{ 
             marginBottom: '30px', 
@@ -2073,7 +1841,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         )}
 
-        {/* Active Session */}
+        {/* Active session */}
         {activeFirebaseSessionPath && (
           <div style={{ 
             marginBottom: '30px', 
@@ -2097,18 +1865,19 @@ const MentorComponentCore = React.memo(() => {
                 {!isVideoCallActive && (
                   <button 
                     onClick={startVideoCall}
+                    disabled={videoCallInitializingRef.current}
                     style={{ 
                       padding: '10px 20px', 
-                      backgroundColor: '#17a2b8', 
+                      backgroundColor: videoCallInitializingRef.current ? '#6c757d' : '#17a2b8', 
                       color: 'white', 
                       border: 'none', 
                       borderRadius: '5px',
                       fontSize: '14px',
                       fontWeight: 'bold',
-                      cursor: 'pointer'
+                      cursor: videoCallInitializingRef.current ? 'not-allowed' : 'pointer'
                     }}
                   >
-                    📹 Start Video Call
+                    📹 {videoCallInitializingRef.current ? 'Starting...' : 'Start Video Call'}
                   </button>
                 )}
                 <button 
@@ -2129,7 +1898,7 @@ const MentorComponentCore = React.memo(() => {
               </div>
             </div>
 
-            {/* Debug Info */}
+            {/* Debug info */}
             <div style={{ 
               marginBottom: '15px', 
               padding: '10px', 
@@ -2142,10 +1911,11 @@ const MentorComponentCore = React.memo(() => {
               Video Active: {isVideoCallActive ? '✅' : '❌'} | 
               Local Stream: {localStream ? '✅' : '❌'} | 
               Remote Stream: {remoteStream ? '✅' : '❌'} | 
-              Call Status: {callStatus || 'None'}
+              Call Status: {callStatus || 'None'} |
+              Initializing: {videoCallInitializingRef.current ? '✅' : '❌'}
             </div>
 
-            {/* Video Call Interface - Always show if video call is active */}
+            {/* Video call interface */}
             {isVideoCallActive && (
               <div style={{ marginBottom: '25px' }}>
                 <div style={{ 
@@ -2168,7 +1938,7 @@ const MentorComponentCore = React.memo(() => {
                   gap: '15px', 
                   marginBottom: '15px' 
                 }}>
-                  {/* Local Video */}
+                  {/* Local video */}
                   <div style={{ position: 'relative' }}>
                     <video 
                       ref={localVideoRef}
@@ -2197,7 +1967,7 @@ const MentorComponentCore = React.memo(() => {
                     </div>
                   </div>
 
-                  {/* Remote Video */}
+                  {/* Remote video */}
                   <div style={{ position: 'relative' }}>
                     <video 
                       ref={remoteVideoRef}
@@ -2239,7 +2009,7 @@ const MentorComponentCore = React.memo(() => {
                   </div>
                 </div>
 
-                {/* Video Controls */}
+                {/* Video controls */}
                 <div style={{ 
                   display: 'flex', 
                   justifyContent: 'center', 
@@ -2296,7 +2066,7 @@ const MentorComponentCore = React.memo(() => {
               </div>
             )}
             
-            {/* Chat Interface */}
+            {/* Chat interface */}
             <div style={{ marginBottom: '25px' }}>
               <h3 style={{ color: '#495057', marginBottom: '15px' }}>💬 Messages</h3>
               <div style={{ 
@@ -2376,7 +2146,7 @@ const MentorComponentCore = React.memo(() => {
           </div>
         )}
 
-        {/* Online Users */}
+        {/* Online users */}
         <div style={{ 
           padding: '20px', 
           border: '1px solid #dee2e6', 
@@ -2443,41 +2213,41 @@ const MentorComponentCore = React.memo(() => {
                       <button 
                         onClick={() => sendRequest(uid, 'video')}
                         style={{ 
-                        padding: '6px 12px', 
-                        backgroundColor: '#17a2b8', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '4px', 
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      📹 Video
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                          padding: '6px 12px', 
+                          backgroundColor: '#17a2b8', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '4px', 
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📹 Video
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-      {/* Add pulse animation for incoming call */}
-      <style jsx>{`
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.7);
+        {/* Add pulse animation for incoming call */}
+        <style jsx>{`
+          @keyframes pulse {
+            0% {
+              box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.7);
+            }
+            70% {
+              box-shadow: 0 0 0 10px rgba(23, 162, 184, 0);
+            }
+            100% {
+              box-shadow: 0 0 0 0 rgba(23, 162, 184, 0);
+            }
           }
-          70% {
-            box-shadow: 0 0 0 10px rgba(23, 162, 184, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(23, 162, 184, 0);
-          }
-        }
-      `}</style>
-    </div>
+        `}</style>
+      </div>
     </div>
   );
 });
