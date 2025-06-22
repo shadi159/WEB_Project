@@ -665,7 +665,6 @@ const MentorComponentCore = React.memo(() => {
       return;
     }
 
-    // Prevent multiple simultaneous accepts
     if (isVideoCallActive || videoCallInitializingRef.current) {
       console.log('❌ Video call already active or initializing, ignoring accept request');
       return;
@@ -676,9 +675,10 @@ const MentorComponentCore = React.memo(() => {
     console.log('✅ Accepting video call from:', incomingVideoCall.from);
     setCallStatus('Accepting video call...');
 
-    // --- Deduplication state ---
+    // --- Deduplication state for incoming signals ---
     const processedSignalKeys = new Set();
     let hasSentAnswer = false;
+    let offerProcessed = false;
 
     try {
       // Clean up any existing streams first
@@ -694,7 +694,6 @@ const MentorComponentCore = React.memo(() => {
         setLocalStream(null);
       }
 
-      // Clean up any existing peer
       if (peerRef.current) {
         try {
           if (!peerRef.current.destroyed) {
@@ -706,14 +705,12 @@ const MentorComponentCore = React.memo(() => {
         peerRef.current = null;
       }
 
-      // Wait longer for devices to be released
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       setIsVideoCallActive(true);
       setIsCallInitiator(false);
       setIncomingVideoCall(null);
-      
-      // Get user media with enhanced error handling
+
       let stream: MediaStream;
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -740,25 +737,20 @@ const MentorComponentCore = React.memo(() => {
         setTimeout(() => setCallStatus(''), 5000);
         return;
       }
-      
+
       console.log('Got media stream for accepter, setting local video...');
       setLocalStream(stream);
-      
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
 
-      // Wait longer before creating peer to ensure caller's signals are ready
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // FIXED: Add proper user ID detection
       const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
         const pathParts = sessionPath.split('/');
         if (pathParts.length < 2) return null;
-        
         const sessionPart = pathParts[1];
         const userIds = sessionPart.split('_');
-        
         for (const id of userIds) {
           if (id !== myUserId && !/^[0-9]+$/.test(id)) {
             return id;
@@ -789,10 +781,7 @@ const MentorComponentCore = React.memo(() => {
         return;
       }
 
-      // Use the detected otherUserId for signaling
       const remoteUserId = otherUserId;
-
-      // Create peer connection - accepter is never initiator
       const peer = new SimplePeer({
         initiator: false,
         trickle: true,
@@ -809,20 +798,17 @@ const MentorComponentCore = React.memo(() => {
       });
 
       peerRef.current = peer;
-
-      // Setup signaling
       const { ref, push, onChildAdded, onValue, serverTimestamp } = await import('firebase/database');
       const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
 
-      // Send our signals
+      // Always send the first answer, only deduplicate outgoing answers
       peer.on('signal', async (data: any) => {
         try {
-          // Only send one answer
           if (data.type === 'answer') {
             if (hasSentAnswer) return;
             hasSentAnswer = true;
+            console.log('Accepter sending answer signal');
           }
-          console.log('Accepter sending signal:', data.type);
           await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
             signal: data,
             timestamp: serverTimestamp(),
@@ -835,12 +821,10 @@ const MentorComponentCore = React.memo(() => {
         }
       });
 
-      // FIXED: Use the correct remote user ID for signaling path
       const remoteSignalPath = `${signalBasePath}/${remoteUserId}`;
       console.log('Accepter listening for signals on path:', remoteSignalPath);
 
-      // Process existing signals first
-      console.log('Processing existing signals from caller...');
+      // Process existing signals (offers/candidates from caller)
       try {
         const existingSignalsRef = ref(firebaseDb, remoteSignalPath);
         const existingSignalsSnapshot = await new Promise((resolve, reject) => {
@@ -852,31 +836,18 @@ const MentorComponentCore = React.memo(() => {
         });
         const existingSignals = (existingSignalsSnapshot as any).val();
         if (existingSignals && peer && !peer.destroyed) {
-          const signals = Object.entries(existingSignals)
-            .filter(([key, signalData]: [string, any]) => {
-              processedSignalKeys.add(key);
-              return signalData.callId === incomingVideoCall.callId && signalData.role === 'caller';
-            })
-            .map(([_, signalData]) => signalData)
-            .sort((a: any, b: any) => {
-              const aTime = a.timestamp?.seconds || a.timestamp || 0;
-              const bTime = b.timestamp?.seconds || b.timestamp || 0;
-              return aTime - bTime;
-            });
-
-          console.log(`Accepter processing ${signals.length} existing signals`);
-          for (const signalData of signals) {
-            try {
-              const data = signalData as { signal: { type: string } };
-              if (data.signal.type === 'offer' && !hasSentAnswer) {
-                peer.signal(data.signal);
-                hasSentAnswer = true;
-              } else if (data.signal.type !== 'offer') {
-                peer.signal(data.signal);
+          for (const [key, signalDataRaw] of Object.entries(existingSignals)) {
+            const signalData = signalDataRaw as { callId: any; role: string; signal: { type: string }; };
+            processedSignalKeys.add(key);
+            if (signalData.callId === incomingVideoCall.callId && signalData.role === 'caller') {
+              if (signalData.signal.type === 'offer' && !offerProcessed) {
+                peer.signal(signalData.signal);
+                offerProcessed = true;
+                console.log('Accepter processed first offer from existing signals');
+              } else if (signalData.signal.type !== 'offer') {
+                peer.signal(signalData.signal);
               }
               await new Promise(resolve => setTimeout(resolve, 100));
-            } catch (error: any) {
-              console.error('Error processing existing signal:', error);
             }
           }
         } else {
@@ -886,7 +857,7 @@ const MentorComponentCore = React.memo(() => {
         console.error('Error processing existing signals:', error);
       }
 
-      // Listen for new signals
+      // Listen for new signals (offers/candidates from caller)
       console.log('Accepter setting up listener for new signals...');
       const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
         const key = snapshot.key;
@@ -894,14 +865,12 @@ const MentorComponentCore = React.memo(() => {
         processedSignalKeys.add(key);
         const data = snapshot.val();
         if (!data || !data.signal || !peer || peer.destroyed) return;
-        if (data.callId !== incomingVideoCall.callId) {
-          console.log('Ignoring signal from different call');
-          return;
-        }
+        if (data.callId !== incomingVideoCall.callId) return;
         try {
-          if (data.signal.type === 'offer' && !hasSentAnswer) {
+          if (data.signal.type === 'offer' && !offerProcessed) {
             peer.signal(data.signal);
-            hasSentAnswer = true;
+            offerProcessed = true;
+            console.log('Accepter processed first offer from new signals');
           } else if (data.signal.type !== 'offer') {
             peer.signal(data.signal);
           }
@@ -912,7 +881,6 @@ const MentorComponentCore = React.memo(() => {
 
       signalingCleanupRef.current = unsubscribe;
 
-      // Enhanced peer event handlers
       peer.on('stream', (remoteStream: MediaStream) => {
         console.log('Accepter received remote stream');
         setRemoteStream(remoteStream);
@@ -938,13 +906,11 @@ const MentorComponentCore = React.memo(() => {
         setTimeout(() => endVideoCall(), 3000);
       });
 
-      // Clear initializing flag after successful setup
       videoCallInitializingRef.current = false;
 
     } catch (error: any) {
       console.error('Error accepting video call:', error);
       setCallStatus('Failed to accept video call: ' + error.message);
-      // Clean up on error
       if (localStream) {
         localStream.getTracks().forEach(track => {
           try {
