@@ -537,8 +537,16 @@ const MentorComponentCore = React.memo(() => {
       // Enhanced signaling with better error handling
       peer.on('signal', async (data: any) => {
         if (data.type === 'candidate') {
+          // FIX: Accept candidate as an object with a non-empty candidate string
           console.log('Caller sending ICE candidate (full):', JSON.stringify(data));
-          if (!data.candidate || typeof data.candidate !== 'string' || data.sdpMid === undefined || data.sdpMLineIndex === undefined) {
+          if (
+            !data.candidate ||
+            typeof data.candidate !== 'object' ||
+            typeof data.candidate.candidate !== 'string' ||
+            !data.candidate.candidate ||
+            data.candidate.sdpMid === undefined ||
+            data.candidate.sdpMLineIndex === undefined
+          ) {
             console.warn('Caller: ICE candidate missing required fields, not sending:', data);
             return;
           }
@@ -576,8 +584,16 @@ const MentorComponentCore = React.memo(() => {
         }
 
         if (data.signal.type === 'candidate') {
+          // FIX: Accept candidate as an object with a non-empty candidate string
           console.log('Caller received ICE candidate (full):', JSON.stringify(data.signal));
-          if (!data.signal.candidate || typeof data.signal.candidate !== 'string' || data.signal.sdpMid === undefined || data.signal.sdpMLineIndex === undefined) {
+          if (
+            !data.signal.candidate ||
+            typeof data.signal.candidate !== 'object' ||
+            typeof data.signal.candidate.candidate !== 'string' ||
+            !data.signal.candidate.candidate ||
+            data.signal.candidate.sdpMid === undefined ||
+            data.signal.candidate.sdpMLineIndex === undefined
+          ) {
             console.warn('Caller: Received ICE candidate missing required fields, ignoring:', data.signal);
             return;
           }
@@ -829,8 +845,16 @@ const MentorComponentCore = React.memo(() => {
       // Always send the first answer, only deduplicate outgoing answers
       peer.on('signal', async (data: any) => {
         if (data.type === 'candidate') {
+          // FIX: Accept candidate as an object with a non-empty candidate string
           console.log('Accepter sending ICE candidate (full):', JSON.stringify(data));
-          if (!data.candidate || typeof data.candidate !== 'string' || data.sdpMid === undefined || data.sdpMLineIndex === undefined) {
+          if (
+            !data.candidate ||
+            typeof data.candidate !== 'object' ||
+            typeof data.candidate.candidate !== 'string' ||
+            !data.candidate.candidate ||
+            data.candidate.sdpMid === undefined ||
+            data.candidate.sdpMLineIndex === undefined
+          ) {
             console.warn('Accepter: ICE candidate missing required fields, not sending:', data);
             return;
           }
@@ -903,8 +927,16 @@ const MentorComponentCore = React.memo(() => {
         if (!data || !data.signal || !peer || peer.destroyed) return;
         if (data.callId !== incomingVideoCall.callId) return;
         if (data.signal.type === 'candidate') {
+          // FIX: Accept candidate as an object with a non-empty candidate string
           console.log('Accepter received ICE candidate (full):', JSON.stringify(data.signal));
-          if (!data.signal.candidate || typeof data.signal.candidate !== 'string' || data.signal.sdpMid === undefined || data.signal.sdpMLineIndex === undefined) {
+          if (
+            !data.signal.candidate ||
+            typeof data.signal.candidate !== 'object' ||
+            typeof data.signal.candidate.candidate !== 'string' ||
+            !data.signal.candidate.candidate ||
+            data.signal.candidate.sdpMid === undefined ||
+            data.signal.candidate.sdpMLineIndex === undefined
+          ) {
             console.warn('Accepter: Received ICE candidate missing required fields, ignoring:', data.signal);
             return;
           }
