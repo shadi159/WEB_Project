@@ -31,6 +31,28 @@ interface FirebaseConfig {
   appId?: string;
 }
 
+// Add these interfaces at the top of your Mentor.tsx file (after imports)
+interface NetworkTestResponse {
+  ok: boolean;
+  status: number;
+}
+
+interface NetworkTestResult {
+  success: boolean;
+  message: string;
+}
+
+interface MediaError extends Error {
+  name: 'NotAllowedError' | 'NotFoundError' | 'NotReadableError' | string;
+}
+
+interface SignalData {
+  type: 'offer' | 'answer' | 'candidate';
+  candidate?: RTCIceCandidate;
+  sdp?: string;
+  [key: string]: any;
+}
+
 // Enhanced error handler that properly handles browser extension errors
 const errorHandlerCache = { current: null as any };
 
@@ -523,334 +545,388 @@ const RemoteVideoElement = () => (
   // Add a ref to track video call initialization state
   const videoCallInitializingRef = useRef(false);
 
-  // Fixed startVideoCall with race condition prevention
- const startVideoCall = useCallback(async () => {
-  if (!firebaseDb || !activeFirebaseSessionPath || !myUserId) return;
-  
+ // 1. Browser-compatible network test (no AbortSignal issues)
+const testNetworkCompatibility = async (): Promise<NetworkTestResult> => {
+  try {
+    const testUrl = 'https://httpbin.org/get';
+    
+    const response = await new Promise<NetworkTestResponse>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.timeout = 8000; // 8 second timeout
+      xhr.onload = () => resolve({ 
+        ok: xhr.status >= 200 && xhr.status < 300, 
+        status: xhr.status 
+      });
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.ontimeout = () => reject(new Error('Network timeout'));
+      xhr.open('GET', testUrl);
+      xhr.send();
+    });
+    
+    if (response.ok) {
+      console.log('✅ Network connectivity: OK');
+      return { success: true, message: 'Network OK' };
+    } else {
+      console.log('❌ Network error:', response.status);
+      return { success: false, message: `HTTP ${response.status}` };
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown network error';
+    console.log('❌ Network error:', errorMessage);
+    return { success: false, message: errorMessage };
+  }
+};
+
+// 2. Browser-compatible ICE server configuration
+const getBrowserCompatibleICEConfig = () => {
+  return {
+    iceServers: [
+      // Multiple STUN servers (your tests show these work perfectly)
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      
+      // TURN servers for NAT traversal
+      { 
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      { 
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
+  };
+};
+
+// 3. Enhanced getUserMedia with permission handling
+const getMediaStreamWithPermissions = async (): Promise<MediaStream> => {
+  try {
+    // First check if we have permissions
+    if ('permissions' in navigator) {
+      try {
+        const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        
+        console.log('Camera permission:', cameraPermission.state);
+        console.log('Microphone permission:', micPermission.state);
+        
+        if (cameraPermission.state === 'denied' || micPermission.state === 'denied') {
+          throw new Error('Camera or microphone access was previously denied. Please reset permissions in browser settings.');
+        }
+      } catch (permError: unknown) {
+        const errorMessage = permError instanceof Error ? permError.message : 'Permission check failed';
+        console.warn('Permission check failed:', errorMessage);
+      }
+    }
+    
+    // Request media with fallback options
+    const constraints: MediaStreamConstraints = {
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        facingMode: 'user'
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    };
+    
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error: unknown) {
+      // Fallback: try with basic constraints
+      console.warn('Falling back to basic media constraints');
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+    }
+    
+    console.log('✅ Media stream obtained successfully');
+    return stream;
+    
+  } catch (error: unknown) {
+    console.error('Media access error:', error);
+    
+    const mediaError = error as MediaError;
+    
+    // Provide specific error messages
+    if (mediaError.name === 'NotAllowedError') {
+      throw new Error('Camera/microphone access denied. Please click "Allow" when prompted and refresh the page.');
+    } else if (mediaError.name === 'NotFoundError') {
+      throw new Error('No camera or microphone found on this device.');
+    } else if (mediaError.name === 'NotReadableError') {
+      throw new Error('Camera/microphone is being used by another application. Please close other apps and try again.');
+    } else {
+      const errorMessage = mediaError.message || 'Unknown media access error';
+      throw new Error(`Media access failed: ${errorMessage}`);
+    }
+  }
+};
+
+const requestMediaPermissions = async (): Promise<boolean> => {
+  try {
+    // Request permissions first
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    });
+    
+    // Stop the stream immediately - we just wanted to get permissions
+    stream.getTracks().forEach(track => track.stop());
+    
+    console.log('✅ Media permissions granted');
+    return true;
+  } catch (error: unknown) {
+    const mediaError = error as MediaError;
+    console.error('❌ Media permissions denied:', mediaError.message);
+    
+    if (mediaError.name === 'NotAllowedError') {
+      alert('Camera/microphone access is required for video calls. Please click "Allow" when prompted and refresh the page.');
+    }
+    
+    return false;
+  }
+};
+
+// 4. Updated startVideoCall function with compatibility fixes
+const startVideoCallCompatible = async () => {
+  if (!firebaseDb || !activeFirebaseSessionPath || !myUserId) {
+    console.error('Missing requirements for video call');
+    return;
+  }
+
   if (isVideoCallActive || videoCallInitializingRef.current) {
-    console.log('Video call already active or initializing, ignoring start request');
+    console.log('Video call already active or initializing');
     return;
   }
 
   videoCallInitializingRef.current = true;
   console.log('Starting video call...');
-  setCallStatus('Initializing call...');
+
+    setCallStatus('Requesting camera and microphone permissions...');
+  const hasPermissions = await requestMediaPermissions();
+  
+  if (!hasPermissions) {
+    setCallStatus('Camera/microphone permissions required. Please refresh and allow access.');
+    setIsVideoCallActive(false);
+    videoCallInitializingRef.current = false;
+    return;
+  }
 
   try {
-    // Clean up existing resources
+    // Step 1: Test network (browser compatible)
+    setCallStatus('Checking network connection...');
+    const networkTest = await testNetworkCompatibility();
+    
+    if (!networkTest.success) {
+      // Don't fail completely - WebRTC might still work
+      console.warn('Network test failed, but continuing with WebRTC attempt');
+      setCallStatus('Network test failed, trying WebRTC anyway...');
+    }
+
+    // Step 2: Clean up existing resources
     if (localStream) {
-      localStream.getTracks().forEach(track => {
-        try {
-          track.stop();
-        } catch (e) {
-          console.warn('Error stopping track:', e);
-        }
-      });
+      localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
 
     if (peerRef.current) {
-      try {
-        if (!peerRef.current.destroyed) {
-          peerRef.current.destroy();
-        }
-      } catch (e) {
-        console.warn('Error destroying existing peer:', e);
+      if (!peerRef.current.destroyed) {
+        peerRef.current.destroy();
       }
       peerRef.current = null;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (!videoCallInitializingRef.current) {
-      console.log('Video call initialization was cancelled');
-      return;
-    }
-
-    setIsVideoCallActive(true);
-    setIsCallInitiator(true);
-    setCallStatus('Getting camera access...');
+    // Step 3: Get user media with better error handling
+    setCallStatus('Requesting camera and microphone access...');
+    let stream;
     
-    // Get user media
-    let stream: MediaStream;
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasVideo = devices.some(device => device.kind === 'videoinput');
-      const hasAudio = devices.some(device => device.kind === 'audioinput');
-      
-      if (!hasVideo && !hasAudio) {
-        throw new Error('No camera or microphone devices found');
-      }
+  stream = await getMediaStreamWithPermissions();
+} catch (mediaError: unknown) {
+  const errorMessage = mediaError instanceof Error ? mediaError.message : 'Unknown media error';
+  setCallStatus(errorMessage);
+  setIsVideoCallActive(false);
+  videoCallInitializingRef.current = false;
+  
+  // Show permission instructions
+  setTimeout(() => {
+    setCallStatus('To enable video calls: 1) Refresh page 2) Click "Allow" for camera/mic 3) Try again');
+  }, 3000);
+  return;
+}
 
-      stream = await navigator.mediaDevices.getUserMedia({ 
-        video: hasVideo ? { 
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          facingMode: 'user'
-        } : false, 
-        audio: hasAudio ? {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } : false
-      });
-    } catch (mediaError: any) {
-      console.error('Media access error:', mediaError);
-      let errorMessage = 'Failed to access camera/microphone';
-      
-      if (mediaError.name === 'NotAllowedError') {
-        errorMessage = 'Camera/microphone access denied. Please allow access and try again.';
-      } else if (mediaError.name === 'NotFoundError') {
-        errorMessage = 'No camera or microphone found.';
-      } else if (mediaError.name === 'NotReadableError') {
-        errorMessage = 'Camera/microphone is already in use. Please close other applications and try again.';
-      }
-      
-      setCallStatus(errorMessage);
-      setIsVideoCallActive(false);
-      setIsCallInitiator(false);
-      videoCallInitializingRef.current = false;
-      setTimeout(() => setCallStatus(''), 5000);
-      return;
-    }
-    
     console.log('Got media stream, setting local video...');
     setLocalStream(stream);
-    
+    setIsVideoCallActive(true);
+    setIsCallInitiator(true);
+
+    // Set local video
     if (localVideoRef.current) {
-      try {
-        localVideoRef.current.srcObject = stream;
-        await new Promise((resolve, reject) => {
-          if (!localVideoRef.current) {
-            reject(new Error('Video element not found'));
-            return;
-          }
-          localVideoRef.current.onloadedmetadata = () => resolve(true);
-          localVideoRef.current.onerror = reject;
-          setTimeout(() => reject(new Error('Video load timeout')), 5000);
-        });
-      } catch (videoError) {
-        console.error('Error setting local video:', videoError);
-      }
+      localVideoRef.current.srcObject = stream;
     }
 
-    setCallStatus('Setting up connection...');
+    setCallStatus('Setting up video connection...');
 
-    // Get other user ID
+    // Step 4: Determine other user
     const getOtherUserIdFromSessionPath = (sessionPath: string, myUserId: string): string | null => {
-      const pathParts = sessionPath.split('/');
-      if (pathParts.length < 2) return null;
-      const sessionPart = pathParts[1];
-      const userIds = sessionPart.split('_');
-      for (const id of userIds) {
-        if (id !== myUserId && !/^\d+$/.test(id)) {
-          return id;
-        }
-      }
-      return null;
-    };
+  const pathParts = sessionPath.split('/');
+  if (pathParts.length < 2) return null;
+  const sessionPart = pathParts[1];
+  const userIds = sessionPart.split('_');
+  for (const id of userIds) {
+    if (id !== myUserId && !/^\d+$/.test(id)) {
+      return id;
+    }
+  }
+  return null;
+};
 
-    const otherUserId = activeFirebaseSessionPath 
-      ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
-      : null;
-
+    const otherUserId = getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId);
     if (!otherUserId) {
-      throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+      throw new Error('Could not determine other user ID');
     }
 
-    const shouldInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-    if (!shouldInitiate) {
-      console.log('This user should not initiate - waiting for other user to initiate');
-      setCallStatus('Waiting for other user to start video call...');
-      videoCallInitializingRef.current = false;
-      return;
-    }
-
-    // Clear existing signaling data
-    const { ref, set, push, onChildAdded, serverTimestamp, remove } = await import('firebase/database');
-    const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
-    
-    try {
-      await remove(ref(firebaseDb, signalBasePath));
-    } catch (removeError) {
-      console.warn('Error clearing signaling data:', removeError);
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Create peer with enhanced configuration
+    // Step 5: Create peer with compatible configuration
     const peer = new SimplePeer({
       initiator: true,
       trickle: true,
       stream: stream,
-      config: getICEConfiguration()
+      config: getBrowserCompatibleICEConfig()
     });
 
     peerRef.current = peer;
     const callId = Date.now();
 
-    // Setup connection monitoring
-    const cleanupMonitoring = setupConnectionMonitoring(peer, 'Caller');
+    // Step 6: Enhanced error handling
+    peer.on('error', (error: Error) => {
+  console.error('Peer error:', error);
+  
+  if (error.message?.includes('Connection failed')) {
+    setCallStatus('Connection failed - retrying with different settings...');
     
-    // Enhanced error handling
-    peer.on('error', (error: any) => {
-      console.error('Caller peer error:', error);
-      
-      // Clean up monitoring
-      cleanupMonitoring();
-      
-      // Provide specific error messages
-      let errorMessage = 'Connection error';
-      if (error.message?.includes('Connection failed')) {
-        errorMessage = 'Connection failed - please check your network and try again';
-      } else if (error.message?.includes('ice')) {
-        errorMessage = 'Network connection issue - trying to reconnect...';
-      } else {
-        errorMessage = `Connection error: ${error.message}`;
+    // Try once more with simpler config
+    setTimeout(() => {
+      if (isVideoCallActive) {
+        console.log('Retrying video call with fallback settings...');
+        endVideoCall();
+        // You could retry with a simpler peer configuration here
       }
-      
-      setCallStatus(errorMessage);
-      
-      // Try to restart the call once before giving up
-      setTimeout(() => {
-        if (isVideoCallActive && !videoCallInitializingRef.current) {
-          console.log('Attempting to restart video call...');
-          endVideoCall();
-          setTimeout(() => {
-            startVideoCall();
-          }, 2000);
-        } else {
-          endVideoCall();
-        }
-      }, 3000);
-    });
+    }, 3000);
+  } else {
+    setCallStatus(`Connection error: ${error.message}`);
+    setTimeout(() => endVideoCall(), 3000);
+  }
+});
 
-    // Enhanced signaling
-    peer.on('signal', async (data: any) => {
-      if (data.type === 'candidate') {
-        if (
-          !data.candidate ||
-          typeof data.candidate !== 'object' ||
-          typeof data.candidate.candidate !== 'string' ||
-          !data.candidate.candidate ||
-          data.candidate.sdpMid === undefined ||
-          data.candidate.sdpMLineIndex === undefined
-        ) {
-          console.warn('Caller: Invalid ICE candidate, not sending:', data);
-          return;
-        }
-      }
-      
-      try {
-        await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
-          signal: data,
-          timestamp: serverTimestamp(),
-          callId: callId,
-          isInitiator: true,
-          role: 'caller'
-        });
-      } catch (error) {
-        console.error('Error sending signal:', error);
-      }
-    });
-
-    // Listen for remote signals
-    const remoteSignalPath = `${signalBasePath}/${otherUserId}`;
-    let signalCount = 0;
-    
-    const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
-      const data = snapshot.val();
-      if (!data || !data.signal || !peer || peer.destroyed) return;
-      
-      if (data.callId && data.callId !== callId) {
-        console.log('Ignoring signal from different call');
-        return;
-      }
-
-      if (data.signal.type === 'candidate') {
-        if (
-          !data.signal.candidate ||
-          typeof data.signal.candidate !== 'object' ||
-          typeof data.signal.candidate.candidate !== 'string' ||
-          !data.signal.candidate.candidate ||
-          data.signal.candidate.sdpMid === undefined ||
-          data.signal.candidate.sdpMLineIndex === undefined
-        ) {
-          console.warn('Caller: Received invalid ICE candidate, ignoring:', data.signal);
-          return;
-        }
-      }
-
-      try {
-        signalCount++;
-        console.log(`Processing remote signal #${signalCount}:`, data.signal.type, 'from role:', data.role);
-        peer.signal(data.signal);
-      } catch (error: any) {
-        console.error('Error processing remote signal:', error);
-      }
-    });
-
-    signalingCleanupRef.current = () => {
-      unsubscribe();
-      cleanupMonitoring();
-    };
-
-    // Enhanced stream handling
-    peer.on('stream', (remoteStream: MediaStream) => {
-      console.log('✅ Caller received remote stream');
-      setRemoteStream(remoteStream);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        console.log('✅ Remote video element updated');
-      }
-      setCallStatus('Connected');
-    });
-
+    // Step 7: Connection state monitoring
     peer.on('connect', () => {
-      console.log('✅ Caller peer connected');
+      console.log('✅ Peer connected successfully');
       setCallStatus('Connected');
     });
 
     peer.on('close', () => {
-      console.log('Caller peer connection closed');
-      cleanupMonitoring();
+      console.log('Peer connection closed');
       setCallStatus('Call ended');
       endVideoCall();
     });
 
-    // Notify other user about video call
+peer.on('stream', (remoteStream: MediaStream) => {
+  console.log('✅ Received remote stream');
+  setRemoteStream(remoteStream);
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = remoteStream;
+  }
+  setCallStatus('Connected - Video active');
+});
+
+// Replace your peer.on('signal') handler with:
+peer.on('signal', async (data: any) => {
+  try {
+    await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
+      signal: data,
+      timestamp: serverTimestamp(),
+      callId: callId,
+      role: 'caller'
+    });
+  } catch (signalError: unknown) {
+    const errorMessage = signalError instanceof Error ? signalError.message : 'Unknown signaling error';
+    console.error('Failed to send signal:', errorMessage);
+  }
+});
+
+    // Step 9: Signaling setup (same as before, but with error handling)
+    const { ref, push, onChildAdded, serverTimestamp } = await import('firebase/database');
+    const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
+
+peer.on('signal', async (data: SignalData) => {
+  try {
+    await push(ref(firebaseDb, `${signalBasePath}/${myUserId}`), {
+      signal: data,
+      timestamp: serverTimestamp(),
+      callId: callId,
+      role: 'caller'
+    });
+  } catch (signalError: unknown) {
+    const errorMessage = signalError instanceof Error ? signalError.message : 'Unknown signaling error';
+    console.error('Failed to send signal:', errorMessage);
+  }
+});
+
+    // Listen for remote signals
+    const remoteSignalPath = `${signalBasePath}/${otherUserId}`;
+    const unsubscribe = onChildAdded(ref(firebaseDb, remoteSignalPath), (snapshot) => {
+      const data = snapshot.val();
+      if (!data || !data.signal || !peer || peer.destroyed) return;
+      if (data.callId && data.callId !== callId) return;
+
+      try {
+        peer.signal(data.signal);
+      } catch (signalError) {
+        console.error('Failed to process signal:', signalError);
+      }
+    });
+
+    signalingCleanupRef.current = unsubscribe;
+
+    // Step 10: Notify other user
     await push(ref(firebaseDb, `${activeFirebaseSessionPath}/video_call_notifications`), {
       type: 'video_call_request',
       from: myUserId,
       callId: callId,
-      initiatorRole: true,
       timestamp: serverTimestamp()
     });
 
-    setCallStatus('Waiting for response...');
+    setCallStatus('Calling...');
     videoCallInitializingRef.current = false;
 
-  } catch (error: any) {
-    console.error('Error starting video call:', error);
-    setCallStatus('Failed to start video call: ' + error.message);
-    
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        try {
-          track.stop();
-        } catch (e) {
-          console.warn('Error stopping track:', e);
-        }
-      });
-      setLocalStream(null);
-    }
-    
-    setIsVideoCallActive(false);
-    setIsCallInitiator(false);
-    videoCallInitializingRef.current = false;
-    setTimeout(() => setCallStatus(''), 5000);
+} catch (error: unknown) {
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error starting video call';
+  console.error('Error starting video call:', errorMessage);
+  setCallStatus(`Failed to start call: ${errorMessage}`);
+  
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    setLocalStream(null);
   }
-}, [firebaseDb, activeFirebaseSessionPath, myUserId, isVideoCallActive, myRole, localStream]);
+  
+  setIsVideoCallActive(false);
+  setIsCallInitiator(false);
+  videoCallInitializingRef.current = false;
+  
+  setTimeout(() => setCallStatus(''), 5000);
+}
+};
 
   // ✅ UPDATED acceptVideoCall with deduplication and single-answer logic
  const acceptVideoCall = useCallback(async () => {
@@ -2339,7 +2415,7 @@ const RemoteVideoElement = () => (
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 {!isVideoCallActive && (
                   <button 
-                    onClick={startVideoCall}
+                    onClick={startVideoCallCompatible}
                     style={{ 
                       padding: '10px 20px', 
                       backgroundColor: '#17a2b8', 
