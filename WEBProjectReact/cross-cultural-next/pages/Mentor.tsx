@@ -31,16 +31,14 @@ interface FirebaseConfig {
   appId?: string;
 }
 
-const determineInitiator = useCallback((myUserId: string, otherUserId: string, myRole: string): boolean => {
-  // Use a deterministic rule: mentor always initiates, but if both same role, use lexicographic order
+const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
   if (myRole === 'mentor') {
     return true;
   } else if (myRole === 'user') {
     return false;
   }
-  // Fallback: lexicographic comparison of user IDs for same roles
   return myUserId.localeCompare(otherUserId) < 0;
-}, []);
+};
 
 // Enhanced error handler that properly handles browser extension errors
 const errorHandlerCache = { current: null as any };
