@@ -47,29 +47,27 @@ interface UserProfile {
 // Professional Loading Component
 const ProfileLoadingScreen = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center space-y-8">
         {/* Logo Container with Animation */}
         <div className="flex justify-center">
           <div className="relative">
-            {/* Replace this div with your actual Logo component */}
-            {/* <Logo className="w-20 h-20 animate-pulse" /> */}
-            <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center animate-pulse">
-              <Logo className="w-16 h-16"/>
+            <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-teal-600 rounded-2xl flex items-center justify-center animate-pulse">
+              <Logo className="w-20 h-20 animate-pulse"/>
             </div>
             
             {/* Animated Ring */}
             <div className="absolute inset-0 rounded-2xl border-4 border-blue-200 animate-spin opacity-20"></div>
-            <div className="absolute inset-2 rounded-xl border-2 border-purple-200 animate-ping opacity-30"></div>
+            <div className="absolute inset-2 rounded-xl border-2 border-teal-200 animate-ping opacity-30"></div>
           </div>
         </div>
         
         {/* Loading Text */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-gray-800 animate-fade-in">
+          <h2 className="text-2xl font-semibold text-secondary animate-fade-in">
             Loading Your Profile
           </h2>
-          <p className="text-gray-600 animate-fade-in-delay">
+          <p className="text-secondary animate-fade-in-delay">
             Please wait while we fetch your information...
           </p>
         </div>
@@ -84,7 +82,7 @@ const ProfileLoadingScreen = () => {
           
           {/* Progress Bar */}
           <div className="w-64 h-1 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full animate-progress"></div>
+            <div className="h-full bg-gradient-to-r from-blue-500 to-teal-600 rounded-full animate-progress"></div>
           </div>
         </div>
       </div>

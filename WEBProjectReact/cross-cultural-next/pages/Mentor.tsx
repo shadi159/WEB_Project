@@ -2063,9 +2063,8 @@ peer.on('signal', async (data: SignalData) => {
         <h1 style={{ color: '#333', marginBottom: '30px' }}>Mentor/User Chat & Video Dashboard</h1>
         
         {/* 🔍 TEMPORARY DEBUG INFO - Remove this later */}
-        <div style={{ 
+        <div className='bg-background text-secondary' style={{ 
           padding: '10px', 
-          backgroundColor: '#f0f0f0', 
           border: '1px solid #ccc',
           borderRadius: '4px',
           fontSize: '12px',
@@ -2114,14 +2113,13 @@ peer.on('signal', async (data: SignalData) => {
         )}
         
         {/* User Info Card */}
-        <div style={{ 
+        <div className='bg-background text-secondary' style={{ 
           marginBottom: '30px', 
           padding: '20px', 
-          backgroundColor: '#f8f9fa', 
           borderRadius: '8px',
           border: '1px solid #dee2e6'
         }}>
-          <h3 style={{ margin: '0 0 15px 0', color: '#495057' }}>Your Profile</h3>
+          <h3 className='text-secondary' style={{ margin: '0 0 15px 0' }}>Your Profile</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
             <div><strong>Name:</strong> {myUserDetails.displayName}</div>
             <div><strong>Role:</strong> <span style={{ 
@@ -2137,12 +2135,11 @@ peer.on('signal', async (data: SignalData) => {
 
         {/* ✅ UPDATED Incoming Video Call Notification with enhanced debugging */}
         {incomingVideoCall && !isVideoCallActive && (
-          <div style={{ 
+          <div className='bg-background text-secondary' style={{ 
             marginBottom: '30px', 
             padding: '20px', 
             border: '3px solid #17a2b8', 
             borderRadius: '8px',
-            backgroundColor: '#d1ecf1',
             animation: 'pulse 2s infinite'
           }}>
             <div>
@@ -2199,12 +2196,11 @@ peer.on('signal', async (data: SignalData) => {
 
         {/* Mentor Controls */}
         {myRole === 'mentor' && (
-          <div style={{ 
+          <div className='bg-background text-secondary' style={{ 
             marginBottom: '30px', 
             padding: '20px', 
             border: '2px solid #007bff', 
             borderRadius: '8px',
-            backgroundColor: '#f8f9ff'
           }}>
             <h2 style={{ color: '#007bff', marginBottom: '20px' }}>Mentor Controls</h2>
             
@@ -2348,12 +2344,11 @@ peer.on('signal', async (data: SignalData) => {
 
         {/* Incoming Requests */}
         {myRole === 'user' && incomingRequests.length > 0 && (
-          <div style={{ 
+          <div className='bg-background text-secondary' style={{ 
             marginBottom: '30px', 
             padding: '20px', 
             border: '2px solid #ffc107', 
             borderRadius: '8px',
-            backgroundColor: '#fffbf0'
           }}>
             <h2 style={{ color: '#856404', marginBottom: '20px' }}>📨 Incoming Requests</h2>
             {incomingRequests.map((req) => (
@@ -2696,14 +2691,12 @@ peer.on('signal', async (data: SignalData) => {
         )}
 
         {/* Online Users */}
-        <div style={{ 
+        <div className='bg-background text-secondary' style={{ 
           padding: '20px', 
           border: '1px solid #dee2e6', 
           borderRadius: '8px',
-          backgroundColor: '#ffffff'
         }}>
-          <h3 style={{ 
-            color: '#495057', 
+          <h3 className='text-secondary' style={{ 
             marginBottom: '20px',
             display: 'flex',
             alignItems: 'center',
@@ -2712,20 +2705,18 @@ peer.on('signal', async (data: SignalData) => {
             👥 Online Users ({onlineUsersCount})
           </h3>
           {onlineUsersCount === 0 ? (
-            <div style={{ 
+            <div className='text-secondary' style={{ 
               textAlign: 'center', 
-              color: '#6c757d', 
               fontStyle: 'italic',
               padding: '30px'
             }}>
               No users currently online
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <div className='bg-background text-secondary' style={{ display: 'grid', gap: '12px' }}>
               {onlineUsersList.map(({ uid, data, displayName }) => (
                 <div key={uid} style={{ 
                   padding: '15px', 
-                  backgroundColor: '#f8f9fa', 
                   borderRadius: '8px',
                   border: '1px solid #e9ecef',
                   display: 'flex', 
@@ -2735,10 +2726,10 @@ peer.on('signal', async (data: SignalData) => {
                   gap: '10px'
                 }}>
                   <div>
-                    <div style={{ fontWeight: 'bold', color: '#495057' }}>
+                    <div className='text-secondary' style={{ fontWeight: 'bold' }}>
                       {displayName}
                     </div>
-                    <div style={{ fontSize: '14px', color: '#6c757d' }}>
+                    <div className='text-secondary' style={{ fontSize: '14px' }}>
                       {(data as any).status === 'online' ? '🟢' : '🔴'} {(data as any).status} • {(data as any).role}
                     </div>
                   </div>
