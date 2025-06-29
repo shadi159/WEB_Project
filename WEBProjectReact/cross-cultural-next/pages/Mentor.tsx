@@ -307,7 +307,6 @@ const MentorComponentCore = React.memo(() => {
   };
 };
 
-
 const setupConnectionMonitoring = (peer: any, callType: string) => {
   let connectionStateTimeout: NodeJS.Timeout | null = null;
   let iceConnectionStateTimeout: NodeJS.Timeout | null = null;
@@ -504,6 +503,44 @@ const RemoteVideoElement = () => (
   const addCleanup = useCallback((cleanup: () => void) => {
     cleanupFunctions.current.push(cleanup);
   }, []);
+
+  const clearAllCleanup = useCallback(() => {
+    cleanupFunctions.current.forEach((cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        console.warn('Cleanup error:', error);
+      }
+    });
+    cleanupFunctions.current = [];
+  }, []);
+
+  // Helper functions with proper memoization
+  const getUserDisplayName = useCallback((userId: string): string => {
+    const userDetails = userDetailsCache[userId];
+    return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
+  }, [userDetailsCache]);
+
+  // ✅ UPDATED determineInitiator with enhanced debugging
+  const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
+    console.log('🔍 determineInitiator called with:', { myUserId, otherUserId, myRole });
+    
+    // ✅ CRITICAL: Mentor ALWAYS initiates
+    if (myRole === 'mentor') {
+      console.log('✅ MENTOR ROLE detected - should initiate: TRUE');
+      return true;
+    } 
+    // ✅ CRITICAL: User NEVER initiates (always receives)
+    else if (myRole === 'user') {
+      console.log('✅ USER ROLE detected - should initiate: FALSE (will receive calls)');
+      return false;
+    }
+    
+    // Fallback for same roles (shouldn't happen in your case)
+    const result = myUserId.localeCompare(otherUserId) < 0;
+    console.log('⚠️ FALLBACK: Same roles - lexicographic comparison result:', result);
+    return result;
+  };
   
   // Add a ref to track video call initialization state
   const videoCallInitializingRef = useRef(false);
@@ -895,6 +932,7 @@ const startVideoCallCompatible = async () => {
     setTimeout(() => setCallStatus(''), 5000);
   }
 };
+
   // ✅ UPDATED acceptVideoCall with deduplication and single-answer logic
  const acceptVideoCall = useCallback(async () => {
   console.log('🎯 acceptVideoCall CALLED');
@@ -1335,102 +1373,24 @@ const startVideoCallCompatible = async () => {
     }
   }, [localStream]);
 
-    const clearAllCleanup = useCallback(() => {
-  console.log('🧹 Executing all cleanup functions...');
-  
-  // Execute all stored cleanup functions
-  cleanupFunctions.current.forEach((cleanup: () => void, index: number) => {
-    try {
-      console.log(`🧹 Executing cleanup function ${index + 1}/${cleanupFunctions.current.length}`);
-      cleanup();
-    } catch (error) {
-      console.warn(`Cleanup function ${index + 1} error:`, error);
-    }
-  });
-  
-  // Clear the cleanup functions array
-  cleanupFunctions.current = [];
-  
-  // Additional cleanup for video call signaling
-  if (signalingCleanupRef.current) {
-    try {
-      console.log('🧹 Cleaning up video call signaling');
-      signalingCleanupRef.current();
-      signalingCleanupRef.current = null;
-    } catch (error) {
-      console.warn('Signaling cleanup error:', error);
-    }
-  }
-  
-  console.log('✅ All cleanup functions executed');
-}, []);
-
-// Add a force end session function for debugging
-const forceEndSession = useCallback(() => {
-  console.log('🔴 FORCE ending session...');
-  
-  // Force clear all state immediately
-  setActiveFirebaseSessionPath(null);
-  activeSessionRef.current = null;
-  setChatMessages([]);
-  setIncomingVideoCall(null);
-  
-  // Force end video call
-  if (isVideoCallActive) {
-    endVideoCall();
-  }
-  
-  // Force cleanup
-  clearAllCleanup();
-  
-  console.log('✅ Session force ended');
-}, [isVideoCallActive, endVideoCall, clearAllCleanup]);
-
   // Memoized computed values with proper dependencies
-const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
-
-const onlineUsersList = useMemo(() => {
-  return Object.entries(onlineUserStatuses).map(([uid, data]) => ({
-    uid,
-    data,
-    displayName: data.displayName || (userDetailsCache[uid] ? `${userDetailsCache[uid].displayName} (${userDetailsCache[uid].role})` : uid)
-  }));
-}, [onlineUserStatuses, userDetailsCache]);
-
-// Memoized search results
-const memoizedSearchResults = useMemo(() => {
-  return searchResults.map(user => ({
-    ...user,
-    key: user.id
-  }));
-}, [searchResults]);
-
-// Helper function to get user display name
-const getUserDisplayName = useCallback((userId: string): string => {
-  const userDetails = userDetailsCache[userId];
-  return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
-}, [userDetailsCache]);
-
-// Function to determine who should initiate the video call
-const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
-  console.log('🔍 determineInitiator called with:', { myUserId, otherUserId, myRole });
+  const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
   
-  // ✅ CRITICAL: Mentor ALWAYS initiates
-  if (myRole === 'mentor') {
-    console.log('✅ MENTOR ROLE detected - should initiate: TRUE');
-    return true;
-  } 
-  // ✅ CRITICAL: User NEVER initiates (always receives)
-  else if (myRole === 'user') {
-    console.log('✅ USER ROLE detected - should initiate: FALSE (will receive calls)');
-    return false;
-  }
-  
-  // Fallback for same roles (shouldn't happen in your case)
-  const result = myUserId.localeCompare(otherUserId) < 0;
-  console.log('⚠️ FALLBACK: Same roles - lexicographic comparison result:', result);
-  return result;
-};
+  const onlineUsersList = useMemo(() => {
+    return Object.entries(onlineUserStatuses).map(([uid, data]) => ({
+      uid,
+      data,
+      displayName: data.displayName || getUserDisplayName(uid)
+    }));
+  }, [onlineUserStatuses, getUserDisplayName]);
+
+  // Memoized search results
+  const memoizedSearchResults = useMemo(() => {
+    return searchResults.map(user => ({
+      ...user,
+      key: user.id
+    }));
+  }, [searchResults]);
 
   useEffect(() => {
   console.log('🔍 Local stream state changed:', {
@@ -1675,149 +1635,165 @@ const determineInitiator = (myUserId: string, otherUserId: string, myRole: strin
 
   // Enhanced end session with better state management
   const endSession = useCallback(async () => {
-  console.log('🔴 Ending session...', activeSessionRef.current);
-  
-  // Prevent multiple calls
-  if (!activeSessionRef.current) {
-    console.log('No active session to end');
-    return;
-  }
-  
-  const currentSessionPath = activeSessionRef.current;
+  console.log('Ending session...', activeSessionRef.current);
   
   try {
-    // 1. IMMEDIATELY clear local state to hide UI
-    console.log('🔴 Clearing local session state');
-    setActiveFirebaseSessionPath(null);
-    activeSessionRef.current = null;
-    setChatMessages([]);
+    const currentSessionPath = activeSessionRef.current;
     
-    // 2. Clean up video call if active
+    // 1. End video call first if it's active
     if (isVideoCallActive) {
-      console.log('🔴 Ending video call as part of session end');
+      console.log('Ending active video call...');
       endVideoCall();
     }
     
-    // 3. Clear incoming call state
-    setIncomingVideoCall(null);
-    
-    // 4. Execute all cleanup functions
-    console.log('🔴 Executing cleanup functions');
-    clearAllCleanup();
-    
-    // 5. Update Firebase AFTER local cleanup (to prevent re-triggering)
+    // 2. Update Firebase session status
     if (currentSessionPath && firebaseDb) {
-      console.log('🔴 Updating Firebase session status to ended');
-      const { ref, set, serverTimestamp } = await import('firebase/database');
-      await set(ref(firebaseDb, `${currentSessionPath}/status`), {
-        status: 'ended',
-        endedBy: myUserId,
-        endedAt: serverTimestamp()
-      }).catch((err: any) => {
-        console.error('Error setting session status (non-critical):', err);
-        // This error is non-critical since local state is already cleared
-      });
+      try {
+        const { ref, set } = await import('firebase/database');
+        await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
+        console.log('Session status set to ended in Firebase');
+      } catch (err) {
+        console.error('Error setting session status:', err);
+      }
     }
     
-    console.log('✅ Session ended successfully');
-    
-  } catch (err) {
-    console.error('Session cleanup error:', err);
-    // Even if Firebase update fails, ensure local state is cleared
+    // 3. Clean up all session-related states
     setActiveFirebaseSessionPath(null);
     activeSessionRef.current = null;
     setChatMessages([]);
+    
+    // 4. Clear any incoming requests/calls related to this session
+    setIncomingVideoCall(null);
+    setIncomingRequests(prev => prev.filter(req => 
+      // Keep requests that aren't related to the current session
+      true // You might want to filter based on session-specific criteria
+    ));
+    
+    // 5. Reset call status
+    setCallStatus('');
+    
+    // 6. Clean up any session-specific listeners
+    if (signalingCleanupRef.current) {
+      try {
+        signalingCleanupRef.current();
+        signalingCleanupRef.current = null;
+      } catch (err) {
+        console.warn('Error cleaning up signaling:', err);
+      }
+    }
+    
+    // 7. Call the general cleanup function to clean up any listeners
+    // that were added for this session
+    // clearAllCleanup(); // Uncomment if you want to clear ALL listeners
+    
+    console.log('Session ended successfully');
+    
+  } catch (err) {
+    console.error('Session cleanup error:', err);
   }
-}, [firebaseDb, myUserId, isVideoCallActive, endVideoCall, clearAllCleanup]);
+}, [firebaseDb, isVideoCallActive, endVideoCall]);
 
   const setupSession = useCallback(async (path: string, sessionType: string) => {
-  console.log(`Setting up ${sessionType} session at ${path}`);
-  
-  // Don't setup if already active for this exact path
-  if (activeSessionRef.current === path) {
-    console.log('Session already active for this path, skipping setup');
-    return;
-  }
-  
-  // Clear any existing session data first
-  if (activeSessionRef.current) {
-    console.log('Ending existing session before starting new one');
-    await endSession();
-    // Wait a moment for cleanup to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  
-  setChatMessages([]);
+    console.log(`Setting up ${sessionType} session at ${path}`);
+    
+    // Don't setup if already active for this exact path
+    if (activeSessionRef.current === path) {
+      console.log('Session already active for this path, skipping setup');
+      return;
+    }
+    
+    // Clear any existing session data
+    setChatMessages([]);
 
-  try {
-    const { ref, onValue, onChildAdded } = await import('firebase/database');
-    
-    const messagesRef = ref(firebaseDb, `${path}/messages`);
-    const videoCallNotificationsRef = ref(firebaseDb, `${path}/video_call_notifications`);
-    
-    const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
-      try {
-        const message = snapshot.val();
-        if (message && activeSessionRef.current === path) { // Only process if this is still the active session
-          setChatMessages(prev => {
-            const messageExists = prev.some(msg => 
-              msg.from === message.from && 
-              msg.message === message.message && 
-              Math.abs((msg.timestamp?.toMillis?.() || 0) - (message.timestamp?.toMillis?.() || 0)) < 1000
-            );
+    try {
+      const { ref, onValue, onChildAdded } = await import('firebase/database');
+      
+      const messagesRef = ref(firebaseDb, `${path}/messages`);
+      const videoCallNotificationsRef = ref(firebaseDb, `${path}/video_call_notifications`);
+      
+      const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
+        try {
+          const message = snapshot.val();
+          if (message) {
+            setChatMessages(prev => {
+              const messageExists = prev.some(msg => 
+                msg.from === message.from && 
+                msg.message === message.message && 
+                Math.abs((msg.timestamp?.toMillis?.() || 0) - (message.timestamp?.toMillis?.() || 0)) < 1000
+              );
+              
+              if (!messageExists) {
+                const newMessages = [...prev, message];
+                return newMessages.slice(-100);
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          console.error('Message processing error:', err);
+        }
+      }, (error) => {
+        console.error('Messages listener error:', error);
+      });
+
+      // ✅ UPDATED video call notification handler with enhanced debugging
+      const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
+        try {
+          const notification = snapshot.val();
+          
+          // ✅ ENHANCED DEBUGGING - Let's see EXACTLY what's happening
+          console.log('=== VIDEO CALL NOTIFICATION DEBUG ===');
+          console.log('Raw notification:', notification);
+          console.log('Notification from:', notification?.from);
+          console.log('My user ID:', myUserId);
+          console.log('Notification type:', notification?.type);
+          console.log('Is from me?', notification?.from === myUserId);
+          console.log('Is video request?', notification?.type === 'video_call_request');
+          console.log('Current myRole:', myRole);
+          console.log('Current incomingVideoCall state:', incomingVideoCall);
+          console.log('Current isVideoCallActive:', isVideoCallActive);
+          
+          if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
+            const otherUserId = notification.from;
             
-            if (!messageExists) {
-              const newMessages = [...prev, message];
-              return newMessages.slice(-100);
+            if (!otherUserId || !myUserId) {
+              console.log('❌ Missing user IDs:', { otherUserId, myUserId });
+              return;
             }
-            return prev;
-          });
-        }
-      } catch (err) {
-        console.error('Message processing error:', err);
-      }
-    }, (error) => {
-      console.error('Messages listener error:', error);
-    });
-
-    const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
-      try {
-        const notification = snapshot.val();
-        
-        console.log('=== VIDEO CALL NOTIFICATION DEBUG ===');
-        console.log('Raw notification:', notification);
-        console.log('Current active session:', activeSessionRef.current);
-        console.log('Notification path:', path);
-        
-        // Only process if this notification is for the current active session
-        if (notification && 
-            notification.from !== myUserId && 
-            notification.type === 'video_call_request' &&
-            activeSessionRef.current === path) {
-          
-          const otherUserId = notification.from;
-          
-          if (!otherUserId || !myUserId) {
-            console.log('❌ Missing user IDs:', { otherUserId, myUserId });
-            return;
+            
+            // ✅ CRITICAL DEBUG - Let's see the initiation decision
+            const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
+            console.log('=== INITIATION DECISION ===');
+            console.log('shouldWeInitiate result:', shouldWeInitiate);
+            console.log('My role check:', myRole);
+            console.log('Role === mentor?', myRole === 'mentor');
+            console.log('Role === user?', myRole === 'user');
+            
+            if (shouldWeInitiate) {
+              console.log('❌ BLOCKING: We should initiate, ignoring incoming call');
+              return;
+            }
+            
+            // ✅ THIS IS WHERE THE USER SHOULD SET THE INCOMING CALL
+            console.log('✅ ACCEPTING: Setting incoming video call for USER role');
+            console.log('About to call setIncomingVideoCall with:', notification);
+            setIncomingVideoCall(notification);
+            console.log('✅ setIncomingVideoCall called successfully');
+          } else {
+            console.log('❌ NOTIFICATION FILTERED OUT');
+            console.log('Reasons:', {
+              hasNotification: !!notification,
+              isFromOtherUser: notification?.from !== myUserId,
+              isVideoRequest: notification?.type === 'video_call_request',
+              fromUser: notification?.from,
+              myUserId: myUserId
+            });
           }
-          
-          const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-          console.log('shouldWeInitiate result:', shouldWeInitiate);
-          
-          if (shouldWeInitiate) {
-            console.log('❌ BLOCKING: We should initiate, ignoring incoming call');
-            return;
-          }
-          
-          console.log('✅ ACCEPTING: Setting incoming video call for USER role');
-          setIncomingVideoCall(notification);
+          console.log('=== END VIDEO CALL NOTIFICATION DEBUG ===');
+        } catch (err) {
+          console.error('Video call notification error:', err);
         }
-        console.log('=== END VIDEO CALL NOTIFICATION DEBUG ===');
-      } catch (err) {
-        console.error('Video call notification error:', err);
-      }
-    });
+      });
 
       const enhancedDebugInfo = {
         myRole,
@@ -1844,63 +1820,45 @@ const determineInitiator = (myUserId: string, otherUserId: string, myRole: strin
       console.log('🔍 Enhanced Debug Info:', enhancedDebugInfo);
 
 
-const sessionRef = ref(firebaseDb, `${path}/status`);
-    let sessionEndHandled = false; // Prevent multiple calls
-    
-    const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
-      try {
-        const sessionData = snapshot.val();
-        const sessionStatus = typeof sessionData === 'string' ? sessionData : sessionData?.status;
-        
-        console.log('Session status update:', sessionStatus, 'for path:', path);
-        console.log('Current active session path:', activeSessionRef.current);
-        console.log('Session end already handled:', sessionEndHandled);
-        
-        // Only end session if:
-        // 1. Status is explicitly 'ended'
-        // 2. This is our current active session
-        // 3. We haven't already handled this end event
-        // 4. The session wasn't ended by us (prevent circular calls)
-        if (sessionStatus === 'ended' && 
-            activeSessionRef.current === path && 
-            !sessionEndHandled &&
-            sessionData?.endedBy !== myUserId) {
+      const sessionRef = ref(firebaseDb, `${path}/status`);
+      const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
+        try {
+          const sessionStatus = snapshot.val();
+          console.log('Session status update:', sessionStatus, 'for path:', path);
           
-          sessionEndHandled = true;
-          console.log('Session ended by remote party for our active session');
-          
-          // Use setTimeout to prevent immediate re-triggering
-          setTimeout(() => {
-            if (activeSessionRef.current === path) {
-              endSession();
-            }
-          }, 100);
+          // Only end session if status is explicitly 'ended' AND we're not in an active video call
+          // AND this is actually the current active session
+          if (sessionStatus === 'ended' && 
+              activeFirebaseSessionPath === path && 
+              !isVideoCallActive) {
+            console.log('Session ended by remote party for our active session');
+            endSession();
+          }
+        } catch (err) {
+          console.error('Session status error:', err);
         }
-      } catch (err) {
-        console.error('Session status error:', err);
-      }
-    }, (error) => {
-      console.error('Session listener error:', error);
-    });
+      }, (error) => {
+        console.error('Session listener error:', error);
+      });
 
-    // Store cleanup functions with better organization
-    const sessionCleanup = () => {
-      console.log('🧹 Cleaning up session listeners for:', path);
-      try {
-        messagesUnsubscribe();
-        videoCallUnsubscribe();
-        sessionUnsubscribe();
-      } catch (err) {
-        console.warn('Session cleanup error (non-critical):', err);
-      }
-    };
+      // Store cleanup functions
+      const sessionCleanup = () => {
+        console.log('Cleaning up session listeners for:', path);
+        try {
+          messagesUnsubscribe();
+          videoCallUnsubscribe();
+          sessionUnsubscribe();
+        } catch (err) {
+          console.warn('Session cleanup error:', err);
+        }
+      };
 
-    addCleanup(sessionCleanup);
+      addCleanup(sessionCleanup);
 
-  } catch (err) {
-    console.error('Session setup error:', err);
-  }
-}, [addCleanup, endSession, firebaseDb, myUserId, myRole]);
+    } catch (err) {
+      console.error('Session setup error:', err);
+    }
+  }, [addCleanup, endSession, firebaseDb, activeFirebaseSessionPath, myUserId, myRole, incomingVideoCall, isVideoCallActive]);
 
   // Enhanced Firebase listeners with better session management
   useEffect(() => {
@@ -2209,97 +2167,6 @@ const sessionRef = ref(firebaseDb, `${path}/status`);
       </div>
     );
   }
-
-  const EndSessionButtons = () => (
-  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-    {!isVideoCallActive && (
-      <button 
-        onClick={startVideoCallCompatible}
-        style={{ 
-          padding: '10px 20px', 
-          backgroundColor: '#17a2b8', 
-          color: 'white', 
-          border: 'none', 
-          borderRadius: '5px',
-          fontSize: '14px',
-          fontWeight: 'bold',
-          cursor: 'pointer'
-        }}
-      >
-        📹 Start Video Call
-      </button>
-    )}
-    
-    {/* Primary End Session Button */}
-    <button 
-      onClick={() => {
-        console.log('🔴 End Session button clicked');
-        console.log('Current activeFirebaseSessionPath:', activeFirebaseSessionPath);
-        console.log('Current activeSessionRef.current:', activeSessionRef.current);
-        endSession();
-      }}
-      style={{ 
-        padding: '10px 20px', 
-        backgroundColor: '#dc3545', 
-        color: 'white', 
-        border: 'none', 
-        borderRadius: '5px',
-        fontSize: '14px',
-        fontWeight: 'bold',
-        cursor: 'pointer'
-      }}
-    >
-      ❌ End Session
-    </button>
-    
-    {/* Debug Force End Button (remove in production) */}
-    <button 
-      onClick={() => {
-        console.log('🔴 Force End Session button clicked');
-        forceEndSession();
-      }}
-      style={{ 
-        padding: '10px 20px', 
-        backgroundColor: '#6f42c1', 
-        color: 'white', 
-        border: 'none', 
-        borderRadius: '5px',
-        fontSize: '12px',
-        fontWeight: 'bold',
-        cursor: 'pointer'
-      }}
-      title="Force end session (debug)"
-    >
-      🔧 Force End
-    </button>
-    
-    {/* Debug State Button (remove in production) */}
-    <button 
-      onClick={() => {
-        console.log('=== SESSION DEBUG STATE ===');
-        console.log('activeFirebaseSessionPath:', activeFirebaseSessionPath);
-        console.log('activeSessionRef.current:', activeSessionRef.current);
-        console.log('isVideoCallActive:', isVideoCallActive);
-        console.log('chatMessages length:', chatMessages.length);
-        console.log('cleanupFunctions count:', cleanupFunctions.current.length);
-        console.log('incomingVideoCall:', incomingVideoCall);
-        console.log('=== END DEBUG STATE ===');
-      }}
-      style={{ 
-        padding: '10px 15px', 
-        backgroundColor: '#17a2b8', 
-        color: 'white', 
-        border: 'none', 
-        borderRadius: '5px',
-        fontSize: '12px',
-        cursor: 'pointer'
-      }}
-      title="Log debug state"
-    >
-      🐛 Debug
-    </button>
-  </div>
-);
 
   return (
     <div>
@@ -2664,7 +2531,7 @@ const sessionRef = ref(firebaseDb, `${path}/status`);
                 🟢 Active {isVideoCallActive ? 'Video Call' : 'Chat'} Session
               </h2>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {!isVideoCallActive && (
+                {!isVideoCallActive && myRole == 'mentor' && (
                   <button 
                     onClick={startVideoCallCompatible}
                     style={{ 
@@ -2681,7 +2548,21 @@ const sessionRef = ref(firebaseDb, `${path}/status`);
                     📹 Start Video Call
                   </button>
                 )}
-                  <EndSessionButtons />
+                <button 
+                  onClick={endSession}
+                  style={{ 
+                    padding: '10px 20px', 
+                    backgroundColor: '#dc3545', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '5px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ❌ End Session
+                </button>
               </div>
             </div>
 

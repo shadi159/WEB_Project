@@ -255,6 +255,7 @@ const Navbar = ({ onLogout }: NavbarProps) => {
     { name: "Dashboard", href: "/Dashboard" },
     { name: "My Journey", href: "/Journey" },
     { name: "Mentor", href: "/Mentor" },
+    { name: "Top10", href: "/Top10" },
   ];
 
   const navigation = isLoggedIn
