@@ -1635,27 +1635,51 @@ const startVideoCallCompatible = async () => {
 
   // Enhanced end session with better state management
   const endSession = useCallback(async () => {
-    console.log('Ending session...', activeSessionRef.current);
-    
-    try {
-      // Only end video call if we initiated the session end
-      // Don't end video call if session is ending due to external factors
-      const currentSessionPath = activeSessionRef.current;
-      if (currentSessionPath && firebaseDb) {
-        const { ref, set } = await import('firebase/database');
-        set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended')
-          .catch((err: any) => console.error('Error setting session status:', err));
-      }
-      
-      // Clear session state
-      setActiveFirebaseSessionPath(null);
-      activeSessionRef.current = null;
-      setChatMessages([]);
-
-    } catch (err) {
-      console.error('Session cleanup error:', err);
+  console.log('Ending session...', activeSessionRef.current);
+  
+  try {
+    // End video call if active
+    if (isVideoCallActive) {
+      console.log('Ending video call as part of session cleanup...');
+      endVideoCall();
     }
-  }, [firebaseDb]);
+    
+    // Clear session in Firebase
+    const currentSessionPath = activeSessionRef.current;
+    if (currentSessionPath && firebaseDb) {
+      const { ref, set, remove } = await import('firebase/database');
+      
+      // Set session status to ended
+      await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
+      
+      // Optional: Remove the entire session after a delay
+      setTimeout(async () => {
+        try {
+          await remove(ref(firebaseDb, currentSessionPath));
+          console.log('Session data cleaned up from Firebase');
+        } catch (err) {
+          console.warn('Non-critical: Failed to clean up session data:', err);
+        }
+      }, 5000);
+    }
+    
+    // Clear local session state immediately
+    setActiveFirebaseSessionPath(null);
+    activeSessionRef.current = null;
+    setChatMessages([]);
+    setIncomingRequests([]);
+    setIncomingVideoCall(null);
+
+    console.log('Session ended successfully');
+    
+  } catch (err) {
+    console.error('Session cleanup error:', err);
+    // Force clear local state even if Firebase update fails
+    setActiveFirebaseSessionPath(null);
+    activeSessionRef.current = null;
+    setChatMessages([]);
+  }
+}, [firebaseDb, isVideoCallActive, endVideoCall]);
 
   const setupSession = useCallback(async (path: string, sessionType: string) => {
     console.log(`Setting up ${sessionType} session at ${path}`);
@@ -2220,67 +2244,66 @@ const startVideoCallCompatible = async () => {
           </div>
         </div>
 
-        {/* ✅ UPDATED Incoming Video Call Notification with enhanced debugging */}
-        {incomingVideoCall && !isVideoCallActive && (
-          <div className='bg-background text-secondary' style={{ 
-            marginBottom: '30px', 
-            padding: '20px', 
-            border: '3px solid #17a2b8', 
-            borderRadius: '8px',
-            animation: 'pulse 2s infinite'
-          }}>
-            <div>
-              <h2 style={{ color: '#0c5460', margin: '0 0 10px 0' }}>
-                📹 Incoming Video Call (DEBUG: {JSON.stringify(incomingVideoCall)})
-              </h2>
-              <p style={{ margin: 0, fontSize: '16px', color: '#0c5460' }}>
-                From: {getUserDisplayName(incomingVideoCall.from)}
-              </p>
-              <p style={{ fontSize: '12px', color: '#6c757d' }}>
-                Call ID: {incomingVideoCall.callId} | Role: {myRole}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-              <button 
-                onClick={() => {
-                  console.log('🔴 ACCEPT BUTTON CLICKED');
-                  acceptVideoCall();
-                }}
-                style={{ 
-                  padding: '12px 24px', 
-                  backgroundColor: '#28a745', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                📹 Accept Call
-              </button>
-              <button 
-                onClick={() => {
-                  console.log('🔴 DECLINE BUTTON CLICKED');
-                  setIncomingVideoCall(null);
-                }}
-                style={{ 
-                  padding: '12px 24px', 
-                  backgroundColor: '#dc3545', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '6px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                ❌ Decline
-              </button>
-            </div>
-          </div>
-        )}
-
+        {/* ✅ UPDATED Incoming Video Call Notification with user names */}
+{incomingVideoCall && !isVideoCallActive && (
+  <div className='bg-background text-secondary' style={{ 
+    marginBottom: '30px', 
+    padding: '20px', 
+    border: '3px solid #17a2b8', 
+    borderRadius: '8px',
+    animation: 'pulse 2s infinite'
+  }}>
+    <div>
+      <h2 style={{ color: '#0c5460', margin: '0 0 10px 0' }}>
+        📹 Incoming Video Call
+      </h2>
+      <p style={{ margin: 0, fontSize: '16px', color: '#0c5460' }}>
+        From: <strong>{getUserDisplayName(incomingVideoCall.from)}</strong>
+      </p>
+      <p style={{ fontSize: '12px', color: '#6c757d' }}>
+        Your Role: {myRole} | Call ID: {incomingVideoCall.callId}
+      </p>
+    </div>
+    <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+      <button 
+        onClick={() => {
+          console.log('🔴 ACCEPT BUTTON CLICKED for call from:', getUserDisplayName(incomingVideoCall.from));
+          acceptVideoCall();
+        }}
+        style={{ 
+          padding: '12px 24px', 
+          backgroundColor: '#28a745', 
+          color: 'white', 
+          border: 'none', 
+          borderRadius: '6px',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer'
+        }}
+      >
+        📹 Accept Call
+      </button>
+      <button 
+        onClick={() => {
+          console.log('🔴 DECLINE BUTTON CLICKED for call from:', getUserDisplayName(incomingVideoCall.from));
+          setIncomingVideoCall(null);
+        }}
+        style={{ 
+          padding: '12px 24px', 
+          backgroundColor: '#dc3545', 
+          color: 'white', 
+          border: 'none', 
+          borderRadius: '6px',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer'
+        }}
+      >
+        ❌ Decline
+      </button>
+    </div>
+  </div>
+)}
         {/* Mentor Controls */}
         {myRole === 'mentor' && (
           <div className='bg-background text-secondary' style={{ 
@@ -2495,7 +2518,7 @@ const startVideoCallCompatible = async () => {
                 🟢 Active {isVideoCallActive ? 'Video Call' : 'Chat'} Session
               </h2>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {!isVideoCallActive && (
+                {!isVideoCallActive && myRole === 'mentor' && (
                   <button 
                     onClick={startVideoCallCompatible}
                     style={{ 
