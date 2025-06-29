@@ -53,6 +53,176 @@ interface SignalData {
   [key: string]: any;
 }
 
+// Professional Loading Component
+const ProfessionalLoader = ({ 
+  title = "Loading...", 
+  subtitle = "Please wait while we initialize the system",
+  showSpinner = true 
+}) => {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '400px',
+      padding: '40px 20px',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      color: 'white',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      {/* Logo/Icon Container */}
+      <div style={{
+        width: '80px',
+        height: '80px',
+        borderRadius: '50%',
+        background: 'rgba(255, 255, 255, 0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: '24px',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.2)'
+      }}>
+        {showSpinner ? (
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '3px solid rgba(255, 255, 255, 0.3)',
+            borderTop: '3px solid white',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }} />
+        ) : (
+          <div style={{
+            fontSize: '32px',
+            fontWeight: 'bold'
+          }}>
+            📋
+          </div>
+        )}
+      </div>
+
+      {/* Title */}
+      <h2 style={{
+        margin: '0 0 8px 0',
+        fontSize: '24px',
+        fontWeight: '600',
+        textAlign: 'center',
+        letterSpacing: '-0.5px'
+      }}>
+        {title}
+      </h2>
+
+      {/* Subtitle */}
+      <p style={{
+        margin: '0 0 32px 0',
+        fontSize: '16px',
+        opacity: 0.9,
+        textAlign: 'center',
+        maxWidth: '400px',
+        lineHeight: '1.5'
+      }}>
+        {subtitle}
+      </p>
+
+      {/* Progress Bar */}
+      <div style={{
+        width: '200px',
+        height: '4px',
+        background: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: '2px',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          width: '60%',
+          height: '100%',
+          background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent)',
+          animation: 'shimmer 2s infinite'
+        }} />
+      </div>
+
+      {/* CSS Animation Styles */}
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Full-screen loading overlay
+const FullScreenLoader = ({ 
+  title = "Loading...", 
+  subtitle = "Please wait while we initialize the system" 
+}) => {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      color: 'white',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      <ProfessionalLoader title={title} subtitle={subtitle} />
+    </div>
+  );
+};
+
+// Compact loading for smaller areas
+const CompactLoader = ({ text = "Loading..." }) => {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '32px 20px',
+      background: '#f8fafc',
+      borderRadius: '12px',
+      border: '1px solid #e2e8f0',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      <div style={{
+        width: '20px',
+        height: '20px',
+        border: '2px solid #e2e8f0',
+        borderTop: '2px solid #3b82f6',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+        marginRight: '12px'
+      }} />
+      <span style={{
+        color: '#64748b',
+        fontSize: '14px',
+        fontWeight: '500'
+      }}>
+        {text}
+      </span>
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 // Enhanced error handler that properly handles browser extension errors
 const errorHandlerCache = { current: null as any };
 
@@ -128,10 +298,10 @@ const validateFirebaseConfig = (): FirebaseConfig | null => {
 const MentorComponentClient = dynamic(() => Promise.resolve(MentorComponentInner), {
   ssr: false,
   loading: () => (
-    <div style={{ padding: '20px', textAlign: 'center' }}>
-      <h2>Loading Mentor System...</h2>
-      <p>Initializing browser environment...</p>
-    </div>
+    <ProfessionalLoader 
+      title="Loading Mentor System" 
+      subtitle="Preparing browser environment and real-time features..."
+    />
   )
 });
 
@@ -146,10 +316,10 @@ const MentorComponent = React.memo(() => {
 
   if (!isClient) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <h2>Loading Mentor System...</h2>
-        <p>Initializing browser environment...</p>
-      </div>
+      <ProfessionalLoader 
+        title="Starting Application" 
+        subtitle="Initializing browser environment for real-time chat and video..."
+      />
     );
   }
 
@@ -214,20 +384,76 @@ const MentorComponentInner = React.memo(() => {
 
   if (firebaseError) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>
-        <h2>Initialization Error</h2>
-        <p>{firebaseError}</p>
-        <p>Please check your environment variables and try again.</p>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '400px',
+        padding: '40px 20px',
+        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        color: 'white',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        <div style={{
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '24px',
+          fontSize: '32px'
+        }}>
+          ⚠️
+        </div>
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '600' }}>
+          Initialization Error
+        </h2>
+        <p style={{ 
+          margin: '0 0 24px 0', 
+          fontSize: '16px', 
+          opacity: 0.9, 
+          textAlign: 'center',
+          maxWidth: '500px',
+          lineHeight: '1.5'
+        }}>
+          {firebaseError}
+        </p>
+        <button 
+          onClick={() => window.location.reload()}
+          style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(10px)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+          }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
   if (!firebaseLoaded || !simplePeerLoaded) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <h2>Loading...</h2>
-        <p>Initializing Firebase and WebRTC...</p>
-      </div>
+      <ProfessionalLoader 
+        title="Loading Services" 
+        subtitle="Connecting to Firebase and initializing WebRTC for video calls..."
+      />
     );
   }
 
@@ -2292,20 +2518,76 @@ useEffect(() => {
   // Loading states
   if (userError) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: 'red' }}>
-        <h2>Error</h2>
-        <p>{userError}</p>
-        <button onClick={() => window.location.reload()}>Refresh</button>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '400px',
+        padding: '40px 20px',
+        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        color: 'white',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        <div style={{
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          background: 'rgba(255, 255, 255, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '24px',
+          fontSize: '32px'
+        }}>
+          👤
+        </div>
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '600' }}>
+          Authentication Error
+        </h2>
+        <p style={{ 
+          margin: '0 0 24px 0', 
+          fontSize: '16px', 
+          opacity: 0.9, 
+          textAlign: 'center',
+          maxWidth: '500px',
+          lineHeight: '1.5'
+        }}>
+          {userError}
+        </p>
+        <button 
+          onClick={() => window.location.reload()}
+          style={{
+            background: 'rgba(255, 255, 255, 0.2)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backdropFilter: 'blur(10px)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+          }}
+        >
+          Refresh
+        </button>
       </div>
     );
   }
 
   if (isLoading || !isInitialized || !myUserId || !myRole || !myUserDetails) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <h2>Loading...</h2>
-        <p>Initializing system...</p>
-      </div>
+      <ProfessionalLoader 
+        title="Initializing Mentor System" 
+        subtitle="Setting up your profile and connecting to services..."
+      />
     );
   }
 
