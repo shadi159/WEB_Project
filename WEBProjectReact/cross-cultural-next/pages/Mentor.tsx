@@ -539,7 +539,7 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
   let connectionStateTimeout: NodeJS.Timeout | null = null;
   let iceConnectionStateTimeout: NodeJS.Timeout | null = null;
   
-  // Monitor ICE connection state
+  // Monitor ICE connection state with audio debugging
   peer.on('iceConnectionStateChange', (state: string) => {
     console.log(`${callType} ICE Connection State: ${state}`);
     
@@ -548,18 +548,35 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
     }
     
     switch (state) {
+      case 'checking':
+        setCallStatus('Checking connection...');
+        break;
+        
       case 'connecting':
         setCallStatus('Establishing connection...');
-        // Set timeout for connecting state
         iceConnectionStateTimeout = setTimeout(() => {
           console.warn(`${callType} ICE connection stuck in connecting state`);
           setCallStatus('Connection taking longer than expected...');
-        }, 10000);
+        }, 15000); // Increased timeout
         break;
         
       case 'connected':
       case 'completed':
         setCallStatus('Connected');
+        console.log(`✅ ${callType} ICE connection successful`);
+        
+        // CRITICAL FIX: Verify audio tracks when connected
+        if (localStream) {
+          const audioTracks = localStream.getAudioTracks();
+          console.log(`🎤 ${callType} Local audio tracks:`, audioTracks.map(track => ({
+            id: track.id,
+            enabled: track.enabled,
+            readyState: track.readyState,
+            kind: track.kind,
+            label: track.label
+          })));
+        }
+        
         if (iceConnectionStateTimeout) {
           clearTimeout(iceConnectionStateTimeout);
         }
@@ -567,11 +584,9 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
         
       case 'disconnected':
         setCallStatus('Connection interrupted - attempting to reconnect...');
-        // Give it time to reconnect
         iceConnectionStateTimeout = setTimeout(() => {
           if (peer && !peer.destroyed) {
             console.log('Attempting to restart ICE');
-            // peer.restartIce(); // This might not be available in simple-peer
           }
         }, 5000);
         break;
@@ -587,7 +602,7 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
     }
   });
   
-  // Monitor general connection state
+  // Enhanced general connection state monitoring
   peer.on('connectionStateChange', (state: string) => {
     console.log(`${callType} Connection State: ${state}`);
     
@@ -601,13 +616,29 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
         break;
       case 'connected':
         setCallStatus('Connected');
+        console.log(`✅ ${callType} Peer connection successful`);
+        
+        // ADDITIONAL FIX: Check audio when peer connects
+        setTimeout(() => {
+          if (localStream) {
+            const audioTracks = localStream.getAudioTracks();
+            audioTracks.forEach((track, index) => {
+              console.log(`🎤 Audio track ${index}:`, {
+                enabled: track.enabled,
+                readyState: track.readyState,
+                constraints: track.getConstraints(),
+                settings: track.getSettings()
+              });
+            });
+          }
+        }, 1000);
         break;
       case 'disconnected':
         setCallStatus('Disconnected - attempting to reconnect...');
         connectionStateTimeout = setTimeout(() => {
           console.warn(`${callType} Connection timeout`);
           endVideoCall();
-        }, 15000);
+        }, 20000); // Increased timeout
         break;
       case 'failed':
         setCallStatus('Connection failed');
@@ -624,13 +655,13 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
     if (iceConnectionStateTimeout) clearTimeout(iceConnectionStateTimeout);
   };
 };
+
   // Sync ref with state
   useEffect(() => {
     activeSessionRef.current = activeFirebaseSessionPath;
   }, [activeFirebaseSessionPath]);
 
   useEffect(() => {
-  // ✅ DEBUGGING: Monitor remote stream changes
   console.log('🔍 Remote stream state changed:', {
     hasRemoteStream: !!remoteStream,
     streamId: remoteStream?.id,
@@ -642,12 +673,30 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
 
   if (remoteStream && remoteVideoRef.current) {
     console.log('🔍 Setting remote stream to video element');
-    remoteVideoRef.current.srcObject = remoteStream;
     
-    // Force play the video
-    remoteVideoRef.current.play().catch(error => {
-      console.warn('Remote video play failed:', error);
-    });
+    // CRITICAL FIX: Add delay to prevent interruption
+    setTimeout(() => {
+      if (remoteVideoRef.current && remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        
+        // Enhanced play with retry logic
+        const playVideo = async () => {
+          try {
+            await remoteVideoRef.current!.play();
+            console.log('✅ Remote video playing successfully');
+          } catch (error: any) {
+            if (error.name === 'AbortError') {
+              console.log('🔄 Remote video play aborted, retrying...');
+              setTimeout(playVideo, 100);
+            } else {
+              console.warn('Remote video play failed:', error);
+            }
+          }
+        };
+        
+        playVideo();
+      }
+    }, 100);
   }
 }, [remoteStream]);
 
@@ -908,25 +957,7 @@ const getBrowserCompatibleICEConfig = () => {
 // 3. Enhanced getUserMedia with permission handling
 const getMediaStreamWithPermissions = async (): Promise<MediaStream> => {
   try {
-    // First check if we have permissions
-    if ('permissions' in navigator) {
-      try {
-        const cameraPermission = await navigator.permissions.query({ name: 'camera' as PermissionName });
-        const micPermission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-        
-        console.log('Camera permission:', cameraPermission.state);
-        console.log('Microphone permission:', micPermission.state);
-        
-        if (cameraPermission.state === 'denied' || micPermission.state === 'denied') {
-          throw new Error('Camera or microphone access was previously denied. Please reset permissions in browser settings.');
-        }
-      } catch (permError: unknown) {
-        const errorMessage = permError instanceof Error ? permError.message : 'Permission check failed';
-        console.warn('Permission check failed:', errorMessage);
-      }
-    }
-    
-    // Request media with fallback options
+    // Enhanced audio constraints for better quality
     const constraints: MediaStreamConstraints = {
       video: {
         width: { ideal: 640 },
@@ -936,41 +967,44 @@ const getMediaStreamWithPermissions = async (): Promise<MediaStream> => {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true
+        autoGainControl: true,
       }
     };
     
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('✅ Media stream obtained with enhanced audio settings');
     } catch (error: unknown) {
       // Fallback: try with basic constraints
       console.warn('Falling back to basic media constraints');
       stream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: true
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
       });
     }
     
-    console.log('✅ Media stream obtained successfully');
+    // CRITICAL FIX: Verify audio tracks immediately
+    const audioTracks = stream.getAudioTracks();
+    console.log('🎤 Audio tracks obtained:', audioTracks.map(track => ({
+      id: track.id,
+      enabled: track.enabled,
+      readyState: track.readyState,
+      kind: track.kind,
+      label: track.label,
+      settings: track.getSettings(),
+      constraints: track.getConstraints()
+    })));
+    
     return stream;
     
   } catch (error: unknown) {
     console.error('Media access error:', error);
-    
-    const mediaError = error as MediaError;
-    
-    // Provide specific error messages
-    if (mediaError.name === 'NotAllowedError') {
-      throw new Error('Camera/microphone access denied. Please click "Allow" when prompted and refresh the page.');
-    } else if (mediaError.name === 'NotFoundError') {
-      throw new Error('No camera or microphone found on this device.');
-    } else if (mediaError.name === 'NotReadableError') {
-      throw new Error('Camera/microphone is being used by another application. Please close other apps and try again.');
-    } else {
-      const errorMessage = mediaError.message || 'Unknown media access error';
-      throw new Error(`Media access failed: ${errorMessage}`);
-    }
+    throw error;
   }
 };
 
@@ -1068,6 +1102,22 @@ const startVideoCallCompatible = async () => {
 
     console.log('✅ Got media stream, setting local video...');
     setLocalStream(stream);
+    
+    console.log('🎤 User audio tracks after setting local stream:', 
+      stream.getAudioTracks().map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        settings: track.getSettings()
+      }))
+    );
+
+    // Ensure audio tracks are enabled
+    stream.getAudioTracks().forEach(track => {
+      track.enabled = true;
+      console.log(`🎤 Ensured audio track ${track.id} is enabled:`, track.enabled);
+    }); 
+
     setIsVideoCallActive(true);
     setIsCallInitiator(true);
 
@@ -1451,16 +1501,33 @@ const startVideoCallCompatible = async () => {
         videoTracks: remoteStream.getVideoTracks().length,
         audioTracks: remoteStream.getAudioTracks().length
       });
-      
+
+      const remoteAudioTracks = remoteStream.getAudioTracks();
+      console.log('🎤 Remote audio tracks received:', remoteAudioTracks.map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        kind: track.kind,
+        label: track.label
+      }))); 
+        
       setRemoteStream(remoteStream);
-      
+  
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated for user');
         
-        remoteVideoRef.current.play().catch(error => {
-          console.warn('Remote video play failed:', error);
-        });
+        // ENHANCED: Better video play handling
+        setTimeout(async () => {
+          try {
+            if (remoteVideoRef.current) {
+              await remoteVideoRef.current.play();
+              console.log('✅ Remote video playing');
+            }
+          } catch (error) {
+            console.warn('Remote video play failed:', error);
+          }
+        }, 200);
       }
       setCallStatus('Connected');
     });
@@ -1779,12 +1846,30 @@ const startVideoCallCompatible = async () => {
 
   if (localStream && localVideoRef.current) {
     console.log('🔍 Setting local stream to video element');
-    localVideoRef.current.srcObject = localStream;
     
-    // Force play the local video
-    localVideoRef.current.play().catch(error => {
-      console.warn('Local video play failed:', error);
-    });
+    // CRITICAL FIX: Add delay to prevent interruption
+    setTimeout(() => {
+      if (localVideoRef.current && localStream) {
+        localVideoRef.current.srcObject = localStream;
+        
+        // Enhanced play with retry logic
+        const playVideo = async () => {
+          try {
+            await localVideoRef.current!.play();
+            console.log('✅ Local video playing successfully');
+          } catch (error: any) {
+            if (error.name === 'AbortError') {
+              console.log('🔄 Local video play aborted, retrying...');
+              setTimeout(playVideo, 100);
+            } else {
+              console.warn('Local video play failed:', error);
+            }
+          }
+        };
+        
+        playVideo();
+      }
+    }, 100);
   }
 }, [localStream]);
 
@@ -2324,13 +2409,14 @@ useEffect(() => {
 
 
   // Enhanced Firebase listeners with better session management
-useEffect(() => {
+  useEffect(() => {
   console.log('🔍 Firebase listeners effect triggered with dependencies:', {
     isInitialized,
     myUserId: !!myUserId,
     myRole,
     firebaseDb: !!firebaseDb,
-    listenersActive: listenersActiveRef.current
+    listenersActive: listenersActiveRef.current,
+    isVideoCallActive, // ADD THIS to dependencies but handle it properly
   });
   
   if (!isInitialized || !myUserId || !myRole || !firebaseDb) {
@@ -2340,6 +2426,12 @@ useEffect(() => {
   
   if (listenersActiveRef.current) {
     console.log('⏸️ Skipping Firebase listeners setup - already active');
+    return;
+  }
+
+  // CRITICAL FIX: Don't setup new listeners during video call initialization
+  if (videoCallInitializingRef.current) {
+    console.log('⏸️ Skipping Firebase listeners setup - video call initializing');
     return;
   }
 
@@ -2355,7 +2447,7 @@ useEffect(() => {
       const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
       const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-      // Status listener (with better throttling)
+      // Status listener (unchanged)
       let statusUpdateTimeout: NodeJS.Timeout | null = null;
       const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
         if (!isActive) return;
@@ -2462,19 +2554,22 @@ useEffect(() => {
             
             const hasActiveSession = !!activeSessionRef.current;
             const isSessionEnded = endedSessions.has(response.firebaseSessionPath);
+            const isVideoCallInitializing = videoCallInitializingRef.current;
             
             console.log('🔍 Session acceptance check:', {
               hasActiveSession,
               currentActiveSession: activeSessionRef.current,
               newSessionPath: response.firebaseSessionPath,
-              isSessionEnded
+              isSessionEnded,
+              isVideoCallInitializing
             });
             
-            if (!hasActiveSession && !isSessionEnded) {
+            // CRITICAL FIX: Don't setup new session if video call is initializing
+            if (!hasActiveSession && !isSessionEnded && !isVideoCallInitializing) {
               console.log('✅ Setting up new session:', response.firebaseSessionPath);
               setupSession(response.firebaseSessionPath, response.sessionType);
             } else {
-              console.log('⚠️ Cannot setup session - already have active session or session ended');
+              console.log('⚠️ Cannot setup session - already have active session, session ended, or video call initializing');
             }
           }
         } catch (err) {
@@ -2487,6 +2582,9 @@ useEffect(() => {
         console.log('🧹 Firebase listeners cleanup called');
         isActive = false;
         listenersActiveRef.current = false;
+        
+        if (statusUpdateTimeout) clearTimeout(statusUpdateTimeout);
+        if (requestUpdateTimeout) clearTimeout(requestUpdateTimeout);
         
         try {
           statusUnsubscribe();
@@ -2513,7 +2611,8 @@ useEffect(() => {
     isActive = false;
     listenersActiveRef.current = false;
   };
-}, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endedSessions, processedRequests]);
+}, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endedSessions, processedRequests]); // REMOVED videoCallInitializingRef from dependencies
+
 
 
   // Stable callback functions
