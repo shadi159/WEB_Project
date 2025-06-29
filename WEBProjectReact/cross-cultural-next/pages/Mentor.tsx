@@ -1386,6 +1386,25 @@ const forceEndSession = useCallback(() => {
   console.log('✅ Session force ended');
 }, [isVideoCallActive, endVideoCall, clearAllCleanup]);
 
+  // Memoized computed values with proper dependencies
+const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
+
+const onlineUsersList = useMemo(() => {
+  return Object.entries(onlineUserStatuses).map(([uid, data]) => ({
+    uid,
+    data,
+    displayName: data.displayName || (userDetailsCache[uid] ? `${userDetailsCache[uid].displayName} (${userDetailsCache[uid].role})` : uid)
+  }));
+}, [onlineUserStatuses, userDetailsCache]);
+
+// Memoized search results
+const memoizedSearchResults = useMemo(() => {
+  return searchResults.map(user => ({
+    ...user,
+    key: user.id
+  }));
+}, [searchResults]);
+
 // Helper function to get user display name
 const getUserDisplayName = useCallback((userId: string): string => {
   const userDetails = userDetailsCache[userId];
@@ -1412,25 +1431,6 @@ const determineInitiator = (myUserId: string, otherUserId: string, myRole: strin
   console.log('⚠️ FALLBACK: Same roles - lexicographic comparison result:', result);
   return result;
 };
-
-  // Memoized computed values with proper dependencies
-const onlineUsersCount = useMemo(() => Object.keys(onlineUserStatuses).length, [onlineUserStatuses]);
-
-const onlineUsersList = useMemo(() => {
-  return Object.entries(onlineUserStatuses).map(([uid, data]) => ({
-    uid,
-    data,
-    displayName: data.displayName || getUserDisplayName(uid)
-  }));
-}, [onlineUserStatuses, getUserDisplayName]);
-
-// Memoized search results
-const memoizedSearchResults = useMemo(() => {
-  return searchResults.map(user => ({
-    ...user,
-    key: user.id
-  }));
-}, [searchResults]);
 
   useEffect(() => {
   console.log('🔍 Local stream state changed:', {
