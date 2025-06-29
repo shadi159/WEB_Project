@@ -507,13 +507,25 @@ const RemoteVideoElement = () => (
   }, []);
 
 const clearAllCleanup = useCallback(() => {
-  console.log('🧹 Clearing all cleanup functions...');
+  // DIAGNOSTIC: Log the call stack to see what's calling this
+  console.log('🚨 clearAllCleanup called from:');
+  console.trace(); // This will show the call stack
+  console.log('🚨 Current state when clearAllCleanup called:', {
+    activeFirebaseSessionPath,
+    activeSessionRefCurrent: activeSessionRef.current,
+    isVideoCallActive,
+    cleanupFunctionsCount: cleanupFunctions.current.length
+  });
   
-  cleanupFunctions.current.forEach((cleanup: () => void) => {
+  const cleanupCount = cleanupFunctions.current.length;
+  console.log(`🧹 Clearing ${cleanupCount} cleanup functions...`);
+  
+  cleanupFunctions.current.forEach((cleanup: () => void, index: number) => {
     try {
+      console.log(`🧹 Executing cleanup function ${index + 1}/${cleanupCount}`);
       cleanup();
     } catch (error) {
-      console.warn('Cleanup error:', error);
+      console.warn(`⚠️ Cleanup error for function ${index + 1}:`, error);
     }
   });
   
@@ -521,7 +533,7 @@ const clearAllCleanup = useCallback(() => {
   listenersActiveRef.current = false;
   
   console.log('✅ All cleanup functions cleared');
-}, []);
+}, [activeFirebaseSessionPath, isVideoCallActive]);
 
   // Helper functions with proper memoization
   const getUserDisplayName = useCallback((userId: string): string => {
@@ -1718,35 +1730,30 @@ const startVideoCallCompatible = async () => {
   // Enhanced end session with better state management
  const endSession = useCallback(async () => {
   const currentSessionPath = activeSessionRef.current;
-  console.log('🔴 Ending session...', currentSessionPath);
+  console.log('🚨 endSession called from:');
+  console.trace(); // This will show the call stack
+  console.log('🔴 endSession called for:', currentSessionPath);
+  
+  // Prevent multiple calls
+  if (!currentSessionPath || endedSessions.has(currentSessionPath)) {
+    console.log('⏭️ Session already ended or not active, skipping');
+    return;
+  }
   
   try {
-    if (currentSessionPath) {
-      // Add to ended sessions to prevent reprocessing
-      console.log('🔒 Adding session to ended list:', currentSessionPath);
-      setEndedSessions(prev => new Set([...prev, currentSessionPath]));
-      
-      // Clean up all listeners FIRST
-      console.log('🧹 Clearing all cleanup functions...');
-      clearAllCleanup();
-      
-      // Set session status to ended in Firebase
-      if (firebaseDb) {
-        try {
-          const { ref, set } = await import('firebase/database');
-          await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
-          console.log('✅ Session status set to ended in Firebase');
-        } catch (fbError) {
-          console.warn('Failed to set session status in Firebase:', fbError);
-        }
-      }
-    }
+    // Mark as ended immediately to prevent re-entry
+    console.log('🔒 Marking session as ended:', currentSessionPath);
+    setEndedSessions(prev => new Set([...prev, currentSessionPath]));
     
-    // Clear session state
-    console.log('🧹 Clearing session state...');
+    // Clear local state first
+    console.log('🧹 Clearing local session state...');
     setActiveFirebaseSessionPath(null);
     activeSessionRef.current = null;
     setChatMessages([]);
+    
+    // Clean up all listeners
+    console.log('🧹 Calling clearAllCleanup from endSession...');
+    clearAllCleanup();
     
     // End video call if active
     if (isVideoCallActive) {
@@ -1754,55 +1761,68 @@ const startVideoCallCompatible = async () => {
       endVideoCall();
     }
     
+    // Set Firebase status to ended
+    if (firebaseDb) {
+      try {
+        const { ref, set } = await import('firebase/database');
+        set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended')
+          .then(() => console.log('✅ Firebase status updated to ended'))
+          .catch(err => console.warn('⚠️ Failed to update Firebase status:', err));
+      } catch (fbError) {
+        console.warn('⚠️ Firebase import error:', fbError);
+      }
+    }
+    
     console.log('✅ Session ended successfully');
 
   } catch (err) {
     console.error('❌ Session cleanup error:', err);
   }
-}, [firebaseDb, isVideoCallActive, endVideoCall, clearAllCleanup]);
+}, [firebaseDb, isVideoCallActive, endVideoCall, clearAllCleanup, endedSessions, activeFirebaseSessionPath]);
+
 
 const setupSession = useCallback(async (path: string, sessionType: string) => {
-  console.log(`Setting up ${sessionType} session at ${path}`);
+  console.log(`🚀 Setting up ${sessionType} session at ${path}`);
   
   // Check if this session was already ended
   if (endedSessions.has(path)) {
-    console.log('Session was already ended, skipping setup:', path);
+    console.log('❌ Session was already ended, skipping setup:', path);
     return;
   }
   
   // Don't setup if already active for this exact path
   if (activeSessionRef.current === path) {
-    console.log('Session already active for this path, skipping setup');
+    console.log('⚠️ Session already active for this path, skipping setup');
     return;
   }
-  
-  // CRITICAL FIX: Set the session as active FIRST, before setting up listeners
-  console.log('🔒 Setting active session path:', path);
-  setActiveFirebaseSessionPath(path);
-  activeSessionRef.current = path;
-  
-  // Clear any existing session data
-  setChatMessages([]);
 
   try {
     const { ref, onValue, onChildAdded, set, serverTimestamp } = await import('firebase/database');
     
-    // CRITICAL FIX: Initialize session status to 'active' to prevent immediate ending
+    // Set session status to active in Firebase
     const sessionRef = ref(firebaseDb, `${path}/status`);
-    try {
-      await set(sessionRef, 'active');
-      console.log('✅ Session status set to active for:', path);
-    } catch (statusError) {
-      console.warn('Failed to set session status (non-critical):', statusError);
-    }
+    console.log('📝 Setting session status to active in Firebase...');
+    await set(sessionRef, 'active');
+    console.log('✅ Session status set to active in Firebase');
+    
+    // Set local state
+    console.log('🔒 Setting active session path locally:', path);
+    setActiveFirebaseSessionPath(path);
+    activeSessionRef.current = path;
+    
+    // Clear any existing session data
+    setChatMessages([]);
     
     const messagesRef = ref(firebaseDb, `${path}/messages`);
     const videoCallNotificationsRef = ref(firebaseDb, `${path}/video_call_notifications`);
     
+    // Set up message listener
+    console.log('📨 Setting up messages listener...');
     const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
       try {
         const message = snapshot.val();
         if (message && !endedSessions.has(path) && activeSessionRef.current === path) {
+          console.log('📨 New message received');
           setChatMessages(prev => {
             const messageExists = prev.some(msg => 
               msg.from === message.from && 
@@ -1818,122 +1838,94 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
           });
         }
       } catch (err) {
-        console.error('Message processing error:', err);
+        console.error('❌ Message processing error:', err);
       }
-    }, (error) => {
-      console.error('Messages listener error:', error);
     });
 
+    // Set up video call notifications listener
+    console.log('📹 Setting up video call notifications listener...');
     const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
       try {
-        // Skip if session was ended or not our active session
         if (endedSessions.has(path) || activeSessionRef.current !== path) {
-          console.log('Ignoring video call notification - session not active:', path);
+          console.log('⏭️ Ignoring video call notification - session not active');
           return;
         }
         
         const notification = snapshot.val();
         
-        console.log('=== VIDEO CALL NOTIFICATION DEBUG ===');
-        console.log('Raw notification:', notification);
-        console.log('Notification from:', notification?.from);
-        console.log('My user ID:', myUserId);
-        console.log('Active session path:', activeSessionRef.current);
-        console.log('Notification session path:', path);
-        
         if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
           const otherUserId = notification.from;
           
-          if (!otherUserId || !myUserId) {
-            console.log('❌ Missing user IDs:', { otherUserId, myUserId });
-            return;
-          }
+          if (!otherUserId || !myUserId) return;
           
           const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
-          console.log('=== INITIATION DECISION ===');
-          console.log('shouldWeInitiate result:', shouldWeInitiate);
-          console.log('My role check:', myRole);
           
           if (shouldWeInitiate) {
-            console.log('❌ BLOCKING: We should initiate, ignoring incoming call');
+            console.log('❌ We should initiate, ignoring incoming call');
             return;
           }
           
-          console.log('✅ ACCEPTING: Setting incoming video call for USER role');
+          console.log('✅ Setting incoming video call');
           setIncomingVideoCall(notification);
-        } else {
-          console.log('❌ NOTIFICATION FILTERED OUT');
         }
-        console.log('=== END VIDEO CALL NOTIFICATION DEBUG ===');
       } catch (err) {
-        console.error('Video call notification error:', err);
+        console.error('❌ Video call notification error:', err);
       }
     });
 
-    // CRITICAL FIX: Enhanced session status listener with better logic
+    // Set up session status listener with delay
+    console.log('📊 Setting up session status listener...');
     let sessionStatusTimeout: NodeJS.Timeout | null = null;
+    let initialStatusReceived = false;
+    
     const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
       try {
         const sessionStatus = snapshot.val();
-        console.log('📊 Session status update:', sessionStatus, 'for path:', path);
-        console.log('📊 Current active session:', activeSessionRef.current);
-        console.log('📊 Is this our active session?', activeSessionRef.current === path);
-        console.log('📊 Is video call active?', isVideoCallActive);
-        console.log('📊 Is session in ended list?', endedSessions.has(path));
         
-        // CRITICAL FIX: Only end session if ALL conditions are met AND we wait a bit
-        if (sessionStatus === 'ended') {
-          console.log('⚠️ Session status is "ended" - checking if we should end...');
-          
-          // Clear any existing timeout
-          if (sessionStatusTimeout) {
-            clearTimeout(sessionStatusTimeout);
+        // Skip the first status update if it's our own 'active' status
+        if (!initialStatusReceived) {
+          initialStatusReceived = true;
+          if (sessionStatus === 'active') {
+            console.log('✅ Initial session status confirmed as active');
+            return;
           }
+        }
+        
+        console.log('📊 Session status update:', sessionStatus);
+        
+        if (sessionStatusTimeout) {
+          clearTimeout(sessionStatusTimeout);
+          sessionStatusTimeout = null;
+        }
+        
+        if (sessionStatus === 'ended') {
+          console.log('⚠️ Session status is "ended" - will check after delay...');
           
-          // Wait a moment before ending to avoid race conditions
           sessionStatusTimeout = setTimeout(() => {
-            // Re-check conditions after timeout
             const isOurActiveSession = activeSessionRef.current === path;
             const isNotInVideoCall = !isVideoCallActive;
             const isNotAlreadyEnded = !endedSessions.has(path);
             
-            console.log('🔍 Final session end check:', {
-              sessionStatus,
-              isOurActiveSession,
-              isNotInVideoCall,
-              isNotAlreadyEnded,
-              currentActiveSession: activeSessionRef.current,
-              targetPath: path
-            });
-            
             if (isOurActiveSession && isNotInVideoCall && isNotAlreadyEnded) {
-              console.log('✅ All conditions met - ending session');
+              console.log('✅ Ending session after delay');
               endSession();
             } else {
-              console.log('❌ Conditions not met - NOT ending session');
+              console.log('❌ Not ending session - conditions not met');
             }
-          }, 1000); // 1 second delay to avoid race conditions
-        } else {
-          // Clear timeout if status is not 'ended'
-          if (sessionStatusTimeout) {
-            clearTimeout(sessionStatusTimeout);
-          }
-          console.log('✅ Session status is OK:', sessionStatus);
+          }, 2000);
         }
       } catch (err) {
-        console.error('Session status error:', err);
+        console.error('❌ Session status error:', err);
       }
-    }, (error) => {
-      console.error('Session listener error:', error);
     });
 
     // Store cleanup functions
     const sessionCleanup = () => {
-      console.log('Cleaning up session listeners for:', path);
+      console.log('🧹 Cleaning up session listeners for:', path);
       
-      // Clear the timeout if it exists
       if (sessionStatusTimeout) {
         clearTimeout(sessionStatusTimeout);
+        sessionStatusTimeout = null;
       }
       
       try {
@@ -1941,17 +1933,21 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
         videoCallUnsubscribe();
         sessionUnsubscribe();
       } catch (err) {
-        console.warn('Session cleanup error:', err);
+        console.warn('⚠️ Session cleanup error:', err);
       }
     };
 
-    addCleanup(sessionCleanup);
-    
-    console.log('✅ Session setup completed for:', path);
+    // CRITICAL: Only add cleanup if session is still valid
+    if (!endedSessions.has(path) && activeSessionRef.current === path) {
+      addCleanup(sessionCleanup);
+      console.log('✅ Session setup completed successfully for:', path);
+    } else {
+      console.log('❌ Session ended during setup, cleaning up');
+      sessionCleanup();
+    }
 
   } catch (err) {
-    console.error('Session setup error:', err);
-    // If setup fails, clear the session
+    console.error('❌ Session setup error:', err);
     if (activeSessionRef.current === path) {
       setActiveFirebaseSessionPath(null);
       activeSessionRef.current = null;
@@ -1981,15 +1977,22 @@ useEffect(() => {
 
 
   // Enhanced Firebase listeners with better session management
- useEffect(() => {
-  if (!isInitialized || !myUserId || !myRole || !firebaseDb || listenersActiveRef.current) {
-    console.log('⏸️ Skipping Firebase listeners setup:', {
-      isInitialized,
-      hasUserId: !!myUserId,
-      hasRole: !!myRole,
-      hasFirebaseDb: !!firebaseDb,
-      listenersActive: listenersActiveRef.current
-    });
+useEffect(() => {
+  console.log('🔍 Firebase listeners effect triggered with dependencies:', {
+    isInitialized,
+    myUserId: !!myUserId,
+    myRole,
+    firebaseDb: !!firebaseDb,
+    listenersActive: listenersActiveRef.current
+  });
+  
+  if (!isInitialized || !myUserId || !myRole || !firebaseDb) {
+    console.log('⏸️ Skipping Firebase listeners setup - missing requirements');
+    return;
+  }
+  
+  if (listenersActiveRef.current) {
+    console.log('⏸️ Skipping Firebase listeners setup - already active');
     return;
   }
 
@@ -2066,10 +2069,7 @@ useEffect(() => {
         if (isActive) console.error('Requests listener error:', error);
       });
       
-      // ENHANCED: Responses listener with better session handling
       let processedResponseIds = new Set<string>();
-      const listenerStartTime = Date.now();
-
       const responsesUnsubscribe = onChildAdded(responsesRef, (snapshot) => {
         if (!isActive) return;
         
@@ -2079,19 +2079,17 @@ useEffect(() => {
           
           if (!response || !responseId) return;
           
-          // Prevent processing the same response multiple times
           if (processedResponseIds.has(responseId)) {
             console.log('🔄 Response already processed:', responseId);
             return;
           }
           
-          // Check if this session has been ended
           if (response.firebaseSessionPath && endedSessions.has(response.firebaseSessionPath)) {
             console.log('🚫 Ignoring response for ended session:', response.firebaseSessionPath);
             return;
           }
           
-          // Enhanced timestamp handling
+          // Only process very recent responses
           let responseTime = 0;
           if (response.timestamp) {
             if (typeof response.timestamp === 'number') {
@@ -2100,66 +2098,55 @@ useEffect(() => {
               responseTime = response.timestamp.toMillis();
             } else if (response.timestamp.seconds) {
               responseTime = response.timestamp.seconds * 1000;
-            } else if (typeof response.timestamp === 'object' && response.timestamp.time) {
-              responseTime = response.timestamp.time;
             }
           }
           
-          // STRICTER: Only process very recent responses (within last 30 seconds)
           const thirtySecondsAgo = Date.now() - (30 * 1000);
           if (responseTime > 0 && responseTime < thirtySecondsAgo) {
-            console.log('⏰ Ignoring old response:', responseId, 'from', new Date(responseTime).toLocaleString());
+            console.log('⏰ Ignoring old response:', responseId);
             return;
           }
           
           processedResponseIds.add(responseId);
-          console.log('✅ Processing response:', response.type, responseId, responseTime ? `from ${new Date(responseTime).toLocaleString()}` : '(no timestamp)');
+          console.log('✅ Processing response:', response.type, responseId);
           
           if (response.type === 'session_accepted') {
             console.log('🎯 Session accepted:', response.firebaseSessionPath);
-            console.log('🔍 Current state check:', {
-              hasActiveSession: !!activeSessionRef.current,
+            
+            const hasActiveSession = !!activeSessionRef.current;
+            const isSessionEnded = endedSessions.has(response.firebaseSessionPath);
+            
+            console.log('🔍 Session acceptance check:', {
+              hasActiveSession,
               currentActiveSession: activeSessionRef.current,
               newSessionPath: response.firebaseSessionPath,
-              isSessionEnded: endedSessions.has(response.firebaseSessionPath)
+              isSessionEnded
             });
             
-            // ENHANCED: Better session acceptance logic
-            if (!activeSessionRef.current && !endedSessions.has(response.firebaseSessionPath)) {
+            if (!hasActiveSession && !isSessionEnded) {
               console.log('✅ Setting up new session:', response.firebaseSessionPath);
               setupSession(response.firebaseSessionPath, response.sessionType);
-            } else if (activeSessionRef.current) {
-              console.log('⚠️ Session already active, ignoring new session request');
-            } else if (endedSessions.has(response.firebaseSessionPath)) {
-              console.log('⚠️ Session was already ended, ignoring session request');
-            }
-          } else if (response.type === 'session_ended') {
-            console.log('🔴 Session ended by remote party');
-            // Only end if this response is for our current session
-            if (activeSessionRef.current && response.firebaseSessionPath === activeSessionRef.current) {
-              endSession();
+            } else {
+              console.log('⚠️ Cannot setup session - already have active session or session ended');
             }
           }
         } catch (err) {
-          console.error('Response processing error:', err);
+          console.error('❌ Response processing error:', err);
         }
-      }, (error) => {
-        if (isActive) console.error('Responses listener error:', error);
       });
 
-      // Store cleanup functions
+      // Store cleanup
       const cleanup = () => {
+        console.log('🧹 Firebase listeners cleanup called');
         isActive = false;
         listenersActiveRef.current = false;
-        if (statusUpdateTimeout) clearTimeout(statusUpdateTimeout);
-        if (requestUpdateTimeout) clearTimeout(requestUpdateTimeout);
         
         try {
           statusUnsubscribe();
           requestsUnsubscribe();
           responsesUnsubscribe();
         } catch (err) {
-          console.warn('Listener cleanup error (non-critical):', err);
+          console.warn('⚠️ Listener cleanup error:', err);
         }
       };
 
@@ -2175,10 +2162,11 @@ useEffect(() => {
   setupListeners();
 
   return () => {
+    console.log('🧹 Firebase listeners effect cleanup');
     isActive = false;
     listenersActiveRef.current = false;
   };
-}, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endSession, processedRequests, endedSessions]);
+}, [isInitialized, myUserId, myRole, firebaseDb, setupSession, addCleanup, endedSessions, processedRequests]);
 
 
   // Stable callback functions
@@ -2268,13 +2256,38 @@ useEffect(() => {
     }
   }, [activeFirebaseSessionPath, myUserId, currentMessage, firebaseDb]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearAllCleanup();
-      endSession();
-    };
-  }, [clearAllCleanup, endSession]);
+useEffect(() => {
+  // This effect should only run on mount/unmount, not when dependencies change
+  return () => {
+    console.log('🔴 Component unmounting - running final cleanup');
+    
+    // Store current values at cleanup time
+    const currentSessionPath = activeSessionRef.current;
+    
+    // Clean up all listeners first
+    cleanupFunctions.current.forEach((cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        console.warn('Cleanup error on unmount:', error);
+      }
+    });
+    cleanupFunctions.current = [];
+    
+    // End session if active
+    if (currentSessionPath) {
+      // Set Firebase status to ended without triggering React state updates
+      if (firebaseDb) {
+        import('firebase/database').then(({ ref, set }) => {
+          set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended')
+            .catch(err => console.warn('Failed to end session on unmount:', err));
+        });
+      }
+    }
+    
+    console.log('✅ Component unmount cleanup completed');
+  };
+}, []);
 
   // Loading states
   if (userError) {
