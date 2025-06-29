@@ -7,6 +7,7 @@ import { Button } from "../app/components/ui/button"
 import { Input } from "../app/components/ui/input"
 import { Label } from "../app/components/ui/label"
 import { Loader2, MapPin, Star, DollarSign, Sparkles } from "lucide-react"
+import Navbar from "@/app/components/Navbar"
 
 interface Place {
   name: string
@@ -92,6 +93,8 @@ export default function Top10Page() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-6xl mx-auto">
+      {/* Navbar */}
+        <Navbar />
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">🏆 Top 10 Places Finder</h1>
