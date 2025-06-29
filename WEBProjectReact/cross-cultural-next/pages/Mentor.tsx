@@ -1634,65 +1634,28 @@ const startVideoCallCompatible = async () => {
   }, [searchQuery]);
 
   // Enhanced end session with better state management
-  // 1. Add a ref to track when we manually end a session
-const manualSessionEndRef = useRef(false);
-
-// 2. Update your endSession function
-const endSession = useCallback(async () => {
-  console.log('Ending session...', activeSessionRef.current);
-  
-  // Mark that we're manually ending the session
-  manualSessionEndRef.current = true;
-  
-  try {
-    const currentSessionPath = activeSessionRef.current;
+  const endSession = useCallback(async () => {
+    console.log('Ending session...', activeSessionRef.current);
     
-    // End video call first if it's active
-    if (isVideoCallActive) {
-      console.log('Ending active video call...');
-      endVideoCall();
-    }
-    
-    // Clear session state IMMEDIATELY
-    setActiveFirebaseSessionPath(null);
-    activeSessionRef.current = null;
-    setChatMessages([]);
-    setIncomingVideoCall(null);
-    setCallStatus('');
-    
-    // Update Firebase session status
-    if (currentSessionPath && firebaseDb) {
-      try {
+    try {
+      // Only end video call if we initiated the session end
+      // Don't end video call if session is ending due to external factors
+      const currentSessionPath = activeSessionRef.current;
+      if (currentSessionPath && firebaseDb) {
         const { ref, set } = await import('firebase/database');
-        await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
-        console.log('Session status set to ended in Firebase');
-      } catch (err) {
-        console.error('Error setting session status:', err);
+        set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended')
+          .catch((err: any) => console.error('Error setting session status:', err));
       }
+      
+      // Clear session state
+      setActiveFirebaseSessionPath(null);
+      activeSessionRef.current = null;
+      setChatMessages([]);
+
+    } catch (err) {
+      console.error('Session cleanup error:', err);
     }
-    
-    // Clean up signaling
-    if (signalingCleanupRef.current) {
-      try {
-        signalingCleanupRef.current();
-        signalingCleanupRef.current = null;
-      } catch (err) {
-        console.warn('Error cleaning up signaling:', err);
-      }
-    }
-    
-    // Reset the manual end flag after a delay
-    setTimeout(() => {
-      manualSessionEndRef.current = false;
-    }, 5000);
-    
-    console.log('Session ended successfully');
-    
-  } catch (err) {
-    console.error('Session cleanup error:', err);
-    manualSessionEndRef.current = false;
-  }
-}, [firebaseDb, isVideoCallActive, endVideoCall]);
+  }, [firebaseDb]);
 
   const setupSession = useCallback(async (path: string, sessionType: string) => {
     console.log(`Setting up ${sessionType} session at ${path}`);
@@ -1965,33 +1928,32 @@ const endSession = useCallback(async () => {
               return;
             }
             
-            // Better timestamp handling
+            // Better timestamp handling for Firebase timestamps
             let responseTime = 0;
             if (response.timestamp) {
+              // Handle different timestamp formats
               if (typeof response.timestamp === 'number') {
                 responseTime = response.timestamp;
               } else if (response.timestamp.toMillis) {
                 responseTime = response.timestamp.toMillis();
               } else if (response.timestamp.seconds) {
+                // Firestore timestamp format
                 responseTime = response.timestamp.seconds * 1000;
+              } else if (typeof response.timestamp === 'object' && response.timestamp.time) {
+                // Alternative timestamp format
+                responseTime = response.timestamp.time;
               }
             }
             
-            // ✅ CRITICAL FIX: Ignore responses that are older than 2 minutes
-            const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
-            if (responseTime > 0 && responseTime < twoMinutesAgo) {
-              console.log('Ignoring old response (>2min):', responseId, 'from', new Date(responseTime).toLocaleString());
+            // More lenient time filtering - only ignore very old responses (older than 1 hour)
+            const oneHourAgo = Date.now() - (60 * 60 * 1000);
+            if (responseTime > 0 && responseTime < oneHourAgo) {
+              console.log('Ignoring very old response:', responseId, 'from', new Date(responseTime).toLocaleString());
               return;
             }
             
-            // ✅ CRITICAL FIX: Don't process session_accepted if we just manually ended a session
-            if (response.type === 'session_accepted' && manualSessionEndRef.current) {
-              console.log('Ignoring session_accepted - we just manually ended a session:', responseId);
-              return;
-            }
-            
-            // ✅ CRITICAL FIX: More strict filtering for session startup
-            const sessionStartThreshold = listenerStartTime - (30 * 1000); // Only 30 seconds before listener start
+            // Only filter out responses that are clearly from before this session
+            const sessionStartThreshold = listenerStartTime - (5 * 60 * 1000); // 5 minutes before listener start
             if (responseTime > 0 && responseTime < sessionStartThreshold) {
               console.log('Ignoring pre-session response:', responseId, 'from', new Date(responseTime).toLocaleString());
               return;
@@ -2002,16 +1964,16 @@ const endSession = useCallback(async () => {
             
             if (response.type === 'session_accepted') {
               console.log('Session accepted:', response.firebaseSessionPath);
-              
-              // ✅ ENHANCED CHECK: Only set active session if we don't have one AND we didn't just end one
-              if (!activeSessionRef.current && !manualSessionEndRef.current) {
+              // Only set active session if we don't already have one
+              if (!activeSessionRef.current) {
                 setActiveFirebaseSessionPath(response.firebaseSessionPath);
                 setupSession(response.firebaseSessionPath, response.sessionType);
               } else {
-                console.log('Session already active or just ended, ignoring new session request');
+                console.log('Session already active, ignoring new session request');
               }
             } else if (response.type === 'session_ended') {
               console.log('Session ended by remote party');
+              // Only end if this response is for our current session
               if (activeSessionRef.current && response.firebaseSessionPath === activeSessionRef.current) {
                 endSession();
               }
@@ -2019,6 +1981,8 @@ const endSession = useCallback(async () => {
           } catch (err) {
             console.error('Response processing error:', err);
           }
+        }, (error) => {
+          if (isActive) console.error('Responses listener error:', error);
         });
 
         // Store cleanup functions
