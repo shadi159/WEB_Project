@@ -937,7 +937,7 @@ const startVideoCallCompatible = async () => {
 };
 
   // ✅ UPDATED acceptVideoCall with deduplication and single-answer logic
- const acceptVideoCall = useCallback(async () => {
+  const acceptVideoCall = useCallback(async () => {
   console.log('🎯 acceptVideoCall CALLED');
   
   if (!firebaseDb || !activeFirebaseSessionPath || !myUserId || !incomingVideoCall) {
@@ -950,6 +950,10 @@ const startVideoCallCompatible = async () => {
     return;
   }
 
+  // CRITICAL FIX: Preserve the current session path
+  const currentSessionPath = activeFirebaseSessionPath;
+  console.log('🔒 Preserving session path during video call acceptance:', currentSessionPath);
+
   videoCallInitializingRef.current = true;
   console.log('✅ Accepting video call from:', incomingVideoCall.from);
   setCallStatus('Accepting call...');
@@ -959,7 +963,7 @@ const startVideoCallCompatible = async () => {
   let offerProcessed = false;
 
   try {
-    // Clean up existing resources
+    // Clean up existing media resources (but NOT session)
     if (localStream) {
       localStream.getTracks().forEach(track => {
         try {
@@ -984,12 +988,20 @@ const startVideoCallCompatible = async () => {
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // CRITICAL FIX: Set video call state WITHOUT clearing session
     setIsVideoCallActive(true);
     setIsCallInitiator(false);
     setIncomingVideoCall(null);
     setCallStatus('Getting camera access...');
 
-    // ✅ ENHANCED Get user media for accepter
+    // CRITICAL FIX: Ensure session path is preserved
+    if (activeFirebaseSessionPath !== currentSessionPath) {
+      console.log('🔄 Restoring session path:', currentSessionPath);
+      setActiveFirebaseSessionPath(currentSessionPath);
+      activeSessionRef.current = currentSessionPath;
+    }
+
+    // Get user media for accepter
     let stream: MediaStream;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1023,6 +1035,11 @@ const startVideoCallCompatible = async () => {
       setCallStatus('Failed to access camera/microphone: ' + mediaError.message);
       setIsVideoCallActive(false);
       videoCallInitializingRef.current = false;
+      
+      // CRITICAL FIX: Restore session state on media error
+      setActiveFirebaseSessionPath(currentSessionPath);
+      activeSessionRef.current = currentSessionPath;
+      
       setTimeout(() => setCallStatus(''), 5000);
       return;
     }
@@ -1031,12 +1048,11 @@ const startVideoCallCompatible = async () => {
     setLocalStream(stream);
     setCallStatus('Setting up connection...');
     
-    // ✅ CRITICAL FIX: Set local video IMMEDIATELY for user too
+    // Set local video IMMEDIATELY for user
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
       console.log('✅ Local video set for user');
       
-      // Force play the local video
       localVideoRef.current.play().catch(error => {
         console.warn('Local video play failed:', error);
       });
@@ -1058,12 +1074,12 @@ const startVideoCallCompatible = async () => {
       return null;
     };
 
-    const otherUserId = activeFirebaseSessionPath 
-      ? getOtherUserIdFromSessionPath(activeFirebaseSessionPath, myUserId)
+    const otherUserId = currentSessionPath 
+      ? getOtherUserIdFromSessionPath(currentSessionPath, myUserId)
       : null;
 
     if (!otherUserId) {
-      throw new Error(`Could not determine other user ID from session path: ${activeFirebaseSessionPath}`);
+      throw new Error(`Could not determine other user ID from session path: ${currentSessionPath}`);
     }
 
     const shouldWeInitiate = determineInitiator(myUserId, otherUserId, myRole || 'user');
@@ -1071,6 +1087,11 @@ const startVideoCallCompatible = async () => {
       console.log('We should be the initiator, not accepting');
       setCallStatus('Error: Role conflict');
       videoCallInitializingRef.current = false;
+      
+      // CRITICAL FIX: Restore session state on role conflict
+      setActiveFirebaseSessionPath(currentSessionPath);
+      activeSessionRef.current = currentSessionPath;
+      
       setTimeout(() => setCallStatus(''), 3000);
       return;
     }
@@ -1087,7 +1108,9 @@ const startVideoCallCompatible = async () => {
 
     peerRef.current = peer;
     const { ref, push, onChildAdded, onValue, serverTimestamp } = await import('firebase/database');
-    const signalBasePath = `${activeFirebaseSessionPath}/video_signal`;
+    
+    // CRITICAL FIX: Use preserved session path for signaling
+    const signalBasePath = `${currentSessionPath}/video_signal`;
 
     // Setup connection monitoring
     const cleanupMonitoring = setupConnectionMonitoring(peer, 'Accepter');
@@ -1107,10 +1130,21 @@ const startVideoCallCompatible = async () => {
       }
       
       setCallStatus(errorMessage);
-      setTimeout(() => endVideoCall(), 3000);
+      setTimeout(() => {
+        // CRITICAL FIX: Don't end session on peer error, just end video call
+        if (isVideoCallActive) {
+          setIsVideoCallActive(false);
+          setIsCallInitiator(false);
+          setCallStatus('');
+          
+          // Ensure session is preserved
+          setActiveFirebaseSessionPath(currentSessionPath);
+          activeSessionRef.current = currentSessionPath;
+        }
+      }, 3000);
     });
 
-    // ✅ CRITICAL FIX: Enhanced stream handling for user
+    // Enhanced stream handling for user
     peer.on('stream', (remoteStream: MediaStream) => {
       console.log('✅ User received remote stream from mentor');
       console.log('Remote stream details:', {
@@ -1126,7 +1160,6 @@ const startVideoCallCompatible = async () => {
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated for user');
         
-        // Force play the remote video
         remoteVideoRef.current.play().catch(error => {
           console.warn('Remote video play failed:', error);
         });
@@ -1257,11 +1290,30 @@ const startVideoCallCompatible = async () => {
       console.log('User peer connection closed');
       cleanupMonitoring();
       setCallStatus('Call ended');
-      endVideoCall();
+      
+      // CRITICAL FIX: Only end video call, not the entire session
+      setIsVideoCallActive(false);
+      setIsCallInitiator(false);
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        setLocalStream(null);
+      }
+      setRemoteStream(null);
+      
+      // Ensure session is preserved
+      setActiveFirebaseSessionPath(currentSessionPath);
+      activeSessionRef.current = currentSessionPath;
     });
 
     videoCallInitializingRef.current = false;
     setCallStatus('Connecting...');
+
+    // FINAL CHECK: Ensure session path is still set
+    console.log('🔍 Final session check:', {
+      currentSessionPath,
+      activeFirebaseSessionPath,
+      activeSessionRefCurrent: activeSessionRef.current
+    });
 
   } catch (error: any) {
     console.error('Error accepting video call:', error);
@@ -1280,71 +1332,93 @@ const startVideoCallCompatible = async () => {
     
     setIsVideoCallActive(false);
     videoCallInitializingRef.current = false;
+    
+    // CRITICAL FIX: Restore session state on error
+    setActiveFirebaseSessionPath(currentSessionPath);
+    activeSessionRef.current = currentSessionPath;
+    
     setTimeout(() => setCallStatus(''), 5000);
   }
 }, [firebaseDb, activeFirebaseSessionPath, myUserId, incomingVideoCall, localStream, isVideoCallActive, myRole]);
 
+
   // Enhanced endVideoCall with initialization flag reset
   const endVideoCall = useCallback(() => {
-    console.log('Ending video call...');
-    videoCallInitializingRef.current = false;
-    // Delay cleanup to allow ICE candidates to finish processing
-    setTimeout(() => {
-      // ... existing cleanup code ...
-      if (peerRef.current) {
-        try {
-          if (!peerRef.current.destroyed) {
-            peerRef.current.destroy();
-          }
-        } catch (error) {
-          console.warn('Error destroying peer:', error);
-        }
-        peerRef.current = null;
-      }
-      if (signalingCleanupRef.current) {
-        try {
-          signalingCleanupRef.current();
-        } catch (error) {
-          console.warn('Error cleaning up signaling:', error);
-        }
-        signalingCleanupRef.current = null;
-      }
-      if (localStream) {
-        try {
-          localStream.getTracks().forEach(track => {
-            try {
-              if (track.readyState !== 'ended') {
-                track.stop();
-              }
-            } catch (trackError) {
-              console.warn('Error stopping track:', trackError);
-            }
-          });
-        } catch (streamError) {
-          console.warn('Error stopping stream:', streamError);
-        }
-        setLocalStream(null);
-      }
+  console.log('Ending video call...');
+  
+  // CRITICAL FIX: Preserve current session path
+  const currentSessionPath = activeFirebaseSessionPath;
+  
+  videoCallInitializingRef.current = false;
+  
+  setTimeout(() => {
+    // Clean up video call resources
+    if (peerRef.current) {
       try {
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = null;
-        }
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = null;
+        if (!peerRef.current.destroyed) {
+          peerRef.current.destroy();
         }
       } catch (error) {
-        console.warn('Error clearing video elements:', error);
+        console.warn('Error destroying peer:', error);
       }
-      setRemoteStream(null);
-      setIsVideoCallActive(false);
-      setIsCallInitiator(false);
-      setCallStatus('');
-      setIncomingVideoCall(null);
-      setIsVideoEnabled(true);
-      setIsAudioEnabled(true);
-      console.log('Video call cleanup complete');
-    }, 2000); // 2 second delay before cleanup
-  }, [localStream]);
+      peerRef.current = null;
+    }
+    
+    if (signalingCleanupRef.current) {
+      try {
+        signalingCleanupRef.current();
+      } catch (error) {
+        console.warn('Error cleaning up signaling:', error);
+      }
+      signalingCleanupRef.current = null;
+    }
+    
+    if (localStream) {
+      try {
+        localStream.getTracks().forEach(track => {
+          try {
+            if (track.readyState !== 'ended') {
+              track.stop();
+            }
+          } catch (trackError) {
+            console.warn('Error stopping track:', trackError);
+          }
+        });
+      } catch (streamError) {
+        console.warn('Error stopping stream:', streamError);
+      }
+      setLocalStream(null);
+    }
+    
+    try {
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+    } catch (error) {
+      console.warn('Error clearing video elements:', error);
+    }
+    
+    setRemoteStream(null);
+    setIsVideoCallActive(false);
+    setIsCallInitiator(false);
+    setCallStatus('');
+    setIncomingVideoCall(null);
+    setIsVideoEnabled(true);
+    setIsAudioEnabled(true);
+    
+    // CRITICAL FIX: Restore session if it was active
+    if (currentSessionPath) {
+      console.log('🔄 Preserving session after video call end:', currentSessionPath);
+      setActiveFirebaseSessionPath(currentSessionPath);
+      activeSessionRef.current = currentSessionPath;
+    }
+    
+    console.log('Video call cleanup complete - session preserved');
+  }, 2000);
+}, [localStream, activeFirebaseSessionPath]);
 
   const toggleVideo = useCallback(() => {
     if (localStream) {
