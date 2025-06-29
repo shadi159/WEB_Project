@@ -507,7 +507,8 @@ const RemoteVideoElement = () => (
   }, []);
 
 const clearAllCleanup = useCallback(() => {
-  console.log('Clearing all cleanup functions...');
+  console.log('🧹 Clearing all cleanup functions...');
+  
   cleanupFunctions.current.forEach((cleanup: () => void) => {
     try {
       cleanup();
@@ -515,9 +516,13 @@ const clearAllCleanup = useCallback(() => {
       console.warn('Cleanup error:', error);
     }
   });
+  
   cleanupFunctions.current = [];
   listenersActiveRef.current = false;
+  
+  console.log('✅ All cleanup functions cleared');
 }, []);
+
   // Helper functions with proper memoization
   const getUserDisplayName = useCallback((userId: string): string => {
     const userDetails = userDetailsCache[userId];
@@ -1711,48 +1716,55 @@ const startVideoCallCompatible = async () => {
   }, [searchQuery]);
 
   // Enhanced end session with better state management
-  const endSession = useCallback(async () => {
-  console.log('Ending session...', activeSessionRef.current);
+ const endSession = useCallback(async () => {
+  const currentSessionPath = activeSessionRef.current;
+  console.log('🔴 Ending session...', currentSessionPath);
   
   try {
-    const currentSessionPath = activeSessionRef.current;
-    
     if (currentSessionPath) {
       // Add to ended sessions to prevent reprocessing
+      console.log('🔒 Adding session to ended list:', currentSessionPath);
       setEndedSessions(prev => new Set([...prev, currentSessionPath]));
       
       // Clean up all listeners FIRST
+      console.log('🧹 Clearing all cleanup functions...');
       clearAllCleanup();
       
       // Set session status to ended in Firebase
       if (firebaseDb) {
-        const { ref, set } = await import('firebase/database');
-        await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
+        try {
+          const { ref, set } = await import('firebase/database');
+          await set(ref(firebaseDb, `${currentSessionPath}/status`), 'ended');
+          console.log('✅ Session status set to ended in Firebase');
+        } catch (fbError) {
+          console.warn('Failed to set session status in Firebase:', fbError);
+        }
       }
     }
     
     // Clear session state
+    console.log('🧹 Clearing session state...');
     setActiveFirebaseSessionPath(null);
     activeSessionRef.current = null;
     setChatMessages([]);
     
     // End video call if active
     if (isVideoCallActive) {
+      console.log('📹 Ending active video call...');
       endVideoCall();
     }
     
-    console.log('Session ended successfully');
+    console.log('✅ Session ended successfully');
 
   } catch (err) {
-    console.error('Session cleanup error:', err);
+    console.error('❌ Session cleanup error:', err);
   }
 }, [firebaseDb, isVideoCallActive, endVideoCall, clearAllCleanup]);
-
 
 const setupSession = useCallback(async (path: string, sessionType: string) => {
   console.log(`Setting up ${sessionType} session at ${path}`);
   
-  // CRITICAL FIX: Check if this session was already ended
+  // Check if this session was already ended
   if (endedSessions.has(path)) {
     console.log('Session was already ended, skipping setup:', path);
     return;
@@ -1764,11 +1776,25 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
     return;
   }
   
+  // CRITICAL FIX: Set the session as active FIRST, before setting up listeners
+  console.log('🔒 Setting active session path:', path);
+  setActiveFirebaseSessionPath(path);
+  activeSessionRef.current = path;
+  
   // Clear any existing session data
   setChatMessages([]);
 
   try {
-    const { ref, onValue, onChildAdded } = await import('firebase/database');
+    const { ref, onValue, onChildAdded, set, serverTimestamp } = await import('firebase/database');
+    
+    // CRITICAL FIX: Initialize session status to 'active' to prevent immediate ending
+    const sessionRef = ref(firebaseDb, `${path}/status`);
+    try {
+      await set(sessionRef, 'active');
+      console.log('✅ Session status set to active for:', path);
+    } catch (statusError) {
+      console.warn('Failed to set session status (non-critical):', statusError);
+    }
     
     const messagesRef = ref(firebaseDb, `${path}/messages`);
     const videoCallNotificationsRef = ref(firebaseDb, `${path}/video_call_notifications`);
@@ -1776,7 +1802,7 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
     const messagesUnsubscribe = onChildAdded(messagesRef, (snapshot) => {
       try {
         const message = snapshot.val();
-        if (message && !endedSessions.has(path)) {
+        if (message && !endedSessions.has(path) && activeSessionRef.current === path) {
           setChatMessages(prev => {
             const messageExists = prev.some(msg => 
               msg.from === message.from && 
@@ -1800,9 +1826,9 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
 
     const videoCallUnsubscribe = onChildAdded(videoCallNotificationsRef, (snapshot) => {
       try {
-        // Skip if session was ended
-        if (endedSessions.has(path)) {
-          console.log('Ignoring video call notification for ended session:', path);
+        // Skip if session was ended or not our active session
+        if (endedSessions.has(path) || activeSessionRef.current !== path) {
+          console.log('Ignoring video call notification - session not active:', path);
           return;
         }
         
@@ -1812,12 +1838,8 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
         console.log('Raw notification:', notification);
         console.log('Notification from:', notification?.from);
         console.log('My user ID:', myUserId);
-        console.log('Notification type:', notification?.type);
-        console.log('Is from me?', notification?.from === myUserId);
-        console.log('Is video request?', notification?.type === 'video_call_request');
-        console.log('Current myRole:', myRole);
-        console.log('Current incomingVideoCall state:', incomingVideoCall);
-        console.log('Current isVideoCallActive:', isVideoCallActive);
+        console.log('Active session path:', activeSessionRef.current);
+        console.log('Notification session path:', path);
         
         if (notification && notification.from !== myUserId && notification.type === 'video_call_request') {
           const otherUserId = notification.from;
@@ -1831,8 +1853,6 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
           console.log('=== INITIATION DECISION ===');
           console.log('shouldWeInitiate result:', shouldWeInitiate);
           console.log('My role check:', myRole);
-          console.log('Role === mentor?', myRole === 'mentor');
-          console.log('Role === user?', myRole === 'user');
           
           if (shouldWeInitiate) {
             console.log('❌ BLOCKING: We should initiate, ignoring incoming call');
@@ -1840,18 +1860,9 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
           }
           
           console.log('✅ ACCEPTING: Setting incoming video call for USER role');
-          console.log('About to call setIncomingVideoCall with:', notification);
           setIncomingVideoCall(notification);
-          console.log('✅ setIncomingVideoCall called successfully');
         } else {
           console.log('❌ NOTIFICATION FILTERED OUT');
-          console.log('Reasons:', {
-            hasNotification: !!notification,
-            isFromOtherUser: notification?.from !== myUserId,
-            isVideoRequest: notification?.type === 'video_call_request',
-            fromUser: notification?.from,
-            myUserId: myUserId
-          });
         }
         console.log('=== END VIDEO CALL NOTIFICATION DEBUG ===');
       } catch (err) {
@@ -1859,20 +1870,55 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
       }
     });
 
-    const sessionRef = ref(firebaseDb, `${path}/status`);
+    // CRITICAL FIX: Enhanced session status listener with better logic
+    let sessionStatusTimeout: NodeJS.Timeout | null = null;
     const sessionUnsubscribe = onValue(sessionRef, (snapshot) => {
       try {
         const sessionStatus = snapshot.val();
-        console.log('Session status update:', sessionStatus, 'for path:', path);
+        console.log('📊 Session status update:', sessionStatus, 'for path:', path);
+        console.log('📊 Current active session:', activeSessionRef.current);
+        console.log('📊 Is this our active session?', activeSessionRef.current === path);
+        console.log('📊 Is video call active?', isVideoCallActive);
+        console.log('📊 Is session in ended list?', endedSessions.has(path));
         
-        // Only end session if status is explicitly 'ended' AND we're not in an active video call
-        // AND this is actually the current active session
-        if (sessionStatus === 'ended' && 
-            activeFirebaseSessionPath === path && 
-            !isVideoCallActive &&
-            !endedSessions.has(path)) {
-          console.log('Session ended by remote party for our active session');
-          endSession();
+        // CRITICAL FIX: Only end session if ALL conditions are met AND we wait a bit
+        if (sessionStatus === 'ended') {
+          console.log('⚠️ Session status is "ended" - checking if we should end...');
+          
+          // Clear any existing timeout
+          if (sessionStatusTimeout) {
+            clearTimeout(sessionStatusTimeout);
+          }
+          
+          // Wait a moment before ending to avoid race conditions
+          sessionStatusTimeout = setTimeout(() => {
+            // Re-check conditions after timeout
+            const isOurActiveSession = activeSessionRef.current === path;
+            const isNotInVideoCall = !isVideoCallActive;
+            const isNotAlreadyEnded = !endedSessions.has(path);
+            
+            console.log('🔍 Final session end check:', {
+              sessionStatus,
+              isOurActiveSession,
+              isNotInVideoCall,
+              isNotAlreadyEnded,
+              currentActiveSession: activeSessionRef.current,
+              targetPath: path
+            });
+            
+            if (isOurActiveSession && isNotInVideoCall && isNotAlreadyEnded) {
+              console.log('✅ All conditions met - ending session');
+              endSession();
+            } else {
+              console.log('❌ Conditions not met - NOT ending session');
+            }
+          }, 1000); // 1 second delay to avoid race conditions
+        } else {
+          // Clear timeout if status is not 'ended'
+          if (sessionStatusTimeout) {
+            clearTimeout(sessionStatusTimeout);
+          }
+          console.log('✅ Session status is OK:', sessionStatus);
         }
       } catch (err) {
         console.error('Session status error:', err);
@@ -1884,6 +1930,12 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
     // Store cleanup functions
     const sessionCleanup = () => {
       console.log('Cleaning up session listeners for:', path);
+      
+      // Clear the timeout if it exists
+      if (sessionStatusTimeout) {
+        clearTimeout(sessionStatusTimeout);
+      }
+      
       try {
         messagesUnsubscribe();
         videoCallUnsubscribe();
@@ -1894,11 +1946,18 @@ const setupSession = useCallback(async (path: string, sessionType: string) => {
     };
 
     addCleanup(sessionCleanup);
+    
+    console.log('✅ Session setup completed for:', path);
 
   } catch (err) {
     console.error('Session setup error:', err);
+    // If setup fails, clear the session
+    if (activeSessionRef.current === path) {
+      setActiveFirebaseSessionPath(null);
+      activeSessionRef.current = null;
+    }
   }
-}, [addCleanup, endSession, firebaseDb, activeFirebaseSessionPath, myUserId, myRole, incomingVideoCall, isVideoCallActive, endedSessions]);
+}, [addCleanup, endSession, firebaseDb, myUserId, myRole, isVideoCallActive, endedSessions]);
 
 // Clear ended sessions periodically to prevent memory buildup
 useEffect(() => {
@@ -1922,10 +1981,19 @@ useEffect(() => {
 
 
   // Enhanced Firebase listeners with better session management
-  useEffect(() => {
-  if (!isInitialized || !myUserId || !myRole || !firebaseDb || listenersActiveRef.current) return;
+ useEffect(() => {
+  if (!isInitialized || !myUserId || !myRole || !firebaseDb || listenersActiveRef.current) {
+    console.log('⏸️ Skipping Firebase listeners setup:', {
+      isInitialized,
+      hasUserId: !!myUserId,
+      hasRole: !!myRole,
+      hasFirebaseDb: !!firebaseDb,
+      listenersActive: listenersActiveRef.current
+    });
+    return;
+  }
 
-  console.log('Setting up Firebase listeners...');
+  console.log('🔧 Setting up Firebase listeners...');
   listenersActiveRef.current = true;
   let isActive = true;
 
@@ -1937,7 +2005,7 @@ useEffect(() => {
       const requestsRef = ref(firebaseDb, `user_notifications/${myUserId}/requests`);
       const responsesRef = ref(firebaseDb, `user_notifications/${myUserId}/responses`);
 
-      // Status listener (unchanged)
+      // Status listener (with better throttling)
       let statusUpdateTimeout: NodeJS.Timeout | null = null;
       const statusUnsubscribe = onValue(statusesRef, (snapshot) => {
         if (!isActive) return;
@@ -1998,7 +2066,7 @@ useEffect(() => {
         if (isActive) console.error('Requests listener error:', error);
       });
       
-      // FIXED: Enhanced responses listener with session tracking
+      // ENHANCED: Responses listener with better session handling
       let processedResponseIds = new Set<string>();
       const listenerStartTime = Date.now();
 
@@ -2013,13 +2081,13 @@ useEffect(() => {
           
           // Prevent processing the same response multiple times
           if (processedResponseIds.has(responseId)) {
-            console.log('Response already processed:', responseId);
+            console.log('🔄 Response already processed:', responseId);
             return;
           }
           
-          // CRITICAL FIX: Check if this session has been ended
+          // Check if this session has been ended
           if (response.firebaseSessionPath && endedSessions.has(response.firebaseSessionPath)) {
-            console.log('Ignoring response for ended session:', response.firebaseSessionPath);
+            console.log('🚫 Ignoring response for ended session:', response.firebaseSessionPath);
             return;
           }
           
@@ -2037,31 +2105,36 @@ useEffect(() => {
             }
           }
           
-          // STRICTER TIME FILTERING: Only process recent responses (within last 30 seconds)
+          // STRICTER: Only process very recent responses (within last 30 seconds)
           const thirtySecondsAgo = Date.now() - (30 * 1000);
           if (responseTime > 0 && responseTime < thirtySecondsAgo) {
-            console.log('Ignoring old response:', responseId, 'from', new Date(responseTime).toLocaleString());
+            console.log('⏰ Ignoring old response:', responseId, 'from', new Date(responseTime).toLocaleString());
             return;
           }
           
           processedResponseIds.add(responseId);
-          console.log('Processing response:', response.type, responseId, responseTime ? `from ${new Date(responseTime).toLocaleString()}` : '(no timestamp)');
+          console.log('✅ Processing response:', response.type, responseId, responseTime ? `from ${new Date(responseTime).toLocaleString()}` : '(no timestamp)');
           
           if (response.type === 'session_accepted') {
-            console.log('Session accepted:', response.firebaseSessionPath);
+            console.log('🎯 Session accepted:', response.firebaseSessionPath);
+            console.log('🔍 Current state check:', {
+              hasActiveSession: !!activeSessionRef.current,
+              currentActiveSession: activeSessionRef.current,
+              newSessionPath: response.firebaseSessionPath,
+              isSessionEnded: endedSessions.has(response.firebaseSessionPath)
+            });
             
-            // CRITICAL FIX: Additional checks before setting active session
-            if (!activeSessionRef.current && 
-                !endedSessions.has(response.firebaseSessionPath)) {
-              setActiveFirebaseSessionPath(response.firebaseSessionPath);
+            // ENHANCED: Better session acceptance logic
+            if (!activeSessionRef.current && !endedSessions.has(response.firebaseSessionPath)) {
+              console.log('✅ Setting up new session:', response.firebaseSessionPath);
               setupSession(response.firebaseSessionPath, response.sessionType);
             } else if (activeSessionRef.current) {
-              console.log('Session already active, ignoring new session request');
+              console.log('⚠️ Session already active, ignoring new session request');
             } else if (endedSessions.has(response.firebaseSessionPath)) {
-              console.log('Session was already ended, ignoring session request');
+              console.log('⚠️ Session was already ended, ignoring session request');
             }
           } else if (response.type === 'session_ended') {
-            console.log('Session ended by remote party');
+            console.log('🔴 Session ended by remote party');
             // Only end if this response is for our current session
             if (activeSessionRef.current && response.firebaseSessionPath === activeSessionRef.current) {
               endSession();
@@ -2091,11 +2164,10 @@ useEffect(() => {
       };
 
       addCleanup(cleanup);
-
-      return cleanup;
+      console.log('✅ Firebase listeners setup completed');
 
     } catch (err) {
-      console.error('Firebase listeners setup error:', err);
+      console.error('❌ Firebase listeners setup error:', err);
       listenersActiveRef.current = false;
     }
   };
