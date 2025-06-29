@@ -500,6 +500,8 @@ const MentorComponentCore = React.memo(() => {
   const [callStatus, setCallStatus] = useState<string>('');
   const [incomingVideoCall, setIncomingVideoCall] = useState<any>(null);
 
+  const [fetchingUserDetails, setFetchingUserDetails] = useState<Set<string>>(new Set());
+
   // Video refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -763,9 +765,62 @@ const clearAllCleanup = useCallback(() => {
 
   // Helper functions with proper memoization
   const getUserDisplayName = useCallback((userId: string): string => {
-    const userDetails = userDetailsCache[userId];
-    return userDetails ? `${userDetails.displayName} (${userDetails.role})` : userId;
-  }, [userDetailsCache]);
+  const userDetails = userDetailsCache[userId];
+  if (userDetails) {
+    return `${userDetails.displayName} (${userDetails.role})`;
+  }
+  
+  // If currently fetching, show loading state
+  if (fetchingUserDetails.has(userId)) {
+    return `Loading... (${userId.substring(0, 8)}...)`;
+  }
+  
+  // If not in cache and not fetching, trigger a fetch and show ID
+  fetchSingleUserDetail(userId);
+  return `User ${userId.substring(0, 8)}...`;
+}, [userDetailsCache, fetchingUserDetails]);
+
+const fetchSingleUserDetail = useCallback(async (userId: string) => {
+  // Don't fetch if already in cache or currently fetching
+  if (userDetailsCache[userId] || fetchingUserDetails.has(userId)) {
+    return;
+  }
+  
+  // Mark as fetching
+  setFetchingUserDetails(prev => new Set([...prev, userId]));
+  
+  try {
+    const response = await fetch(`/api/get-user-details?userIds=${encodeURIComponent(userId)}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      
+      if (data.success && data.users && data.users[userId]) {
+        const userData = data.users[userId];
+        const userDetails: UserDetails = {
+          displayName: userData.displayName || `${userData.firstName || 'Unknown'} ${userData.lastName || 'User'}`.trim(),
+          firstName: userData.firstName || 'Unknown',
+          lastName: userData.lastName || 'User',
+          role: userData.role || 'user',
+          id: userId,
+          email: userData.email
+        };
+        
+        // Add to cache
+        setUserDetailsCache(prev => ({ ...prev, [userId]: userDetails }));
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch single user detail:', error);
+  } finally {
+    // Remove from fetching set
+    setFetchingUserDetails(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(userId);
+      return newSet;
+    });
+  }
+}, [userDetailsCache, fetchingUserDetails]);
 
   // ✅ UPDATED determineInitiator with enhanced debugging
   const determineInitiator = (myUserId: string, otherUserId: string, myRole: string): boolean => {
@@ -2005,6 +2060,72 @@ const startVideoCallCompatible = async () => {
     console.error('❌ Session cleanup error:', err);
   }
 }, [firebaseDb, isVideoCallActive, endVideoCall, clearAllCleanup, endedSessions, activeFirebaseSessionPath]);
+
+useEffect(() => {
+  const fetchMissingUserDetails = async () => {
+    const missingUserIds = incomingRequests
+      .map(req => req.fromMentorId)
+      .filter(userId => !userDetailsCache[userId] && !fetchingUserDetails.has(userId));
+    
+    if (missingUserIds.length === 0) return;
+    
+    console.log('Fetching missing user details for:', missingUserIds);
+    
+    // Mark as fetching to prevent duplicate requests
+    setFetchingUserDetails(prev => {
+      const newSet = new Set(prev);
+      missingUserIds.forEach(id => newSet.add(id));
+      return newSet;
+    });
+    
+    try {
+      // Use your existing batch API endpoint
+      const userIdsParam = missingUserIds.join(',');
+      const response = await fetch(`/api/get-user-details?userIds=${encodeURIComponent(userIdsParam)}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.success && data.users) {
+          // Convert the response to your UserDetails format
+          const newUserDetails: {[key: string]: UserDetails} = {};
+          
+          Object.entries(data.users).forEach(([userId, userData]: [string, any]) => {
+            newUserDetails[userId] = {
+              displayName: userData.displayName || `${userData.firstName || 'Unknown'} ${userData.lastName || 'User'}`.trim(),
+              firstName: userData.firstName || 'Unknown',
+              lastName: userData.lastName || 'User',
+              role: userData.role || 'user',
+              id: userId,
+              email: userData.email
+            };
+          });
+          
+          // Update cache with fetched details
+          if (Object.keys(newUserDetails).length > 0) {
+            setUserDetailsCache(prev => ({ ...prev, ...newUserDetails }));
+            console.log(`Successfully cached ${Object.keys(newUserDetails).length} user details`);
+          }
+        } else {
+          console.warn('API response indicates failure:', data);
+        }
+      } else {
+        console.error('Failed to fetch user details:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+    } finally {
+      // Remove from fetching set
+      setFetchingUserDetails(prev => {
+        const newSet = new Set(prev);
+        missingUserIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+    }
+  };
+  
+  fetchMissingUserDetails();
+}, [incomingRequests, userDetailsCache, fetchingUserDetails]);
 
 
 const setupSession = useCallback(async (path: string, sessionType: string) => {
