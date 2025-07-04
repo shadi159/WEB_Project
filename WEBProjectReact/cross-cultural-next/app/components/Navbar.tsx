@@ -311,7 +311,7 @@ const Navbar = ({ onLogout }: NavbarProps) => {
                   variant="ghost"
                   size="icon"
                   onClick={toggleDarkMode}
-                  className="ml-2"
+                  className="ml-2 text-secondary"
                 >
                   {isDarkMode ? (
                     <Sun className="w-5 h-5" />

@@ -1,310 +1,533 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Navbar from "../app/components/Navbar";
-import { Button } from "../app/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../app/components/ui/card";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import CountrySelect from "../app/components/ui/CountrySelect";
-import { useToast } from "../app/components/ui/use-toast";
-import Link from "next/link";
+import { useState, useEffect, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import Navbar from "../app/components/Navbar"
+import { Button } from "../app/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "../app/components/ui/card"
+import { Badge } from "../app/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/components/ui/tabs"
+import {
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  BookOpen,
+  Calendar,
+  Users,
+  AlertTriangle,
+  Loader2,
+  RefreshCw,
+  Globe,
+  GraduationCap,
+  ArrowRight,
+  Lightbulb,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react"
+import CountrySelect from "../app/components/ui/CountrySelect"
+import { useToast } from "../app/components/ui/use-toast"
+import Link from "next/link"
 
 // Define types for our data structure
-type ComparisonItem = {
-  us: string;
-  uk: string;
-  [key: string]: string; // Allow for other country codes
-};
+type ComparisonSection = {
+  title: string
+  homeCountry: string[]
+  destinationCountry: string[]
+}
 
 type ComparisonData = {
-  academicLevels: ComparisonItem[];
-  gradingSystems: ComparisonItem[];
-  academicCalendar: ComparisonItem[];
-  teachingStyle: ComparisonItem[];
-  commonChallenges: ComparisonItem[];
-};
+  academicLevels: ComparisonSection
+  gradingSystems: ComparisonSection
+  academicCalendar: ComparisonSection
+  teachingStyle: ComparisonSection
+  commonChallenges: ComparisonSection
+  admissionRequirements: ComparisonSection
+}
+
+type ComparisonMetadata = {
+  homeCountry: string
+  destinationCountry: string
+  generatedAt: string
+  source: "ai-powered" | "fallback"
+  error?: string
+}
 
 type ExpandedSections = {
-  academicLevels: boolean;
-  gradingSystems: boolean;
-  academicCalendar: boolean;
-  teachingStyle: boolean;
-  commonChallenges: boolean;
-};
+  academicLevels: boolean
+  gradingSystems: boolean
+  academicCalendar: boolean
+  teachingStyle: boolean
+  commonChallenges: boolean
+  admissionRequirements: boolean
+}
 
-type SectionKey = keyof ExpandedSections;
+type SectionKey = keyof ExpandedSections
 
 const CompareEducation = () => {
-  const router = useRouter();
-  const { toast } = useToast();
-  
+  const router = useRouter()
+  const { toast } = useToast()
+
+  // Ref for abort controller to cleanup requests
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
+
   // State for selected countries
-  const [homeCountry, setHomeCountry] = useState<string>("");
-  const [destinationCountry, setDestinationCountry] = useState<string>("");
-  
+  const [homeCountry, setHomeCountry] = useState<string>("")
+  const [destinationCountry, setDestinationCountry] = useState<string>("")
+
+  // State for comparison data
+  const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null)
+  const [metadata, setMetadata] = useState<ComparisonMetadata | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [hasCompared, setHasCompared] = useState(false)
+
   // State for expanded sections
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
-    academicLevels: false,
+    academicLevels: true,
     gradingSystems: false,
     academicCalendar: false,
     teachingStyle: false,
-    commonChallenges: false
-  });
-  
-  // Load user data from localStorage
+    commonChallenges: false,
+    admissionRequirements: false,
+  })
+
+  // Cleanup function for component unmount
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      setHomeCountry(userData.country || "");
-      setDestinationCountry(userData.destination || "");
-    } else {
-      toast({ title: "Please sign in", description: "Redirecting to sign in..." });
-      router.push("/SignIn");
+    mountedRef.current = true
+
+    return () => {
+      mountedRef.current = false
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
-  }, [router, toast]);
-  
+  }, [])
+
+  // Load user data from localStorage (client-side only)
+  useEffect(() => {
+    // Check if we're on the client side
+    if (typeof window !== "undefined") {
+      try {
+        const storedUser = localStorage.getItem("user")
+        if (storedUser) {
+          const userData = JSON.parse(storedUser)
+          if (mountedRef.current) {
+            setHomeCountry(userData.country || "")
+            setDestinationCountry(userData.destination || "")
+          }
+        }
+      } catch (error) {
+        console.error("Error loading user data from localStorage:", error)
+      }
+    }
+  }, [])
+
   // Toggle section expansion
-  const toggleSection = (section: SectionKey) => {
-    setExpandedSections(prev => ({
+  const toggleSection = useCallback((section: SectionKey) => {
+    setExpandedSections((prev) => ({
       ...prev,
-      [section]: !prev[section]
-    }));
-  };
-  
-  // Education comparison data (simplified mock data)
-  const comparisons: ComparisonData = {
-    academicLevels: [
-      { us: "Elementary School (K-5)", uk: "Primary School (Years 1-6)" },
-      { us: "Middle School (6-8)", uk: "Secondary School (Years 7-9)" },
-      { us: "High School (9-12)", uk: "Secondary School (Years 10-11) + Sixth Form (Years 12-13)" },
-      { us: "Associate's Degree (2 years)", uk: "Foundation Degree (2 years)" },
-      { us: "Bachelor's Degree (4 years)", uk: "Bachelor's Degree (3 years)" },
-      { us: "Master's Degree (1-2 years)", uk: "Master's Degree (1 year)" },
-      { us: "Doctoral Degree (PhD) (5-7 years)", uk: "Doctoral Degree (PhD) (3-4 years)" }
-    ],
-    gradingSystems: [
-      { us: "A (90-100%): Excellent", uk: "First Class Honours (70%+): Excellent" },
-      { us: "B (80-89%): Good", uk: "Upper Second Class Honours (60-69%): Very Good" },
-      { us: "C (70-79%): Satisfactory", uk: "Lower Second Class Honours (50-59%): Good" },
-      { us: "D (60-69%): Poor", uk: "Third Class Honours (40-49%): Satisfactory" },
-      { us: "F (Below 60%): Fail", uk: "Fail (Below 40%)" },
-      { us: "GPA System (0.0-4.0)", uk: "Degree Classification System" }
-    ],
-    academicCalendar: [
-      { us: "Two semesters: Fall (Aug/Sep-Dec) and Spring (Jan-May)", uk: "Three terms: Autumn (Sep-Dec), Spring (Jan-Mar), Summer (Apr-Jun)" },
-      { us: "Optional summer sessions (May-Aug)", uk: "Optional summer modules" },
-      { us: "Thanksgiving, Winter, Spring breaks", uk: "Christmas, Easter, Half-term breaks" },
-      { us: "Academic year: August/September to May", uk: "Academic year: September to June" }
-    ],
-    teachingStyle: [
-      { us: "Interactive classroom discussions", uk: "Lecture-based with seminars" },
-      { us: "Continuous assessment (assignments, quizzes, midterms)", uk: "Less continuous assessment, more emphasis on final exams" },
-      { us: "Credit hours system", uk: "Module-based learning" },
-      { us: "Broader curriculum with electives", uk: "More specialized and focused from the beginning" },
-      { us: "Regular assignments throughout semester", uk: "Fewer assignments, greater weight on final assessment" }
-    ],
-    commonChallenges: [
-      { us: "students: Adapting to continuous assessment", uk: "students: Adjusting to independent study expectations" },
-      { us: "students: Understanding credit system", uk: "students: Understanding degree classification" },
-      { us: "students: Different terminology (e.g., 'course' vs 'module')", uk: "students: Shorter degree programs requiring faster adaptation" },
-      { us: "students: More frequent testing", uk: "students: Fewer opportunities to improve grades" },
-      { us: "students: Liberal arts requirements", uk: "students: More specialized curriculum from start" }
-    ]
-  };
-  
-  // Function to display comparison table for a given section
-  const renderComparisonTable = (section: SectionKey) => {
-    const data = comparisons[section];
-    if (!data) return null;
-    
-    const getCountryCode = (country: string): string => {
-      if (country.toLowerCase().includes("united states")) return "us";
-      if (country.toLowerCase().includes("united kingdom")) return "gb";
-      return ""; // Default case
-    };
-    
-    const homeCode = getCountryCode(homeCountry);
-    const destCode = getCountryCode(destinationCountry);
-    
-    return (
-      <div className="mt-4 space-y-2">
-        {data.map((item: ComparisonItem, index: number) => (
-          <div key={index} className="grid grid-cols-2 gap-4 p-3 border rounded-md bg-gray-50">
-            <div>
-              <p className="text-sm">{item[homeCode] || item.us}</p>
+      [section]: !prev[section],
+    }))
+  }, [])
+
+  // Fetch comparison data using the new API with proper cleanup
+  const fetchComparisonData = useCallback(async () => {
+    if (!homeCountry || !destinationCountry) {
+      toast({
+        title: "Please select both countries",
+        description: "Choose your home country and destination country to compare.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    // Create new abort controller
+    abortControllerRef.current = new AbortController()
+
+    if (!mountedRef.current) return
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/compare-education", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          homeCountry,
+          destinationCountry,
+        }),
+        signal: abortControllerRef.current.signal,
+      })
+
+      // Check if component is still mounted
+      if (!mountedRef.current) return
+
+      if (!response.ok) {
+        throw new Error(`API request failed with status: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      // Check again if component is still mounted before updating state
+      if (mountedRef.current) {
+        setComparisonData(result.data)
+        setMetadata(result.metadata)
+        setHasCompared(true)
+
+        if (result.success) {
+          toast({
+            title: "Comparison Complete!",
+            description: "Education systems have been compared successfully.",
+          })
+        } else {
+          toast({
+            title: "Using Fallback Data",
+            description: result.metadata.error || "AI service unavailable, showing general comparison.",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error) {
+      // Only handle error if component is still mounted and it's not an abort error
+      if (mountedRef.current && error instanceof Error && error.name !== "AbortError") {
+        console.error("Error fetching comparison:", error)
+        toast({
+          title: "Error",
+          description: "Failed to fetch comparison data. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsLoading(false)
+      }
+      abortControllerRef.current = null
+    }
+  }, [homeCountry, destinationCountry, toast])
+
+  // Render comparison section
+  const renderComparisonSection = useCallback(
+    (sectionKey: SectionKey) => {
+      if (!comparisonData) return null
+
+      const section = comparisonData[sectionKey]
+
+      const getSectionIcon = (key: SectionKey) => {
+        switch (key) {
+          case "academicLevels":
+            return GraduationCap
+          case "gradingSystems":
+            return BarChart3
+          case "academicCalendar":
+            return Calendar
+          case "teachingStyle":
+            return Users
+          case "commonChallenges":
+            return AlertTriangle
+          case "admissionRequirements":
+            return BookOpen
+          default:
+            return BookOpen
+        }
+      }
+
+      const getSectionColor = (key: SectionKey) => {
+        switch (key) {
+          case "academicLevels":
+            return "from-blue-500 to-blue-600"
+          case "gradingSystems":
+            return "from-green-500 to-green-600"
+          case "academicCalendar":
+            return "from-purple-500 to-purple-600"
+          case "teachingStyle":
+            return "from-orange-500 to-orange-600"
+          case "commonChallenges":
+            return "from-red-500 to-red-600"
+          case "admissionRequirements":
+            return "from-indigo-500 to-indigo-600"
+          default:
+            return "from-gray-500 to-gray-600"
+        }
+      }
+
+      const Icon = getSectionIcon(sectionKey)
+
+      return (
+        <Card
+          key={sectionKey}
+          className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-white/80 backdrop-blur-sm"
+        >
+          <CardHeader
+            className="cursor-pointer hover:bg-gray-50 transition-colors duration-200"
+            onClick={() => toggleSection(sectionKey)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div
+                  className={`w-10 h-10 bg-gradient-to-r ${getSectionColor(sectionKey)} rounded-xl flex items-center justify-center`}
+                >
+                  <Icon className="w-5 h-5 text-white" />
+                </div>
+                <CardTitle className="text-xl">{section.title}</CardTitle>
+              </div>
+              {expandedSections[sectionKey] ? (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-500" />
+              )}
             </div>
-            <div>
-              <p className="text-sm">{item[destCode] || item.uk}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
+          </CardHeader>
+          {expandedSections[sectionKey] && (
+            <CardContent className="pt-0">
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Home Country */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Globe className="w-3 h-3 text-blue-600" />
+                    </div>
+                    <h4 className="font-semibold text-blue-900">{metadata?.homeCountry}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {section.homeCountry.map((item, index) => (
+                      <div key={index} className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                        <p className="text-sm text-gray-700 leading-relaxed">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Destination Country */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                      <Globe className="w-3 h-3 text-purple-600" />
+                    </div>
+                    <h4 className="font-semibold text-purple-900">{metadata?.destinationCountry}</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {section.destinationCountry.map((item, index) => (
+                      <div key={index} className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                        <p className="text-sm text-gray-700 leading-relaxed">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )
+    },
+    [comparisonData, expandedSections, metadata, toggleSection],
+  )
 
   return (
-    <div className="min-h-screen bg-origin-padding bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <Navbar />
-      
-      <main className="container py-6 px-6">
-        <div className="mb-8">
-          <h1 className="font-bold text-3xl mb-2">Education System Comparison</h1>
-          <p className="text-muted-foreground">
-            Compare education systems between different countries to better understand your academic transition
-          </p>
-        </div>
-        
-        <div className="grid gap-6 md:grid-cols-2 mb-6">
-          <div>
-            <h2 className="text-lg font-medium mb-2">Your Home Education System</h2>
-            <CountrySelect
-              id="homeCountry"
-              value={homeCountry}
-              onChange={(value) => setHomeCountry(value)}
-            />
-          </div>
-          <div>
-            <h2 className="text-lg font-medium mb-2">Your Destination Education System</h2>
-            <CountrySelect
-              id="destinationCountry"
-              value={destinationCountry}
-              onChange={(value) => setDestinationCountry(value)}
-            />
+
+      <main className="container py-8 px-4 md:px-6 lg:px-8">
+        {/* Header Section */}
+        <div className="mb-12">
+          <div className="text-center">
+            <Badge variant="outline" className="mb-4 px-4 py-2 text-sm font-medium">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Education System Analysis
+            </Badge>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
+              Compare Education Systems
+            </h1>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+              Get AI-powered insights comparing education systems between your home country and study destination
+            </p>
           </div>
         </div>
-        
-        <div className="bg-blue-500 text-white p-4 rounded-md mb-6">
-          <div className="flex items-center">
-            <div className="font-bold flex-1">
-              <span className="mr-2">{homeCountry || "United States"}</span>
-              <span className="mx-2">→</span>
-              <span>{destinationCountry || "United Kingdom"} Comparison</span>
+
+        {/* Country Selection */}
+        <Card className="mb-8 border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Globe className="w-5 h-5 text-blue-600" />
+              <span>Select Countries to Compare</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Your Home Country</label>
+                <CountrySelect id="homeCountry" value={homeCountry} onChange={(value) => setHomeCountry(value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Your Destination Country</label>
+                <CountrySelect
+                  id="destinationCountry"
+                  value={destinationCountry}
+                  onChange={(value) => setDestinationCountry(value)}
+                />
+              </div>
             </div>
-          </div>
-        </div>
-        
-        <div className="space-y-4">
-          {/* Academic Levels Section */}
-          <Card>
-            <div 
-              className="flex justify-between items-center p-4 cursor-pointer"
-              onClick={() => toggleSection("academicLevels")}
-            >
-              <CardTitle>Academic Levels</CardTitle>
-              {expandedSections.academicLevels ? <ChevronDown /> : <ChevronRight />}
+
+            <div className="mt-6 flex justify-center">
+              <Button
+                onClick={fetchComparisonData}
+                disabled={isLoading || !homeCountry || !destinationCountry}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-3 text-lg"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Analyzing Education Systems...
+                  </>
+                ) : (
+                  <>
+                    <BarChart3 className="w-5 h-5 mr-2" />
+                    Compare Education Systems
+                  </>
+                )}
+              </Button>
             </div>
-            {expandedSections.academicLevels && (
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="font-medium">{homeCountry || "United States"}</div>
-                  <div className="font-medium">{destinationCountry || "United Kingdom"}</div>
+          </CardContent>
+        </Card>
+
+        {/* Comparison Results */}
+        {hasCompared && metadata && (
+          <>
+            {/* Comparison Header */}
+            <Card className="mb-8 border-0 shadow-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">
+                      {metadata.homeCountry} → {metadata.destinationCountry}
+                    </h2>
+                    <div className="flex items-center space-x-4">
+                      <p className="text-blue-100">Comprehensive education system comparison</p>
+                      <div className="flex items-center space-x-2">
+                        {metadata.source === "ai-powered" ? (
+                          <CheckCircle className="w-4 h-4 text-green-300" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-yellow-300" />
+                        )}
+                        <span className="text-xs text-blue-100">
+                          {metadata.source === "ai-powered" ? "AI-Powered" : "Fallback Data"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={fetchComparisonData}
+                    disabled={isLoading}
+                    className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh
+                  </Button>
                 </div>
-                {renderComparisonTable("academicLevels")}
               </CardContent>
+            </Card>
+
+            {/* Comparison Sections */}
+            {comparisonData && (
+              <Tabs defaultValue="overview" className="space-y-6">
+                <TabsList className="bg-white/80 backdrop-blur-sm border-0 shadow-sm">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="detailed">Detailed Comparison</TabsTrigger>
+                  <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview" className="space-y-6">
+                  <div className="grid gap-6">
+                    {(Object.keys(expandedSections) as SectionKey[]).map((sectionKey) =>
+                      renderComparisonSection(sectionKey),
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="detailed" className="space-y-6">
+                  <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+                    <CardContent className="p-8 text-center">
+                      <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">Detailed Analysis</h3>
+                      <p className="text-gray-600 mb-6">
+                        Get in-depth analysis of specific aspects of both education systems
+                      </p>
+                      <Button className="bg-gradient-to-r from-blue-600 to-purple-600">Coming Soon</Button>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="recommendations" className="space-y-6">
+                  <Card className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-blue-50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Lightbulb className="w-5 h-5 text-orange-600" />
+                        <span>Personalized Recommendations</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="p-4 bg-white rounded-lg border border-green-200">
+                          <h4 className="font-semibold text-green-800 mb-2">Preparation Tips</h4>
+                          <p className="text-sm text-gray-700">
+                            Based on your comparison, focus on understanding the grading system and academic calendar
+                            differences.
+                          </p>
+                        </div>
+                        <div className="p-4 bg-white rounded-lg border border-blue-200">
+                          <h4 className="font-semibold text-blue-800 mb-2">Resources to Explore</h4>
+                          <p className="text-sm text-gray-700">
+                            Check out our resource library for guides specific to your destination country.
+                          </p>
+                        </div>
+                        <div className="p-4 bg-white rounded-lg border border-purple-200">
+                          <h4 className="font-semibold text-purple-800 mb-2">Next Steps</h4>
+                          <p className="text-sm text-gray-700">
+                            Connect with mentors who have experience with both education systems.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
             )}
-          </Card>
-          
-          {/* Grading Systems Section */}
-          <Card>
-            <div 
-              className="flex justify-between items-center p-4 cursor-pointer"
-              onClick={() => toggleSection("gradingSystems")}
-            >
-              <CardTitle>Grading Systems</CardTitle>
-              {expandedSections.gradingSystems ? <ChevronDown /> : <ChevronRight />}
+          </>
+        )}
+
+        {/* Help Section */}
+        <Card className="mt-12 border-0 shadow-lg bg-gradient-to-br from-blue-50 to-purple-50">
+          <CardContent className="p-8 text-center">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4">Need More Help?</h3>
+            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+              This comparison provides a general overview. For personalized guidance specific to your academic
+              transition, explore our additional resources.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link href="/resources">
+                <Button variant="outline" className="bg-white/80">
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Explore Resources
+                </Button>
+              </Link>
+              <Link href="/profile">
+                <Button className="bg-gradient-to-r from-blue-600 to-purple-600">
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                  Back to Profile
+                </Button>
+              </Link>
             </div>
-            {expandedSections.gradingSystems && (
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="font-medium">{homeCountry || "United States"}</div>
-                  <div className="font-medium">{destinationCountry || "United Kingdom"}</div>
-                </div>
-                {renderComparisonTable("gradingSystems")}
-              </CardContent>
-            )}
-          </Card>
-          
-          {/* Academic Calendar Section */}
-          <Card>
-            <div 
-              className="flex justify-between items-center p-4 cursor-pointer"
-              onClick={() => toggleSection("academicCalendar")}
-            >
-              <CardTitle>Academic Calendar</CardTitle>
-              {expandedSections.academicCalendar ? <ChevronDown /> : <ChevronRight />}
-            </div>
-            {expandedSections.academicCalendar && (
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="font-medium">{homeCountry || "United States"}</div>
-                  <div className="font-medium">{destinationCountry || "United Kingdom"}</div>
-                </div>
-                {renderComparisonTable("academicCalendar")}
-              </CardContent>
-            )}
-          </Card>
-          
-          {/* Teaching Style Section */}
-          <Card>
-            <div 
-              className="flex justify-between items-center p-4 cursor-pointer"
-              onClick={() => toggleSection("teachingStyle")}
-            >
-              <CardTitle>Teaching Style</CardTitle>
-              {expandedSections.teachingStyle ? <ChevronDown /> : <ChevronRight />}
-            </div>
-            {expandedSections.teachingStyle && (
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="font-medium">{homeCountry || "United States"}</div>
-                  <div className="font-medium">{destinationCountry || "United Kingdom"}</div>
-                </div>
-                {renderComparisonTable("teachingStyle")}
-              </CardContent>
-            )}
-          </Card>
-          
-          {/* Common Challenges Section */}
-          <Card>
-            <div 
-              className="flex justify-between items-center p-4 cursor-pointer"
-              onClick={() => toggleSection("commonChallenges")}
-            >
-              <CardTitle>Common Challenges</CardTitle>
-              {expandedSections.commonChallenges ? <ChevronDown /> : <ChevronRight />}
-            </div>
-            {expandedSections.commonChallenges && (
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="font-medium">{homeCountry || "United States"}</div>
-                  <div className="font-medium">{destinationCountry || "United Kingdom"}</div>
-                </div>
-                {renderComparisonTable("commonChallenges")}
-              </CardContent>
-            )}
-          </Card>
-        </div>
-        
-        <div className="mt-8 text-sm text-center text-muted-foreground">
-          <p>This comparison provides a general overview. For more detailed guidance specific to your academic transition, 
-          <Link href="Resources" className="text-blue-500 hover:underline ml-1">explore our resources</Link> or 
-          <button className="text-blue-500 hover:underline ml-1">contact an academic advisor</button>.
-          <br />Other Countries Commes soon</p>
-        </div>
-        
-        <div className="flex justify-center mt-6">
-          <Button 
-            variant="default"
-            onClick={() => router.push('/Profile')}
-          >
-            Back to Profile
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
-  );
-};
+  )
+}
 
-export default CompareEducation;
+export default CompareEducation

@@ -257,8 +257,10 @@ const Journey = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto pt-16 pb-6 px-6">
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
+            <Navbar />
+        </div>
+              <main className="container mx-auto pt-16 pb-6 px-6">
         <div className="mb-8">
           <h1 className="font-bold text-3xl mb-2">Your Academic Journey</h1>
           <p className="text-gray-600 mb-4">

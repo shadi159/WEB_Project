@@ -4,7 +4,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 type ChatMsg = { role: "user"|"assistant"|"system"; content: string };
 
 // System prompt that restricts the AI to only answer questions about your platform
-const SYSTEM_PROMPT = `You are an AI assistant for an International Student Education Platform. You should ONLY answer questions related to:
+const PLATFORM_SYSTEM_PROMPT = `You are an AI assistant for an International Student Education Platform. You should ONLY answer questions related to:
 
 1. This educational platform for international students
 2. The resources and journey steps provided in this platform
@@ -52,27 +52,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end();
   }
 
-  const { messages } = req.body as { messages: ChatMsg[] };
+  const { messages, useForEducationComparison } = req.body as { 
+    messages: ChatMsg[]; 
+    useForEducationComparison?: boolean; 
+  };
+  
   if (!messages) return res.status(400).json({ error: "No messages" });
 
-  // Convert chat messages to Gemini format with restricted system prompt
-  const convertToGeminiFormat = (msgs: ChatMsg[]) => {
-    // Always use our restricted system prompt, ignore any system messages from the client
+  // Convert chat messages to Gemini format
+  const convertToGeminiFormat = (msgs: ChatMsg[], isEducationComparison: boolean = false) => {
+    // For education comparison, use system message from the request
+    // For platform chat, use our restricted system prompt
+    const systemPrompt = isEducationComparison 
+      ? msgs.find(m => m.role === "system")?.content || PLATFORM_SYSTEM_PROMPT
+      : PLATFORM_SYSTEM_PROMPT;
+
     const conversationHistory = msgs
-      .filter(m => m.role !== "system") // Remove any system messages from client
+      .filter(m => m.role !== "system") // Remove system messages from conversation
       .map(m => ({
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }]
       }));
 
     return {
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: conversationHistory
     };
   };
 
   try {
-    const geminiData = convertToGeminiFormat(messages);
+    const geminiData = convertToGeminiFormat(messages, useForEducationComparison);
     const apiKey = process.env.GEMINI_API_KEY;
     
     if (!apiKey) {

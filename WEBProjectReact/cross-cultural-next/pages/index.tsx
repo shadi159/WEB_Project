@@ -35,6 +35,7 @@ const Index = () => {
   
     // Determine the href based on login status
     const href = isLoggedIn ? "/Journey" : "/SignIn";
+    const href1 = isLoggedIn ? "/Resources" : "/SignIn";
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-gray-50 sticky top-0 z-10 bg-background shadow-md">
@@ -73,7 +74,7 @@ const Index = () => {
                     Start Your Journey
                   </Button>
                 </Link>
-                <Link href="/Resources">
+                <Link href={href1}>
                   <Button size="lg" variant="outline">
                     Explore Resources
                   </Button>
@@ -349,7 +350,7 @@ const Index = () => {
               <h3 className="text-lg font-semibold mb-4 text-white">Company</h3>
               <ul className="space-y-2">
                 <li><Link href="/AboutUs" className="opacity-75 hover:opacity-100 text-gray-300">About Us</Link></li>
-                <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Our Team</Link></li>
+                <li><Link href="/OurTeam" className="opacity-75 hover:opacity-100 text-gray-300">Our Team</Link></li>
                 <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Careers</Link></li>
                 <li><Link href="#" className="opacity-75 hover:opacity-100 text-gray-300">Contact</Link></li>
               </ul>

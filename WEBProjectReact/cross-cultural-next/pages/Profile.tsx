@@ -1,146 +1,159 @@
-// pages/Profile.tsx
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import type React from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../app/components/ui/card"
+import { Button } from "../app/components/ui/button"
+import { Input } from "../app/components/ui/input"
+import { Label } from "../app/components/ui/label"
+import { Textarea } from "../app/components/ui/textarea"
+import { Avatar, AvatarFallback, AvatarImage } from "../app/components/ui/avatar"
+import { Badge } from "../app/components/ui/badge"
+import CountrySelect from "../app/components/ui/CountrySelect"
+import { Switch } from "../app/components/ui/switch"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../app/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../app/components/ui/select"
+import { useToast } from "../app/components/ui/use-toast"
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter
-} from "../app/components/ui/card";
-import { Button } from "../app/components/ui/button";
-import { Input } from "../app/components/ui/input";
-import { Label } from "../app/components/ui/label";
-import { Textarea } from "../app/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "../app/components/ui/avatar";
-import CountrySelect from "../app/components/ui/CountrySelect";
-import { Switch } from "../app/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "../app/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../app/components/ui/select";
-import { Separator } from "../app/components/ui/separator";
-import { useToast } from "../app/components/ui/use-toast";
-import Navbar from "../app/components/Navbar";
-import Logo from "../app/components/Logo"; 
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  GraduationCap,
+  BookOpen,
+  Settings,
+  Edit3,
+  Save,
+  X,
+  Bell,
+  Users,
+  Lightbulb,
+  MessageCircle,
+  BarChart3,
+  Globe,
+  ArrowRight,
+} from "lucide-react"
+import Navbar from "../app/components/Navbar"
+import Logo from "../app/components/Logo"
 
 interface UserProfile {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  country: string;
-  destination?: string;
-  educationalLevel: string;
-  fieldOfStudy?: string;
-  bio?: string;
+  _id: string
+  firstName: string
+  lastName: string
+  email: string
+  phone?: string
+  country: string
+  destination?: string
+  educationalLevel: string
+  fieldOfStudy?: string
+  bio?: string
   preferences: {
-    emailNotifications: boolean;
-    appNotifications: boolean;
-    resourceRecommendations: boolean;
-    peerConnections: boolean;
-  };
+    emailNotifications: boolean
+    appNotifications: boolean
+    resourceRecommendations: boolean
+    peerConnections: boolean
+  }
 }
 
 // Professional Loading Component
 const ProfileLoadingScreen = () => {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
+    <div
+      className="min-h-screen flex items-center justify-center transition-colors duration-300"
+      style={{ backgroundColor: "var(--color-background)" }}
+    >
       <div className="text-center space-y-8">
         {/* Logo Container with Animation */}
         <div className="flex justify-center">
           <div className="relative">
-            <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-teal-600 rounded-2xl flex items-center justify-center animate-pulse">
-              <Logo className="w-20 h-20 animate-pulse"/>
+            <div
+              className="w-40 h-20 rounded-2xl flex items-center justify-center shadow-lg"
+              style={{ backgroundColor: "var(--color-primary)" }}
+            >
+              <Logo />
             </div>
-            
-            {/* Animated Ring */}
-            <div className="absolute inset-0 rounded-2xl border-4 border-blue-200 animate-spin opacity-20"></div>
-            <div className="absolute inset-2 rounded-xl border-2 border-teal-200 animate-ping opacity-30"></div>
+            {/* Animated Rings */}
+            <div
+              className="absolute inset-0 rounded-2xl border-4 animate-spin opacity-20"
+              style={{ borderColor: "var(--color-primary)" }}
+            ></div>
+            <div
+              className="absolute inset-2 rounded-xl border-2 animate-ping opacity-30"
+              style={{ borderColor: "var(--color-accent)" }}
+            ></div>
           </div>
         </div>
-        
         {/* Loading Text */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-secondary animate-fade-in">
+          <h2
+            className="text-3xl font-bold bg-gradient-to-r bg-clip-text text-transparent"
+            style={{
+              backgroundImage: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+            }}
+          >
             Loading Your Profile
           </h2>
-          <p className="text-secondary animate-fade-in-delay">
+          <p className="text-lg" style={{ color: "var(--color-text-light)" }}>
             Please wait while we fetch your information...
           </p>
         </div>
-        
         {/* Progress Indicators */}
-        <div className="space-y-3">
+        <div className="space-y-6">
           <div className="flex justify-center space-x-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div
+              className="w-3 h-3 rounded-full animate-bounce"
+              style={{ backgroundColor: "var(--color-primary)" }}
+            ></div>
+            <div
+              className="w-3 h-3 rounded-full animate-bounce"
+              style={{
+                backgroundColor: "var(--color-accent)",
+                animationDelay: "0.1s",
+              }}
+            ></div>
+            <div
+              className="w-3 h-3 rounded-full animate-bounce"
+              style={{
+                backgroundColor: "var(--color-primary)",
+                animationDelay: "0.2s",
+              }}
+            ></div>
           </div>
-          
           {/* Progress Bar */}
-          <div className="w-64 h-1 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-500 to-teal-600 rounded-full animate-progress"></div>
+          <div className="w-80 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--color-border)" }}>
+            <div
+              className="h-full rounded-full animate-pulse"
+              style={{
+                background: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+              }}
+            ></div>
           </div>
         </div>
       </div>
-      
-      {/* Custom CSS for animations */}
-      <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes fade-in-delay {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes progress {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.6s ease-out;
-        }
-        
-        .animate-fade-in-delay {
-          animation: fade-in-delay 0.6s ease-out 0.3s both;
-        }
-        
-        .animate-progress {
-          animation: progress 2s ease-in-out infinite;
-        }
-      `}</style>
     </div>
-  );
-};
+  )
+}
 
 export default function Profile() {
-  const router = useRouter();
-  const { toast } = useToast();
-
+  const router = useRouter()
+  const { toast } = useToast()
   // Local state for the fetched profile
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [fieldOptions, setFieldOptions] = useState<string[]>([]);
-  const [levelOptions, setLevelOptions] = useState<string[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [fieldOptions, setFieldOptions] = useState<string[]>([])
+  const [levelOptions, setLevelOptions] = useState<string[]>([])
 
   // Fetch user data on mount
   useEffect(() => {
-    const token = localStorage.getItem("token");
-
+    const token = localStorage.getItem("token")
     // Redirect if no token
     if (!token) {
-      toast({ title: "Please sign in", description: "Redirecting..." });
-      router.push("/SignIn");
-      return;
+      toast({ title: "Please sign in", description: "Redirecting..." })
+      router.push("/SignIn")
+      return
     }
 
     const fetchData = async () => {
@@ -148,72 +161,74 @@ export default function Profile() {
         // Fetch profile
         const profileRes = await fetch("/api/profile", {
           headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (profileRes.status === 401) throw new Error("Unauthorized");
-
-        const profileData = await profileRes.json();
-        setProfile(profileData.user);
+        })
+        if (profileRes.status === 401) throw new Error("Unauthorized")
+        const profileData = await profileRes.json()
+        setProfile(profileData.user)
 
         // Fetch dropdown options
         const [fieldsRes, levelsRes] = await Promise.all([
           fetch(`/api/fields/fieldOfStudy?nocache=${Date.now()}`),
           fetch(`/api/fields/educationalLevels?nocache=${Date.now()}`),
-        ]);
+        ])
 
-        const fieldsData = await fieldsRes.json();
-        const levelsData = await levelsRes.json();
+        const fieldsData = await fieldsRes.json()
+        const levelsData = await levelsRes.json()
 
-        setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map(f => f.name) : []);
-        setLevelOptions(Array.isArray(levelsData) ? levelsData.map(l => l.level) : []);
+        setFieldOptions(Array.isArray(fieldsData) ? fieldsData.map((f) => f.name) : [])
+        setLevelOptions(Array.isArray(levelsData) ? levelsData.map((l) => l.level) : [])
       } catch (err: any) {
-        console.error("Profile fetch error:", err);
-        toast({ title: "Error", description: err.message, variant: "destructive" });
-        router.push("/SignIn");
+        console.error("Profile fetch error:", err)
+        toast({ title: "Error", description: err.message, variant: "destructive" })
+        router.push("/SignIn")
       } finally {
         // Add a small delay to show the loading animation
         setTimeout(() => {
-          setLoading(false);
-        }, 1000);
+          setLoading(false)
+        }, 1000)
       }
-    };
+    }
 
-    fetchData();
-  }, [router, toast]);
+    fetchData()
+  }, [router, toast])
 
   // Handlers
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setProfile((prev) => (prev ? { ...prev, [name]: value } : prev));
-  };
+    const { name, value } = e.target
+    setProfile((prev) => (prev ? { ...prev, [name]: value } : prev))
+  }
 
   const handleSelect = (field: keyof UserProfile, value: string) => {
-    setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
+    setProfile((prev) => (prev ? { ...prev, [field]: value } : prev))
+  }
 
-  const handlePrefChange = (key: keyof UserProfile['preferences']) => {
+  const handlePrefChange = (key: keyof UserProfile["preferences"]) => {
     setProfile((prev) =>
       prev
         ? {
             ...prev,
             preferences: {
               ...prev.preferences,
-              [key]: !prev.preferences[key]
-            }
+              [key]: !prev.preferences[key],
+            },
           }
-        : prev
-    );
-  };
+        : prev,
+    )
+  }
 
   const saveProfile = async () => {
-    if (!profile) return;
-    setSaving(true);
+    if (!profile) return
+    setSaving(true)
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token")
       if (!token) {
-        toast({ title: "Error", description: "Session expired. Please sign in again.", variant: "destructive" });
-        router.push("/SignIn");
-        return;
+        toast({
+          title: "Error",
+          description: "Session expired. Please sign in again.",
+          variant: "destructive",
+        })
+        router.push("/SignIn")
+        return
       }
 
       // 1. Initial save request
@@ -224,140 +239,308 @@ export default function Profile() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(profile),
-      });
-      
+      })
+
       if (!saveRes.ok) {
-        const errorData = await saveRes.json();
-        throw new Error(errorData.message || "Failed to update profile");
+        const errorData = await saveRes.json()
+        throw new Error(errorData.message || "Failed to update profile")
       }
 
       // 2. Force refresh with cache-busting
       const refreshRes = await fetch(`/api/profile?ts=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
-      });
-      
+      })
+
       if (!refreshRes.ok) {
-        console.warn("Refresh failed, using original response data");
-        const saveData = await saveRes.json();
-        setProfile(saveData.user);
+        console.warn("Refresh failed, using original response data")
+        const saveData = await saveRes.json()
+        setProfile(saveData.user)
       } else {
-        const refreshData = await refreshRes.json();
-        setProfile(refreshData.user);
+        const refreshData = await refreshRes.json()
+        setProfile(refreshData.user)
       }
 
-      setIsEditing(false);
-      toast({ title: "Saved", description: "Profile updated successfully" });
+      setIsEditing(false)
+      toast({ title: "Saved", description: "Profile updated successfully" })
     } catch (err: any) {
-      console.error("Save error:", err);
+      console.error("Save error:", err)
       toast({
         title: "Error",
         description: err.message || "Failed to save changes",
         variant: "destructive",
-      });
+      })
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   // Show loading screen while fetching data
   if (loading) {
-    return <ProfileLoadingScreen />;
+    return <ProfileLoadingScreen />
   }
 
   return (
-    <div className="min-h-screen bg-origin-padding bg-background">
+    <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: "var(--color-background)" }}>
       <Navbar />
-      <main className="container py-6 px-6">
-        <div className="mb-8">
-          <h1 className="font-bold text-3xl mb-2">User Profile</h1>
-          <p className="text-muted-foreground">Manage your personal information and preferences</p>
+      <main className="container py-8 px-4 md:px-6 lg:px-8">
+        {/* Header Section */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between">
+            <div>
+              <Badge
+                variant="outline"
+                className="mb-4 px-4 py-2 text-sm font-medium transition-colors duration-300"
+                style={{
+                  backgroundColor: "var(--color-primary)",
+                  color: "white",
+                  borderColor: "var(--color-primary)",
+                }}
+              >
+                <User className="w-4 h-4 mr-2" />
+                Your Profile
+              </Badge>
+              <h1
+                className="text-4xl font-bold bg-gradient-to-r bg-clip-text text-transparent mb-2"
+                style={{
+                  backgroundImage: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+                }}
+              >
+                Profile Management
+              </h1>
+              <p className="text-xl" style={{ color: "var(--color-text-light)" }}>
+                Manage your personal information and preferences
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="grid gap-6 md:grid-cols-3">
-          {/* Profile Card */}
-          <div className="md:col-span-1">
-            <Card>
-              <CardHeader className="text-center">
-                <Avatar className="w-24 h-24 mx-auto">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="text-3xl bg-purple-500 text-white">
-                    {profile?.firstName.charAt(0)}{profile?.lastName.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <CardTitle className="mt-4">{profile?.firstName} {profile?.lastName}</CardTitle>
-                <CardDescription>{profile?.email}</CardDescription>
+
+        <div className="grid gap-8 lg:grid-cols-4">
+          {/* Profile Summary Card */}
+          <div className="lg:col-span-1">
+            <Card
+              className="border shadow-lg backdrop-blur-sm sticky top-8 transition-colors duration-300"
+              style={{
+                backgroundColor: "var(--color-background)",
+                borderColor: "var(--color-border)",
+              }}
+            >
+              <CardHeader className="text-center pb-4">
+                <div className="relative">
+                  <Avatar className="w-24 h-24 mx-auto mb-4 ring-4" style={{ borderColor: "var(--color-border)" }}>
+                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarFallback className="text-2xl text-white" style={{ backgroundColor: "var(--color-primary)" }}>
+                      {profile?.firstName.charAt(0)}
+                      {profile?.lastName.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  {isEditing && (
+                    <div
+                      className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{ backgroundColor: "var(--color-primary)" }}
+                    >
+                      <Edit3 className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                </div>
+                <CardTitle className="text-xl" style={{ color: "var(--color-text)" }}>
+                  {profile?.firstName} {profile?.lastName}
+                </CardTitle>
+                <CardDescription className="flex items-center justify-center mt-2">
+                  <Mail className="w-4 h-4 mr-2" />
+                  {profile?.email}
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">From:</span>
-                    <span className="font-medium">{profile?.country}</span>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: "var(--color-primary)20" }}
+                  >
+                    <div className="flex items-center">
+                      <MapPin className="w-4 h-4 mr-2" style={{ color: "var(--color-primary)" }} />
+                      <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                        From
+                      </span>
+                    </div>
+                    <span className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
+                      {profile?.country}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Destination:</span>
-                    <span className="font-medium">{profile?.destination}</span>
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: "var(--color-accent)20" }}
+                  >
+                    <div className="flex items-center">
+                      <Globe className="w-4 h-4 mr-2" style={{ color: "var(--color-accent)" }} />
+                      <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                        To
+                      </span>
+                    </div>
+                    <span className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
+                      {profile?.destination || "Not set"}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Education Level:</span>
-                    <span className="font-medium">{profile?.educationalLevel}</span>
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: "#10b98120" }}
+                  >
+                    <div className="flex items-center">
+                      <GraduationCap className="w-4 h-4 text-green-600 mr-2" />
+                      <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                        Level
+                      </span>
+                    </div>
+                    <span className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
+                      {profile?.educationalLevel}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Field:</span>
-                    <span className="font-medium">{profile?.fieldOfStudy}</span>
+                  <div
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: "#f9731620" }}
+                  >
+                    <div className="flex items-center">
+                      <BookOpen className="w-4 h-4 text-orange-600 mr-2" />
+                      <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                        Field
+                      </span>
+                    </div>
+                    <span className="font-medium text-sm" style={{ color: "var(--color-text)" }}>
+                      {profile?.fieldOfStudy || "Not set"}
+                    </span>
                   </div>
                 </div>
               </CardContent>
               <CardFooter>
                 <Button
-                  className="w-full"
-                  variant={isEditing ? "outline" : "default"}
+                  className={`w-full transition-all duration-300 ${isEditing ? "bg-red-500 hover:bg-red-600" : ""}`}
+                  style={
+                    !isEditing
+                      ? {
+                          background: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+                          color: "white",
+                          border: "none",
+                        }
+                      : {}
+                  }
                   onClick={() => setIsEditing(!isEditing)}
                   disabled={saving}
                 >
-                  {isEditing ? "Cancel Editing" : "Edit Profile"}
+                  {isEditing ? (
+                    <>
+                      <X className="w-4 h-4 mr-2" />
+                      Cancel Editing
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Edit Profile
+                    </>
+                  )}
                 </Button>
               </CardFooter>
             </Card>
           </div>
-          {/* Edit Form */}
-          <div className="md:col-span-2">
-            <Tabs defaultValue="personal">
-              <TabsList className="mb-4">
-                <TabsTrigger value="personal">Personal Info</TabsTrigger>
-                <TabsTrigger value="academic">Academic Info</TabsTrigger>
-                <TabsTrigger value="preferences">Preferences</TabsTrigger>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            <Tabs defaultValue="personal" className="space-y-6">
+              <TabsList
+                className="grid w-full grid-cols-3 backdrop-blur-sm border shadow-sm transition-colors duration-300"
+                style={{
+                  backgroundColor: "var(--color-background)",
+                  borderColor: "var(--color-border)",
+                }}
+              >
+                <TabsTrigger
+                  value="personal"
+                  className="flex items-center space-x-2 transition-colors duration-300"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  <User className="w-4 h-4" />
+                  <span>Personal</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="academic"
+                  className="flex items-center space-x-2 transition-colors duration-300"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Academic</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="preferences"
+                  className="flex items-center space-x-2 transition-colors duration-300"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>Preferences</span>
+                </TabsTrigger>
               </TabsList>
-              <Card>
-                {/* Personal Tab */}
-                <TabsContent value="personal" className="m-0">
+
+              {/* Personal Tab */}
+              <TabsContent value="personal" className="space-y-6">
+                <Card
+                  className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
+                  style={{
+                    backgroundColor: "var(--color-background)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
                   <CardHeader>
-                    <CardTitle>Personal Information</CardTitle>
-                    <CardDescription>Update your personal details and contact information</CardDescription>
+                    <CardTitle className="flex items-center space-x-2">
+                      <User className="w-5 h-5" style={{ color: "var(--color-primary)" }} />
+                      <span style={{ color: "var(--color-text)" }}>Personal Information</span>
+                    </CardTitle>
+                    <CardDescription style={{ color: "var(--color-text-light)" }}>
+                      Update your personal details and contact information
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <Label htmlFor="firstName">First Name</Label>
+                        <Label htmlFor="firstName" className="flex items-center space-x-2">
+                          <User className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                          <span style={{ color: "var(--color-text)" }}>First Name</span>
+                        </Label>
                         <Input
                           id="firstName"
                           name="firstName"
                           value={profile?.firstName || ""}
                           onChange={handleChange}
                           disabled={!isEditing}
+                          className="h-12 transition-colors duration-300"
+                          style={{
+                            backgroundColor: "var(--color-background)",
+                            borderColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="lastName">Last Name</Label>
+                        <Label htmlFor="lastName" className="flex items-center space-x-2">
+                          <User className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                          <span style={{ color: "var(--color-text)" }}>Last Name</span>
+                        </Label>
                         <Input
                           id="lastName"
                           name="lastName"
                           value={profile?.lastName || ""}
                           onChange={handleChange}
                           disabled={!isEditing}
+                          className="h-12 transition-colors duration-300"
+                          style={{
+                            backgroundColor: "var(--color-background)",
+                            borderColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="email" className="flex items-center space-x-2">
+                        <Mail className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                        <span style={{ color: "var(--color-text)" }}>Email</span>
+                      </Label>
                       <Input
                         id="email"
                         name="email"
@@ -365,38 +548,64 @@ export default function Profile() {
                         value={profile?.email || ""}
                         onChange={handleChange}
                         disabled={!isEditing}
+                        className="h-12 transition-colors duration-300"
+                        style={{
+                          backgroundColor: "var(--color-background)",
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text)",
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Phone Number</Label>
+                      <Label htmlFor="phone" className="flex items-center space-x-2">
+                        <Phone className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                        <span style={{ color: "var(--color-text)" }}>Phone Number</span>
+                      </Label>
                       <Input
                         id="phone"
                         name="phone"
                         value={profile?.phone || ""}
                         onChange={handleChange}
                         disabled={!isEditing}
+                        className="h-12 transition-colors duration-300"
+                        style={{
+                          backgroundColor: "var(--color-background)",
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text)",
+                        }}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="country">Home Country</Label>
-                      <CountrySelect
-                        id="country"
-                        value={profile?.country || ""}
-                        onChange={(v) => handleSelect("country", v)}
-                        disabled={!isEditing}
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="country" className="flex items-center space-x-2">
+                          <MapPin className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                          <span style={{ color: "var(--color-text)" }}>Home Country</span>
+                        </Label>
+                        <CountrySelect
+                          id="country"
+                          value={profile?.country || ""}
+                          onChange={(v) => handleSelect("country", v)}
+                          disabled={!isEditing}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="destination" className="flex items-center space-x-2">
+                          <Globe className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                          <span style={{ color: "var(--color-text)" }}>Destination Country</span>
+                        </Label>
+                        <CountrySelect
+                          id="destination"
+                          value={profile?.destination || ""}
+                          onChange={(v) => handleSelect("destination", v)}
+                          disabled={!isEditing}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="destination">Destination Country</Label>
-                      <CountrySelect
-                        id="destination"
-                        value={profile?.destination || ""}
-                        onChange={(v) => handleSelect("destination", v)}
-                        disabled={!isEditing}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="bio">Bio</Label>
+                      <Label htmlFor="bio" className="flex items-center space-x-2">
+                        <MessageCircle className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                        <span style={{ color: "var(--color-text)" }}>Bio</span>
+                      </Label>
                       <Textarea
                         id="bio"
                         name="bio"
@@ -404,80 +613,120 @@ export default function Profile() {
                         onChange={handleChange}
                         disabled={!isEditing}
                         rows={4}
+                        className="resize-none transition-colors duration-300"
+                        style={{
+                          backgroundColor: "var(--color-background)",
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text)",
+                        }}
                       />
                     </div>
-                    <div className="mt-6">
-                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gradient-to-r from-blue-50 to-teal-50 p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:border-blue-300">
-                        {/* Background Pattern */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-teal-500/5"></div>
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-400/10 to-teal-400/10 rounded-full -mr-10 -mt-10"></div>
-                        
-                        {/* Content */}
-                        <div className="relative">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-lg text-gray-800 mb-2">
+                    {/* Education Comparison CTA */}
+                    <Card
+                      className="border hover:shadow-md transition-all duration-300"
+                      style={{
+                        backgroundColor: "var(--color-background)",
+                        borderColor: "var(--color-border)",
+                      }}
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-3">
+                              <BarChart3 className="w-6 h-6" style={{ color: "var(--color-primary)" }} />
+                              <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>
                                 Education System Comparison
                               </h3>
-                              <p className="text-sm text-gray-600 leading-relaxed">
-                                Get detailed insights comparing education systems between your home and destination country. 
-                                Understand requirements, equivalencies, and pathways.
-                              </p>
                             </div>
-                            <div className="ml-4 p-2 bg-white rounded-lg shadow-sm">
-                              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                              </svg>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2 text-xs text-gray-500">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">
+                            <p className="mb-4 leading-relaxed" style={{ color: "var(--color-text-light)" }}>
+                              Get detailed insights comparing education systems between your home and destination
+                              country. Understand requirements, equivalencies, and pathways.
+                            </p>
+                            <div className="flex items-center space-x-2">
+                              <Badge
+                                variant="secondary"
+                                className="transition-colors duration-300"
+                                style={{
+                                  backgroundColor: "var(--color-primary)20",
+                                  color: "var(--color-primary)",
+                                }}
+                              >
                                 Free Tool
-                              </span>
-                              <span className="inline-flex items-center px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                              </Badge>
+                              <Badge
+                                variant="secondary"
+                                className="transition-colors duration-300"
+                                style={{
+                                  backgroundColor: "#10b98120",
+                                  color: "#10b981",
+                                }}
+                              >
                                 Instant Results
-                              </span>
+                              </Badge>
                             </div>
-                            
-                            <Button
-                              className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-700 hover:to-teal-700 text-white font-medium px-6 py-2 rounded-lg shadow-sm transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                              onClick={() => router.push('/Compare-education')}
-                              disabled={isEditing}
-                            >
-                              <span className="flex items-center space-x-2">
-                                <span>Compare Now</span>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                </svg>
-                              </span>
-                            </Button>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            className="text-white transition-all duration-300"
+                            style={{
+                              background: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+                              border: "none",
+                            }}
+                            onClick={() => router.push("/Compare-education")}
+                            disabled={isEditing}
+                          >
+                            <span>Compare Now</span>
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </CardContent>
-                </TabsContent>
-                {/* Academic Tab */}
-                <TabsContent value="academic" className="m-0">
+                </Card>
+              </TabsContent>
+
+              {/* Academic Tab */}
+              <TabsContent value="academic" className="space-y-6">
+                <Card
+                  className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
+                  style={{
+                    backgroundColor: "var(--color-background)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
                   <CardHeader>
-                    <CardTitle>Academic Information</CardTitle>
-                    <CardDescription>Manage your educational details and preferences</CardDescription>
+                    <CardTitle className="flex items-center space-x-2">
+                      <GraduationCap className="w-5 h-5" style={{ color: "var(--color-primary)" }} />
+                      <span style={{ color: "var(--color-text)" }}>Academic Information</span>
+                    </CardTitle>
+                    <CardDescription style={{ color: "var(--color-text-light)" }}>
+                      Manage your educational details and preferences
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="educationalLevel">Educational Level</Label>
+                      <Label htmlFor="educationalLevel" className="flex items-center space-x-2">
+                        <GraduationCap className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                        <span style={{ color: "var(--color-text)" }}>Educational Level</span>
+                      </Label>
                       <Select
                         disabled={!isEditing}
                         value={profile?.educationalLevel}
                         onValueChange={(v) => handleSelect("educationalLevel", v)}
                       >
-                        <SelectTrigger id="educationalLevel">
+                        <SelectTrigger
+                          id="educationalLevel"
+                          className="h-12 transition-colors duration-300"
+                          style={{
+                            backgroundColor: "var(--color-background)",
+                            borderColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
                           <SelectValue placeholder="Select level" />
                         </SelectTrigger>
-                        <SelectContent className="max-h-60 overflow-auto bg-gray-50">
+                        <SelectContent className="max-h-60 overflow-auto">
                           {levelOptions.map((level) => (
                             <SelectItem key={level} value={level}>
                               {level}
@@ -487,16 +736,27 @@ export default function Profile() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="fieldOfStudy">Field of Study</Label>
+                      <Label htmlFor="fieldOfStudy" className="flex items-center space-x-2">
+                        <BookOpen className="w-4 h-4" style={{ color: "var(--color-text-light)" }} />
+                        <span style={{ color: "var(--color-text)" }}>Field of Study</span>
+                      </Label>
                       <Select
                         disabled={!isEditing}
                         value={profile?.fieldOfStudy}
                         onValueChange={(v) => handleSelect("fieldOfStudy", v)}
                       >
-                        <SelectTrigger id="fieldOfStudy">
+                        <SelectTrigger
+                          id="fieldOfStudy"
+                          className="h-12 transition-colors duration-300"
+                          style={{
+                            backgroundColor: "var(--color-background)",
+                            borderColor: "var(--color-border)",
+                            color: "var(--color-text)",
+                          }}
+                        >
                           <SelectValue placeholder="Select field" />
                         </SelectTrigger>
-                        <SelectContent className="max-h-60 overflow-auto bg-gray-50">
+                        <SelectContent className="max-h-60 overflow-auto">
                           {fieldOptions.map((field) => (
                             <SelectItem key={field} value={field}>
                               {field}
@@ -505,85 +765,166 @@ export default function Profile() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Separator />
                   </CardContent>
-                </TabsContent>
-                {/* Preferences Tab */}
-                <TabsContent value="preferences" className="m-0">
+                </Card>
+              </TabsContent>
+
+              {/* Preferences Tab */}
+              <TabsContent value="preferences" className="space-y-6">
+                <Card
+                  className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
+                  style={{
+                    backgroundColor: "var(--color-background)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
                   <CardHeader>
-                    <CardTitle>Preferences</CardTitle>
-                    <CardDescription>Manage your notification and content preferences</CardDescription>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Settings className="w-5 h-5" style={{ color: "var(--color-primary)" }} />
+                      <span style={{ color: "var(--color-text)" }}>Preferences</span>
+                    </CardTitle>
+                    <CardDescription style={{ color: "var(--color-text-light)" }}>
+                      Manage your notification and content preferences
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <h4 className="font-medium">Email Notifications</h4>
-                        <p className="text-sm text-muted-foreground">Receive email updates</p>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-6">
+                      <div
+                        className="flex items-center justify-between p-4 rounded-lg"
+                        style={{ backgroundColor: "var(--color-primary)10" }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Bell className="w-5 h-5" style={{ color: "var(--color-primary)" }} />
+                          <div>
+                            <h4 className="font-medium" style={{ color: "var(--color-text)" }}>
+                              Email Notifications
+                            </h4>
+                            <p className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                              Receive email updates and announcements
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          disabled={!isEditing}
+                          checked={profile?.preferences.emailNotifications}
+                          onCheckedChange={() => handlePrefChange("emailNotifications")}
+                        />
                       </div>
-                      <Switch
-                        disabled={!isEditing}
-                        checked={profile?.preferences.emailNotifications}
-                        onCheckedChange={() => handlePrefChange("emailNotifications")}
-                      />
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <h4 className="font-medium">App Notifications</h4>
-                        <p className="text-sm text-muted-foreground">Receive in-app updates</p>
+                      <div
+                        className="flex items-center justify-between p-4 rounded-lg"
+                        style={{ backgroundColor: "var(--color-accent)10" }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Bell className="w-5 h-5" style={{ color: "var(--color-accent)" }} />
+                          <div>
+                            <h4 className="font-medium" style={{ color: "var(--color-text)" }}>
+                              App Notifications
+                            </h4>
+                            <p className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                              Receive in-app updates and alerts
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          disabled={!isEditing}
+                          checked={profile?.preferences.appNotifications}
+                          onCheckedChange={() => handlePrefChange("appNotifications")}
+                        />
                       </div>
-                      <Switch
-                        disabled={!isEditing}
-                        checked={profile?.preferences.appNotifications}
-                        onCheckedChange={() => handlePrefChange("appNotifications")}
-                      />
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <h4 className="font-medium">Resource Recommendations</h4>
-                        <p className="text-sm text-muted-foreground">Get personalized resources</p>
+                      <div
+                        className="flex items-center justify-between p-4 rounded-lg"
+                        style={{ backgroundColor: "#10b98110" }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Lightbulb className="w-5 h-5 text-green-600" />
+                          <div>
+                            <h4 className="font-medium" style={{ color: "var(--color-text)" }}>
+                              Resource Recommendations
+                            </h4>
+                            <p className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                              Get personalized educational resources
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          disabled={!isEditing}
+                          checked={profile?.preferences.resourceRecommendations}
+                          onCheckedChange={() => handlePrefChange("resourceRecommendations")}
+                        />
                       </div>
-                      <Switch
-                        disabled={!isEditing}
-                        checked={profile?.preferences.resourceRecommendations}
-                        onCheckedChange={() => handlePrefChange("resourceRecommendations")}
-                      />
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <h4 className="font-medium">Peer Connections</h4>
-                        <p className="text-sm text-muted-foreground">Allow peer support</p>
+                      <div
+                        className="flex items-center justify-between p-4 rounded-lg"
+                        style={{ backgroundColor: "#f9731610" }}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Users className="w-5 h-5 text-orange-600" />
+                          <div>
+                            <h4 className="font-medium" style={{ color: "var(--color-text)" }}>
+                              Peer Connections
+                            </h4>
+                            <p className="text-sm" style={{ color: "var(--color-text-light)" }}>
+                              Allow connections with other students
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          disabled={!isEditing}
+                          checked={profile?.preferences.peerConnections}
+                          onCheckedChange={() => handlePrefChange("peerConnections")}
+                        />
                       </div>
-                      <Switch
-                        disabled={!isEditing}
-                        checked={profile?.preferences.peerConnections}
-                        onCheckedChange={() => handlePrefChange("peerConnections")}
-                      />
                     </div>
                   </CardContent>
-                </TabsContent>
-                {/* Save/Cancel Footer */}
-                {isEditing && (
-                  <CardFooter className="flex justify-end gap-2 border-t pt-6">
-                    <Button variant="outline" onClick={() => setIsEditing(false)} disabled={saving}>
+                </Card>
+              </TabsContent>
+
+              {/* Save/Cancel Footer */}
+              {isEditing && (
+                <Card
+                  className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
+                  style={{
+                    backgroundColor: "var(--color-background)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
+                  <CardFooter className="flex justify-end gap-4 p-6">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                      disabled={saving}
+                      className="px-6 transition-colors duration-300"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text)",
+                        backgroundColor: "transparent",
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
                       Cancel
                     </Button>
                     <Button
-                      className="bg-blue-500 hover:bg-teal-500"
+                      className="px-6 text-white transition-all duration-300"
+                      style={{
+                        background: `linear-gradient(to right, var(--color-primary), var(--color-accent))`,
+                        border: "none",
+                      }}
                       onClick={saveProfile}
                       disabled={saving}
                     >
+                      {saving ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                      ) : (
+                        <Save className="w-4 h-4 mr-2" />
+                      )}
                       {saving ? "Saving..." : "Save Changes"}
                     </Button>
                   </CardFooter>
-                )}
-              </Card>
+                </Card>
+              )}
             </Tabs>
           </div>
         </div>
       </main>
     </div>
-  );
+  )
 }

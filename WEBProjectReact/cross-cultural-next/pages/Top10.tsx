@@ -29,7 +29,6 @@ export default function Top10Page() {
 
   const handleSearch = async (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault()
-
     if (!searchType.trim() || !country.trim() || !city.trim()) {
       setError("Please fill in all fields")
       return
@@ -70,7 +69,6 @@ export default function Top10Page() {
 
   const renderStars = (rating?: number) => {
     if (!rating) return null
-
     return (
       <div className="flex items-center gap-1">
         {[...Array(5)].map((_, i) => (
@@ -85,44 +83,59 @@ export default function Top10Page() {
             }`}
           />
         ))}
-        <span className="text-sm text-slate-600 ml-1 font-medium">{rating.toFixed(1)}</span>
+        <span className="text-sm ml-1 font-medium" style={{ color: "var(--color-text-light)" }}>
+          {rating.toFixed(1)}
+        </span>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen transition-colors duration-300" style={{ backgroundColor: "var(--color-background)" }}>
       {/* Full-width Navbar using your existing component */}
-      <div className="w-full">
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000 }}>
         <Navbar />
       </div>
-      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Professional Header */}
         <div className="text-center mb-16">
           <div className="flex items-center justify-center mb-6">
-            <div className="flex items-center justify-center w-16 h-16 bg-slate-900 rounded-2xl mr-4">
+            <div
+              className="flex items-center justify-center w-16 h-16 rounded-2xl mr-4"
+              style={{ backgroundColor: "var(--color-primary)" }}
+            >
               <Award className="w-8 h-8 text-white" />
             </div>
             <div className="text-left">
-              <h1 className="text-4xl font-bold text-slate-900 mb-2">Elite Location Discovery</h1>
-              <p className="text-lg text-slate-600">Powered by Advanced AI Intelligence</p>
+              <br />
+              <h1 className="text-4xl font-bold mb-2" style={{ color: "var(--color-text)" }}>
+                Elite Location Discovery
+              </h1>
+              <p className="text-lg" style={{ color: "var(--color-text-light)" }}>
+                Powered by Advanced AI Intelligence
+              </p>
             </div>
           </div>
-          <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-            Discover exceptional venues and destinations with our professional-grade recommendation engine. 
-            Get curated insights from comprehensive data analysis.
+          <p className="text-xl max-w-3xl mx-auto leading-relaxed" style={{ color: "var(--color-text-light)" }}>
+            Discover exceptional venues and destinations with our professional-grade recommendation engine. Get curated
+            insights from comprehensive data analysis.
           </p>
         </div>
 
         {/* Professional Search Form */}
-        <Card className="mb-12 border-0 shadow-xl bg-white">
+        <Card
+          className="mb-12 border shadow-xl transition-colors duration-300"
+          style={{
+            backgroundColor: "var(--color-background)",
+            borderColor: "var(--color-border)",
+          }}
+        >
           <CardHeader className="pb-6">
-            <CardTitle className="flex items-center gap-3 text-2xl text-slate-900">
-              <Search className="w-6 h-6 text-slate-700" />
+            <CardTitle className="flex items-center gap-3 text-2xl" style={{ color: "var(--color-text)" }}>
+              <Search className="w-6 h-6" style={{ color: "var(--color-text-light)" }} />
               Advanced Location Search
             </CardTitle>
-            <CardDescription className="text-base text-slate-600">
+            <CardDescription className="text-base" style={{ color: "var(--color-text-light)" }}>
               Specify your requirements to receive personalized recommendations from our AI-powered system
             </CardDescription>
           </CardHeader>
@@ -130,7 +143,11 @@ export default function Top10Page() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="space-y-3">
-                  <Label htmlFor="searchType" className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                  <Label
+                    htmlFor="searchType"
+                    className="text-sm font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--color-text-light)" }}
+                  >
                     Category
                   </Label>
                   <Input
@@ -138,12 +155,21 @@ export default function Top10Page() {
                     placeholder="Restaurants, Hotels, Cafés, Bars..."
                     value={searchType}
                     onChange={(e) => setSearchType(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch(e)}
-                    className="h-12 border-slate-200 focus:border-slate-400 focus:ring-slate-400 text-base"
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch(e)}
+                    className="h-12 text-base transition-colors duration-300"
+                    style={{
+                      backgroundColor: "var(--color-background)",
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
                   />
                 </div>
                 <div className="space-y-3">
-                  <Label htmlFor="country" className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                  <Label
+                    htmlFor="country"
+                    className="text-sm font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--color-text-light)" }}
+                  >
                     Country
                   </Label>
                   <Input
@@ -151,12 +177,21 @@ export default function Top10Page() {
                     placeholder="United States, United Kingdom, France..."
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch(e)}
-                    className="h-12 border-slate-200 focus:border-slate-400 focus:ring-slate-400 text-base"
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch(e)}
+                    className="h-12 text-base transition-colors duration-300"
+                    style={{
+                      backgroundColor: "var(--color-background)",
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
                   />
                 </div>
                 <div className="space-y-3">
-                  <Label htmlFor="city" className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                  <Label
+                    htmlFor="city"
+                    className="text-sm font-semibold uppercase tracking-wide"
+                    style={{ color: "var(--color-text-light)" }}
+                  >
                     City
                   </Label>
                   <Input
@@ -164,23 +199,30 @@ export default function Top10Page() {
                     placeholder="New York, London, Paris..."
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearch(e)}
-                    className="h-12 border-slate-200 focus:border-slate-400 focus:ring-slate-400 text-base"
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch(e)}
+                    className="h-12 text-base transition-colors duration-300"
+                    style={{
+                      backgroundColor: "var(--color-background)",
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
                   />
                 </div>
               </div>
-
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-6 py-4 rounded-r-lg">
                   <p className="font-medium">{error}</p>
                 </div>
               )}
-
               <div className="flex justify-center pt-4">
-                <Button 
+                <Button
                   onClick={handleSearch}
-                  disabled={loading} 
-                  className="px-8 py-3 h-auto bg-slate-900 hover:bg-slate-800 text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  disabled={loading}
+                  className="px-8 py-3 h-auto text-white font-semibold text-base rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  style={{
+                    backgroundColor: "var(--color-primary)",
+                    border: "none",
+                  }}
                 >
                   {loading ? (
                     <>
@@ -204,12 +246,17 @@ export default function Top10Page() {
           <div className="text-center py-16">
             <div className="flex items-center justify-center mb-6">
               <div className="relative">
-                <div className="w-16 h-16 border-4 border-slate-200 rounded-full"></div>
-                <div className="absolute top-0 left-0 w-16 h-16 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-16 h-16 border-4 rounded-full" style={{ borderColor: "var(--color-border)" }}></div>
+                <div
+                  className="absolute top-0 left-0 w-16 h-16 border-4 border-t-transparent rounded-full animate-spin"
+                  style={{ borderColor: "var(--color-primary)" }}
+                ></div>
               </div>
             </div>
-            <h3 className="text-xl font-semibold text-slate-900 mb-2">Processing Your Request</h3>
-            <p className="text-slate-600 text-lg">
+            <h3 className="text-xl font-semibold mb-2" style={{ color: "var(--color-text)" }}>
+              Processing Your Request
+            </h3>
+            <p className="text-lg" style={{ color: "var(--color-text-light)" }}>
               Analyzing {searchType} in {city}, {country}
             </p>
           </div>
@@ -219,25 +266,37 @@ export default function Top10Page() {
         {hasSearched && !loading && places.length > 0 && (
           <div>
             <div className="mb-10">
-              <h2 className="text-3xl font-bold text-slate-900 mb-3">
+              <h2 className="text-3xl font-bold mb-3" style={{ color: "var(--color-text)" }}>
                 Top 10 {searchType} in {city}, {country}
               </h2>
-              <p className="text-lg text-slate-600">
+              <p className="text-lg" style={{ color: "var(--color-text-light)" }}>
                 Curated recommendations based on comprehensive analysis and user feedback
               </p>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
               {places.map((place, index) => (
-                <Card key={index} className="border-0 shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group">
+                <Card
+                  key={index}
+                  className="border shadow-lg hover:shadow-2xl transition-all duration-300 group"
+                  style={{
+                    backgroundColor: "var(--color-background)",
+                    borderColor: "var(--color-border)",
+                  }}
+                >
                   <CardHeader className="pb-4">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-8 h-8 bg-slate-900 text-white text-sm font-bold rounded-full">
+                        <div
+                          className="flex items-center justify-center w-8 h-8 text-white text-sm font-bold rounded-full"
+                          style={{ backgroundColor: "var(--color-primary)" }}
+                        >
                           {index + 1}
                         </div>
                         <div className="flex-1">
-                          <CardTitle className="text-xl font-bold text-slate-900 group-hover:text-slate-700 transition-colors">
+                          <CardTitle
+                            className="text-xl font-bold group-hover:opacity-80 transition-colors"
+                            style={{ color: "var(--color-text)" }}
+                          >
                             {place.name}
                           </CardTitle>
                         </div>
@@ -249,32 +308,40 @@ export default function Top10Page() {
                         </div>
                       )}
                     </div>
-                    {place.rating && (
-                      <div className="mb-3">
-                        {renderStars(place.rating)}
-                      </div>
-                    )}
+                    {place.rating && <div className="mb-3">{renderStars(place.rating)}</div>}
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <CardDescription className="text-slate-700 leading-relaxed text-base">
+                    <CardDescription className="leading-relaxed text-base" style={{ color: "var(--color-text-light)" }}>
                       {place.description}
                     </CardDescription>
-
                     {place.address && (
-                      <div className="flex items-start gap-3 text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
-                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-500" />
-                        <span className="font-medium">{place.address}</span>
+                      <div
+                        className="flex items-start gap-3 text-sm p-3 rounded-lg"
+                        style={{ backgroundColor: "var(--color-border)50" }}
+                      >
+                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "var(--color-text-light)" }} />
+                        <span className="font-medium" style={{ color: "var(--color-text-light)" }}>
+                          {place.address}
+                        </span>
                       </div>
                     )}
-
                     {place.highlights && place.highlights.length > 0 && (
                       <div className="space-y-3">
-                        <h4 className="font-semibold text-sm text-slate-800 uppercase tracking-wide">Key Features</h4>
+                        <h4
+                          className="font-semibold text-sm uppercase tracking-wide"
+                          style={{ color: "var(--color-text)" }}
+                        >
+                          Key Features
+                        </h4>
                         <div className="flex flex-wrap gap-2">
                           {place.highlights.map((highlight, idx) => (
-                            <span 
-                              key={idx} 
-                              className="bg-slate-100 text-slate-700 text-xs font-medium px-3 py-1 rounded-full hover:bg-slate-200 transition-colors"
+                            <span
+                              key={idx}
+                              className="text-xs font-medium px-3 py-1 rounded-full hover:opacity-80 transition-colors"
+                              style={{
+                                backgroundColor: "var(--color-border)",
+                                color: "var(--color-text-light)",
+                              }}
                             >
                               {highlight}
                             </span>
@@ -292,11 +359,16 @@ export default function Top10Page() {
         {/* Professional No Results */}
         {hasSearched && !loading && places.length === 0 && !error && (
           <div className="text-center py-16">
-            <div className="w-24 h-24 mx-auto mb-6 bg-slate-100 rounded-full flex items-center justify-center">
-              <Search className="w-12 h-12 text-slate-400" />
+            <div
+              className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "var(--color-border)" }}
+            >
+              <Search className="w-12 h-12" style={{ color: "var(--color-text-light)" }} />
             </div>
-            <h3 className="text-2xl font-semibold text-slate-900 mb-3">No Results Found</h3>
-            <p className="text-slate-600 text-lg max-w-md mx-auto">
+            <h3 className="text-2xl font-semibold mb-3" style={{ color: "var(--color-text)" }}>
+              No Results Found
+            </h3>
+            <p className="text-lg max-w-md mx-auto" style={{ color: "var(--color-text-light)" }}>
               We couldn't find any matches for your criteria. Please try adjusting your search parameters.
             </p>
           </div>
