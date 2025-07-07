@@ -510,6 +510,7 @@ const MentorComponentCore = React.memo(() => {
   const getICEConfiguration = () => {
   return {
     iceServers: [
+      /*
       // Google STUN servers (multiple for redundancy)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -519,7 +520,7 @@ const MentorComponentCore = React.memo(() => {
       
       // Cloudflare STUN servers
       { urls: 'stun:stun.cloudflare.com:3478' },
-      
+      */
       // Free TURN servers for NAT traversal (multiple for redundancy)
       { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
       { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
@@ -3346,7 +3347,7 @@ useEffect(() => {
                     <video 
                       ref={localVideoRef}
                       autoPlay 
-                      muted={false} // Local video should not be muted
+                      muted={true} // Local video should be muted
                       playsInline
                       style={{ 
                         width: '100%', 
@@ -3374,7 +3375,8 @@ useEffect(() => {
                   <div style={{ position: 'relative' }}>
                     <video 
                       ref={remoteVideoRef}
-                      autoPlay 
+                      autoPlay
+                      muted={false} 
                       playsInline
                       style={{ 
                         width: '100%', 
