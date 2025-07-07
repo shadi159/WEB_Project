@@ -701,6 +701,14 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
   }
 }, [remoteStream]);
 
+useEffect(() => {
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.muted = false;
+    remoteVideoRef.current.volume = 1.0;
+    console.log('[AUDIO DEBUG] remoteVideoRef unmuted and volume set to 1.0');
+  }
+}, [remoteStream]);
+
 // 4. Enhanced remote video element with debugging
 const RemoteVideoElement = () => (
   <div style={{ position: 'relative' }}>
@@ -766,6 +774,8 @@ const RemoteVideoElement = () => (
   const [errors, setErrors] = useState<string[]>([]);
   const [endedSessions, setEndedSessions] = useState<Set<string>>(new Set());
   const listenersActiveRef = useRef(false);
+  // Audio detection state
+  const [noAudioDetected, setNoAudioDetected] = useState(false);
 
   // Refs
   const cleanupFunctions = useRef<(() => void)[]>([]);
@@ -1490,7 +1500,7 @@ const startVideoCallCompatible = async () => {
     
     // Create peer with enhanced configuration
     const peer = new SimplePeer({
-      initiator: false,
+      initiator: true,
       trickle: true,
       stream: stream,
       config: getICEConfiguration()
@@ -1940,31 +1950,82 @@ const startVideoCallCompatible = async () => {
 
   useEffect(() => {
     if (!remoteStream) return;
-    
-    const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(remoteStream);
-    const analyser = audioContext.createAnalyser();
-    source.connect(analyser);
-    
+    let audioContext: AudioContext | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let analyser: AnalyserNode | null = null;
+    let interval: NodeJS.Timeout | null = null;
+
+    try {
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      source = audioContext.createMediaStreamSource(remoteStream);
+      analyser = audioContext.createAnalyser();
+      source.connect(analyser);
+    } catch (e) {
+      console.warn('[AUDIO DEBUG] Could not create analyser:', e);
+      return;
+    }
+
     const checkAudio = () => {
+      if (!analyser) return;
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(dataArray);
-      
       const isAudioPlaying = dataArray.some(value => value > 0);
-      console.log('🔊 Audio activity detected:', isAudioPlaying);
-      
+      console.log('[AUDIO DEBUG] Analyser data:', dataArray);
+      setNoAudioDetected(!isAudioPlaying);
       if (!isAudioPlaying) {
-        console.warn('No audio detected!');
+        console.warn('[AUDIO DEBUG] No audio detected!');
       }
     };
-    
-    const interval = setInterval(checkAudio, 2000);
-    
+    interval = setInterval(checkAudio, 2000);
     return () => {
-      clearInterval(interval);
-      audioContext.close();
+      if (interval) clearInterval(interval);
+      if (audioContext) audioContext.close();
     };
   }, [remoteStream]);
+
+  useEffect(() => {
+    if (remoteStream) {
+      const tracks = remoteStream.getAudioTracks();
+      console.log('[AUDIO DEBUG] Remote audio tracks:', tracks.map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        label: track.label,
+        settings: track.getSettings(),
+        constraints: track.getConstraints(),
+      })));
+      // Force enable all remote audio tracks
+      tracks.forEach(track => {
+        if (!track.enabled) {
+          track.enabled = true;
+          console.log(`[AUDIO DEBUG] Forced remote audio track ${track.id} enabled`);
+        }
+      });
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    if (localStream) {
+      const tracks = localStream.getAudioTracks();
+      console.log('[AUDIO DEBUG] Local audio tracks:', tracks.map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        label: track.label,
+        settings: track.getSettings(),
+        constraints: track.getConstraints(),
+      })));
+      // Force enable all local audio tracks
+      tracks.forEach(track => {
+        if (!track.enabled) {
+          track.enabled = true;
+          console.log(`[AUDIO DEBUG] Forced local audio track ${track.id} enabled`);
+        }
+      });
+    }
+  }, [localStream]);
 
   // User initialization with session cleanup
   useEffect(() => {
@@ -3676,6 +3737,18 @@ useEffect(() => {
           }
         }
       `}</style>
+      {isVideoCallActive && noAudioDetected && (
+        <div style={{
+          color: 'red',
+          fontWeight: 'bold',
+          marginTop: '10px',
+          textAlign: 'center',
+          fontSize: '16px',
+        }}>
+          ⚠️ No audio detected from the remote user!<br />
+          Please check microphone permissions and network connection on both sides.
+        </div>
+      )}
     </div>
     </div>
   );
@@ -3686,4 +3759,6 @@ MentorComponent.displayName = 'MentorComponent';
 MentorComponentInner.displayName = 'MentorComponentInner';
 MentorComponentCore.displayName = 'MentorComponentCore';
 
+// (Removed unused setNoAudioDetected stub)
+  throw new Error('Function not implemented.');
 export default MentorComponent;
