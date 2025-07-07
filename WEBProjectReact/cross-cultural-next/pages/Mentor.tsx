@@ -530,6 +530,7 @@ const MentorComponentCore = React.memo(() => {
       { urls: 'turn:turn.anyfirewall.com:443?transport=tcp', username: 'webrtc', credential: 'webrtc' }
     ],
     iceCandidatePoolSize: 10,
+    iceTransportPolicy: 'all', // Use both UDP and TCP
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require'
   };
@@ -707,6 +708,7 @@ const RemoteVideoElement = () => (
       ref={remoteVideoRef}
       autoPlay 
       playsInline
+      muted={false} // Ensure audio is not muted
       style={{ 
         width: '100%', 
         height: '250px', 
@@ -717,6 +719,11 @@ const RemoteVideoElement = () => (
       onLoadedMetadata={() => {
         console.log('✅ Remote video metadata loaded');
         setCallStatus('Connected'); // Ensure status is updated
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.play().catch(e => {
+          console.error('Audio play failed:', e);
+          });
+        }
       }}
       onPlay={() => {
         console.log('✅ Remote video started playing');
@@ -968,6 +975,9 @@ const getMediaStreamWithPermissions = async (): Promise<MediaStream> => {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        channelCount: 2, // Stereo audio
+        sampleRate: 48000, // Higher quality
+        sampleSize: 16
       }
     };
     
@@ -1116,8 +1126,7 @@ const startVideoCallCompatible = async () => {
     stream.getAudioTracks().forEach(track => {
       track.enabled = true;
       console.log(`🎤 Ensured audio track ${track.id} is enabled:`, track.enabled);
-    }); 
-
+    });
     setIsVideoCallActive(true);
     setIsCallInitiator(true);
 
@@ -1204,6 +1213,19 @@ const startVideoCallCompatible = async () => {
         videoTracks: remoteStream.getVideoTracks().length,
         audioTracks: remoteStream.getAudioTracks().length
       });
+
+      // Audio debug
+      const audioTracks = remoteStream.getAudioTracks();
+      console.log('🔊 Remote audio tracks:', audioTracks.map(track => ({
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        kind: track.kind,
+        label: track.label
+      })));
+
+      // Force enable audio tracks
+      audioTracks.forEach(track => track.enabled = true);
       
       setRemoteStream(remoteStream);
       
@@ -1502,16 +1524,25 @@ const startVideoCallCompatible = async () => {
         audioTracks: remoteStream.getAudioTracks().length
       });
 
-      const remoteAudioTracks = remoteStream.getAudioTracks();
-      console.log('🎤 Remote audio tracks received:', remoteAudioTracks.map(track => ({
+      // Audio debug
+      const audioTracks = remoteStream.getAudioTracks();
+      console.log('🔊 Remote audio tracks:', audioTracks.map(track => ({
         id: track.id,
         enabled: track.enabled,
         readyState: track.readyState,
         kind: track.kind,
         label: track.label
-      }))); 
+      })));
+
+      // Force enable audio tracks
+      audioTracks.forEach(track => track.enabled = true);
         
       setRemoteStream(remoteStream);
+
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = true;
+        console.log(`🎤 User ensured audio track ${track.id} enabled:`, track.enabled);
+      });
   
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
@@ -1872,6 +1903,34 @@ const startVideoCallCompatible = async () => {
     }, 100);
   }
 }, [localStream]);
+
+  useEffect(() => {
+    if (!remoteStream) return;
+    
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(remoteStream);
+    const analyser = audioContext.createAnalyser();
+    source.connect(analyser);
+    
+    const checkAudio = () => {
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(dataArray);
+      
+      const isAudioPlaying = dataArray.some(value => value > 0);
+      console.log('🔊 Audio activity detected:', isAudioPlaying);
+      
+      if (!isAudioPlaying) {
+        console.warn('No audio detected!');
+      }
+    };
+    
+    const interval = setInterval(checkAudio, 2000);
+    
+    return () => {
+      clearInterval(interval);
+      audioContext.close();
+    };
+  }, [remoteStream]);
 
   // User initialization with session cleanup
   useEffect(() => {
@@ -3357,6 +3416,26 @@ useEffect(() => {
                   >
                     {isAudioEnabled ? '🎤 Mic On' : '🎤 Mic Off'}
                   </button>
+
+                  {!isAudioEnabled && (
+                      <button
+                        onClick={() => {
+                          const audioTracks = remoteStream?.getAudioTracks() || [];
+                          audioTracks.forEach(track => track.enabled = true);
+                          setIsAudioEnabled(true);
+                        }}
+                        style={{                       padding: '10px 15px', 
+                      backgroundColor: isAudioEnabled ? '#28a745' : '#dc3545', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '25px',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      minWidth: '120px' }}
+                      >
+                        🔊 Unmute Audio
+                      </button>
+                    )}
                   <button 
                     onClick={endVideoCall}
                     style={{ 
