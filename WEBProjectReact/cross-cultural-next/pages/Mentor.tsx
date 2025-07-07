@@ -3346,7 +3346,7 @@ useEffect(() => {
                     <video 
                       ref={localVideoRef}
                       autoPlay 
-                      muted 
+                      muted={false} // Local video should not be muted
                       playsInline
                       style={{ 
                         width: '100%', 
