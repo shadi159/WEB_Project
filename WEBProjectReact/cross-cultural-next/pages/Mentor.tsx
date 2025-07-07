@@ -980,8 +980,14 @@ const getMediaStreamWithPermissions = async (): Promise<MediaStream> => {
         sampleSize: 16
       }
     };
+    let stream = await navigator.mediaDevices.getUserMedia(constraints);
     
-    let stream: MediaStream;
+    stream.getAudioTracks().forEach(track => {
+      if (!track.enabled) {
+        track.enabled = true;
+        console.log(`Audio track ${track.id} enabled`);
+      }
+    });
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       console.log('✅ Media stream obtained with enhanced audio settings');
@@ -1213,6 +1219,20 @@ const startVideoCallCompatible = async () => {
         videoTracks: remoteStream.getVideoTracks().length,
         audioTracks: remoteStream.getAudioTracks().length
       });
+
+      console.log('Received remote stream with audio tracks:', remoteStream.getAudioTracks().length);
+      // Force enable remote audio tracks
+      remoteStream.getAudioTracks().forEach(track => {
+        if (!track.enabled) {
+          track.enabled = true;
+          console.log(`Remote audio track ${track.id} enabled`);
+        }
+      });
+      setRemoteStream(remoteStream);
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(e => console.warn('Play remote video failed:', e));
+      }
 
       // Audio debug
       const audioTracks = remoteStream.getAudioTracks();
@@ -1523,6 +1543,20 @@ const startVideoCallCompatible = async () => {
         videoTracks: remoteStream.getVideoTracks().length,
         audioTracks: remoteStream.getAudioTracks().length
       });
+
+      console.log('Received remote stream with audio tracks:', remoteStream.getAudioTracks().length);
+      // Force enable remote audio tracks
+      remoteStream.getAudioTracks().forEach(track => {
+        if (!track.enabled) {
+          track.enabled = true;
+          console.log(`Remote audio track ${track.id} enabled`);
+        }
+      });
+      setRemoteStream(remoteStream);
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(e => console.warn('Play remote video failed:', e));
+      }
 
       // Audio debug
       const audioTracks = remoteStream.getAudioTracks();
@@ -3350,6 +3384,36 @@ useEffect(() => {
                         objectFit: 'cover'
                       }}
                     />
+                    {/* Add unmute button here for better visibility */}
+                    {!isAudioEnabled && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '50px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 10
+                      }}>
+                        <button
+                          onClick={() => {
+                            const audioTracks = remoteStream?.getAudioTracks() || [];
+                            audioTracks.forEach(track => track.enabled = true);
+                            setIsAudioEnabled(true);
+                          }}
+                          style={{ 
+                            padding: '10px 15px', 
+                            backgroundColor: '#17a2b8', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '25px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                          }}
+                        >
+                          🔊 Unmute Audio
+                        </button>
+                      </div>
+                    )}
                     <div style={{
                       position: 'absolute',
                       bottom: '10px',
@@ -3416,26 +3480,6 @@ useEffect(() => {
                   >
                     {isAudioEnabled ? '🎤 Mic On' : '🎤 Mic Off'}
                   </button>
-
-                  {!isAudioEnabled && (
-                      <button
-                        onClick={() => {
-                          const audioTracks = remoteStream?.getAudioTracks() || [];
-                          audioTracks.forEach(track => track.enabled = true);
-                          setIsAudioEnabled(true);
-                        }}
-                        style={{                       padding: '10px 15px', 
-                      backgroundColor: isAudioEnabled ? '#28a745' : '#dc3545', 
-                      color: 'white', 
-                      border: 'none', 
-                      borderRadius: '25px',
-                      fontSize: '14px',
-                      cursor: 'pointer',
-                      minWidth: '120px' }}
-                      >
-                        🔊 Unmute Audio
-                      </button>
-                    )}
                   <button 
                     onClick={endVideoCall}
                     style={{ 
