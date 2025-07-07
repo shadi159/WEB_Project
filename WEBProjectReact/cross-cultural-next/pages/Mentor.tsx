@@ -3759,6 +3759,4 @@ MentorComponent.displayName = 'MentorComponent';
 MentorComponentInner.displayName = 'MentorComponentInner';
 MentorComponentCore.displayName = 'MentorComponentCore';
 
-// (Removed unused setNoAudioDetected stub)
-  throw new Error('Function not implemented.');
 export default MentorComponent;
