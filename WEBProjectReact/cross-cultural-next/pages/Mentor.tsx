@@ -510,7 +510,6 @@ const MentorComponentCore = React.memo(() => {
   const getICEConfiguration = () => {
   return {
     iceServers: [
-      /*
       // Google STUN servers (multiple for redundancy)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
@@ -520,7 +519,7 @@ const MentorComponentCore = React.memo(() => {
       
       // Cloudflare STUN servers
       { urls: 'stun:stun.cloudflare.com:3478' },
-      */
+      
       // Free TURN servers for NAT traversal (multiple for redundancy)
       { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
       { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
@@ -732,17 +731,6 @@ const RemoteVideoElement = () => (
       onError={(e) => {
         console.error('❌ Remote video error:', e);
       }}
-    />
-    <audio
-      ref={el => {
-        if (el && remoteStream) {
-          el.srcObject = remoteStream;
-          el.play().catch(() => {});
-        }
-      }}
-      autoPlay
-      controls={false}
-      style={{ display: 'none' }}
     />
     <div style={{
       position: 'absolute',
@@ -2595,13 +2583,13 @@ useEffect(() => {
               const requestsArray = Object.entries(requests).map(([id, data]: [string, any]) => ({ id, ...data }));
               const pending = requestsArray.filter(req => req.status === 'pending');
               
-              setIncomingRequests((prev: any) => {
-                const prevIds = prev.map((r: any) => r.id).sort();
+              setIncomingRequests((prevRequests: any) => {
+                const prevIds = prevRequests.map((r: any) => r.id).sort();
                 const newIds = pending.map(r => r.id).sort();
                 if (JSON.stringify(prevIds) !== JSON.stringify(newIds)) {
                   return pending.filter(req => !processedRequests.has(req.id));
                 }
-                return prev;
+                return prevRequests;
               });
             }
           }, 1000);
@@ -3389,25 +3377,44 @@ useEffect(() => {
                       autoPlay
                       muted={false}
                       playsInline
-                      style={{
-                        width: '100%',
-                        height: '250px',
-                        backgroundColor: '#000',
+                      style={{ 
+                        width: '100%', 
+                        height: '250px', 
+                        backgroundColor: '#000', 
                         borderRadius: '8px',
                         objectFit: 'cover'
                       }}
                     />
-                    <audio
-                      ref={el => {
-                        if (el && remoteStream) {
-                          el.srcObject = remoteStream;
-                          el.play().catch(() => {});
-                        }
-                      }}
-                      autoPlay
-                      controls={false}
-                      style={{ display: 'none' }}
-                    />
+                    {/* Add unmute button here for better visibility */}
+                    {!isAudioEnabled && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '50px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 10
+                      }}>
+                        <button
+                          onClick={() => {
+                            const audioTracks = remoteStream?.getAudioTracks() || [];
+                            audioTracks.forEach(track => track.enabled = true);
+                            setIsAudioEnabled(true);
+                          }}
+                          style={{ 
+                            padding: '10px 15px', 
+                            backgroundColor: '#17a2b8', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '25px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                          }}
+                        >
+                          🔊 Unmute Audio
+                        </button>
+                      </div>
+                    )}
                     <div style={{
                       position: 'absolute',
                       bottom: '10px',
