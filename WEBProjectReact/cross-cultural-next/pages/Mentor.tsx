@@ -3571,7 +3571,7 @@ useEffect(() => {
                   placeholder="Type your message..." 
                   value={currentMessage}
                   onChange={(e) => setCurrentMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
                   style={{ 
                     flex: 1, 
                     padding: '12px', 

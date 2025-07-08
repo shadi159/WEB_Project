@@ -464,7 +464,7 @@ async function callChatAPI(prompt: string, timeout = 30000): Promise<string> {
   try {
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL ||
-      (process.env.NODE_ENV === "production" ? "https://your-domain.com" : `http://localhost:${getCurrentPort()}`)
+      (process.env.NODE_ENV === "production" ? "https://web-project-xi-teal.vercel.app/" : `http://localhost:${getCurrentPort()}`)
 
     const chatUrl = `${baseUrl}/api/chat`
     console.log("Making request to:", chatUrl)
