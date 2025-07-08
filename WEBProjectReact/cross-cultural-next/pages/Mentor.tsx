@@ -1959,6 +1959,7 @@ const startVideoCallCompatible = async () => {
     const interval = setInterval(checkAudio, 2000);
     
     return () => {
+      remoteVideoRef.current?.removeEventListener('play', resumeContextIfSuspended);
       clearInterval(interval);
       audioContext.close();
     };
