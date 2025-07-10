@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Navbar from '@/app/components/Navbar';
@@ -498,6 +497,7 @@ const MentorComponentCore = React.memo(() => {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isRemotePlaybackBlocked, setIsRemotePlaybackBlocked] = useState(false);
   const [callStatus, setCallStatus] = useState<string>('');
   const [incomingVideoCall, setIncomingVideoCall] = useState<any>(null);
 
@@ -507,6 +507,21 @@ const MentorComponentCore = React.memo(() => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<any>(null);
+   const tryPlayRemoteVideo = useCallback(async () => {
+    if (remoteVideoRef.current) {
+      try {
+        await remoteVideoRef.current.play();
+        setIsRemotePlaybackBlocked(false);
+      } catch (error: any) {
+        if (error.name === 'NotAllowedError') {
+          console.warn('Remote video autoplay blocked:', error);
+          setIsRemotePlaybackBlocked(true);
+        } else {
+          console.warn('Remote video play failed:', error);
+        }
+      }
+    }
+  }, []);
   const signalingCleanupRef = useRef<(() => void) | null>(null);
   const getICEConfiguration = () => {
   return {
@@ -680,23 +695,7 @@ const setupConnectionMonitoring = (peer: any, callType: string) => {
     setTimeout(() => {
       if (remoteVideoRef.current && remoteStream) {
         remoteVideoRef.current.srcObject = remoteStream;
-        
-        // Enhanced play with retry logic
-        const playVideo = async () => {
-          try {
-            await remoteVideoRef.current!.play();
-            console.log('✅ Remote video playing successfully');
-          } catch (error: any) {
-            if (error.name === 'AbortError') {
-              console.log('🔄 Remote video play aborted, retrying...');
-              setTimeout(playVideo, 100);
-            } else {
-              console.warn('Remote video play failed:', error);
-            }
-          }
-        };
-        
-        playVideo();
+        tryPlayRemoteVideo();
       }
     }, 100);
   }
@@ -720,11 +719,7 @@ const RemoteVideoElement = () => (
       onLoadedMetadata={() => {
         console.log('✅ Remote video metadata loaded');
         setCallStatus('Connected'); // Ensure status is updated
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.play().catch(e => {
-          console.error('Audio play failed:', e);
-          });
-        }
+        tryPlayRemoteVideo();
       }}
       onPlay={() => {
         console.log('✅ Remote video started playing');
@@ -1232,7 +1227,7 @@ const startVideoCallCompatible = async () => {
       setRemoteStream(remoteStream);
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(e => console.warn('Play remote video failed:', e));
+        tryPlayRemoteVideo();
       }
 
       // Audio debug
@@ -1254,10 +1249,8 @@ const startVideoCallCompatible = async () => {
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated for mentor');
         
-        // Force play the remote video
-        remoteVideoRef.current.play().catch(error => {
-          console.warn('Remote video play failed:', error);
-        });
+        tryPlayRemoteVideo();
+
       }
       setCallStatus('Connected - Video active');
     });
@@ -1556,7 +1549,7 @@ const startVideoCallCompatible = async () => {
       setRemoteStream(remoteStream);
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(e => console.warn('Play remote video failed:', e));
+        tryPlayRemoteVideo();
       }
 
       // Audio debug
@@ -1582,17 +1575,8 @@ const startVideoCallCompatible = async () => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
         console.log('✅ Remote video element updated for user');
-        
-        // ENHANCED: Better video play handling
-        setTimeout(async () => {
-          try {
-            if (remoteVideoRef.current) {
-              await remoteVideoRef.current.play();
-              console.log('✅ Remote video playing');
-            }
-          } catch (error) {
-            console.warn('Remote video play failed:', error);
-          }
+        setTimeout(() => {
+        tryPlayRemoteVideo();
         }, 200);
       }
       setCallStatus('Connected');
@@ -1947,6 +1931,19 @@ const startVideoCallCompatible = async () => {
     const analyser = audioContext.createAnalyser();
     source.connect(analyser);
     
+    const resumeContextIfSuspended = async () => {
+      if (audioContext.state === 'suspended') {
+        try {
+          await audioContext.resume();
+          console.log('🔊 AudioContext resumed');
+        } catch (err) {
+          console.warn('AudioContext resume failed:', err);
+        }
+      }
+    };
+
+    remoteVideoRef.current?.addEventListener('play', resumeContextIfSuspended);
+
     const checkAudio = () => {
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(dataArray);
@@ -1962,6 +1959,7 @@ const startVideoCallCompatible = async () => {
     const interval = setInterval(checkAudio, 2000);
     
     return () => {
+      remoteVideoRef.current?.removeEventListener('play', resumeContextIfSuspended);
       clearInterval(interval);
       audioContext.close();
     };
@@ -3347,7 +3345,7 @@ useEffect(() => {
                     <video 
                       ref={localVideoRef}
                       autoPlay 
-                      muted={true} // Local video should be muted
+                      muted={false} // Local video should be muted
                       playsInline
                       style={{ 
                         width: '100%', 
@@ -3413,6 +3411,31 @@ useEffect(() => {
                           }}
                         >
                           🔊 Unmute Audio
+                        </button>
+                      </div>
+                    )}
+                     {isRemotePlaybackBlocked && (
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '90px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 10
+                      }}>
+                        <button
+                          onClick={tryPlayRemoteVideo}
+                          style={{
+                            padding: '10px 15px',
+                            backgroundColor: '#ffc107',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '25px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                          }}
+                        >
+                          ▶ Start Video
                         </button>
                       </div>
                     )}
