@@ -19,8 +19,8 @@ import Link from "next/link"
 
 const AboutUs = () => {
   const stats = [
-    { number: "50+", label: "Countries Supported", icon: Globe },
-    { number: "1000+", label: "Active Students", icon: Users },
+    { number: "24+", label: "Countries Supported", icon: Globe },
+    { number: "5000+", label: "Active Students", icon: Users },
     { number: "100+", label: "Expert Mentors", icon: UserCheck },
     { number: "24/7", label: "AI Support", icon: Brain },
   ]

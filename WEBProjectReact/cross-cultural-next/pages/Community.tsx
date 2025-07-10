@@ -561,10 +561,6 @@ export default function Community() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <Button variant="ghost" size="sm" type="button" style={{ color: "var(--color-text)" }}>
-                          <ImageIcon className="w-4 h-4 mr-2" />
-                          Photo
-                        </Button>
-                        <Button variant="ghost" size="sm" type="button" style={{ color: "var(--color-text)" }}>
                           <Smile className="w-4 h-4 mr-2" />
                           Emoji
                         </Button>

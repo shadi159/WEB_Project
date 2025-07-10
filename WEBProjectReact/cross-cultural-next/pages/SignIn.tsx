@@ -124,11 +124,11 @@ const SignIn = () => {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-6 pt-8">
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">50+</div>
+              <div className="text-3xl font-bold text-blue-600">24+</div>
               <div className="text-sm text-gray-600">Countries</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-teal-600">1000+</div>
+              <div className="text-3xl font-bold text-teal-600">5000+</div>
               <div className="text-sm text-gray-600">Students</div>
             </div>
             <div className="text-center">

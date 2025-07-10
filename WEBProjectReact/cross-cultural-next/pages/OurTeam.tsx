@@ -37,7 +37,7 @@ const teamMembers = [
   {
     name: "Michel",
     image: "/images/michel.png",
-    location: "Jerusalem, Israel",
+    location: "Taran, Israel",
     phone: "+972-52-751-7282",
     email: "michel@gmail.com",
     about: "Software engineer with a passion for performance and security.",
@@ -46,11 +46,11 @@ const teamMembers = [
   {
     name: "Sherbil",
     image: "/images/sherbil.png",
-    location: "Tel Aviv, Israel",
+    location: "Almghar, Israel",
     phone: "+972-50-249-5489",
     email: "sherbil@gmail.com",
-    about: "DevOps and deployment expert ensuring our app runs smooth in production.",
-    role: "DevOps Engineer",
+    about: "Frontend wizard and design enthusiast with a keen eye for clean UI/UX.",
+    role: "Frontend Developer",
   },
   {
     name: "Loai",
@@ -58,8 +58,8 @@ const teamMembers = [
     location: "Solam, Israel",
     phone: "+972-52-256-4014",
     email: "loai@gmail.com",
-    about: "Project coordinator and testing specialist with strong communication skills.",
-    role: "Project Coordinator",
+    about: "Backend developer who loves working with databases and building robust APIs.",
+    role: "Backend Developer",
   },
 ]
 

@@ -5,7 +5,7 @@ import { Button } from "../app/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../app/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/components/ui/tabs";
 import Logo from "../app/components/Logo";
-import { BookOpen, MapPin, User, ArrowRight, CheckCircle } from "lucide-react";
+import { BookOpen, MapPin, User, ArrowRight, CheckCircle, Sun, Moon } from "lucide-react";
 
 const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -14,6 +14,18 @@ const Index = () => {
     lastName: "",
     email: "",
   });
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const toggleDarkMode = () => {
+    const newDarkMode = !isDarkMode;
+    setIsDarkMode(newDarkMode);
+    if (newDarkMode) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  };
   useEffect(() => {
       // Check localStorage and sessionStorage when component mounts
       const storedUser = localStorage.getItem("user");
@@ -45,6 +57,19 @@ const Index = () => {
             <Logo />
           </div>
             <div className="flex items-center gap-4 mr-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleDarkMode}
+                className="ml-2 text-secondary"
+              >
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
+                <span className="sr-only">Toggle dark mode</span>
+              </Button>
               <Link href="/SignIn">
                 <Button variant="outline">Sign In</Button>
               </Link>
