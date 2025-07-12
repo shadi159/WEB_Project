@@ -143,8 +143,8 @@ const Dashboard = () => {
 
           // Fetch additional user data from API
           await fetchUserProfile()
-          await fetchUserPosts()
-          await generateDashboardStats(userData)
+          const fetchedPosts = await fetchUserPosts()
+          await generateDashboardStats(userData, fetchedPosts)
         } else {
           setIsLoggedIn(false)
           // Generate guest stats
@@ -181,7 +181,7 @@ const Dashboard = () => {
     }
   }
 
-  const fetchUserPosts = async () => {
+  const fetchUserPosts = async (): Promise<Post[]> => {
     try {
       const response = await fetch("/api/posts")
       if (response.ok) {
@@ -196,13 +196,16 @@ const Dashboard = () => {
           createdAt: p.createdAt,
         }))
         setPosts(allPosts)
+        return allPosts
       }
     } catch (error) {
       console.error("Error fetching posts:", error)
+      return []
     }
+    return []
   }
 
-  const generateDashboardStats = async (userData: UserProfile) => {
+  const generateDashboardStats = async (userData: UserProfile, fetchedPosts?: Post[]) => {
     try {
       // Load journey data
       const storedJourney = localStorage.getItem("journeySteps")
@@ -255,7 +258,10 @@ const Dashboard = () => {
       }
 
       // Get user's posts
-      const userPosts = posts.filter((post) => post.author.name === `${userData.firstName} ${userData.lastName}`)
+      const postsData = fetchedPosts ?? posts
+      const userPosts = postsData.filter(
+        (post) => post.author.name === `${userData.firstName} ${userData.lastName}`,
+      )
 
       // Generate recent activity based on real data
       const recentActivity = []
