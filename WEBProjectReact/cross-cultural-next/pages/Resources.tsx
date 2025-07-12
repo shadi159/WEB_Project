@@ -656,14 +656,14 @@ const Resources = () => {
                     <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
                       Students Helped
                     </span>
-                    <span className="font-bold text-green-600">1,000+</span>
+                    <span className="font-bold text-green-600">5,000+</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm" style={{ color: "var(--color-text-light)" }}>
                       Countries Covered
                     </span>
                     <span className="font-bold" style={{ color: "var(--color-primary)" }}>
-                      50+
+                      24+
                     </span>
                   </div>
                   <div className="flex justify-between items-center">

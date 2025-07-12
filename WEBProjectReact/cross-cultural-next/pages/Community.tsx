@@ -363,23 +363,7 @@ export default function Community() {
               }}
             >
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold" style={{ color: "var(--color-accent)" }}>
-                  1.2k
-                </div>
-                <div className="text-sm" style={{ color: "var(--color-text-light)" }}>
-                  Members
-                </div>
-              </CardContent>
-            </Card>
-            <Card
-              className="border shadow-sm backdrop-blur-sm transition-colors duration-300"
-              style={{
-                backgroundColor: "var(--color-background)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">50+</div>
+                <div className="text-2xl font-bold text-green-600">24+</div>
                 <div className="text-sm" style={{ color: "var(--color-text-light)" }}>
                   Countries
                 </div>
@@ -429,89 +413,6 @@ export default function Community() {
                 </CardHeader>
               </Card>
             )}
-
-            {/* Quick Actions */}
-            <Card
-              className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
-              style={{
-                backgroundColor: "var(--color-background)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Sparkles className="w-5 h-5" style={{ color: "var(--color-accent)" }} />
-                  <span style={{ color: "var(--color-text)" }}>Quick Actions</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start bg-transparent transition-colors duration-300"
-                  style={{
-                    borderColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  <Globe className="w-4 h-4 mr-2" />
-                  Explore Countries
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start bg-transparent transition-colors duration-300"
-                  style={{
-                    borderColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Find Study Buddies
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start bg-transparent transition-colors duration-300"
-                  style={{
-                    borderColor: "var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Join Discussions
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Trending Topics */}
-            <Card
-              className="border shadow-lg backdrop-blur-sm transition-colors duration-300"
-              style={{
-                backgroundColor: "var(--color-background)",
-                borderColor: "var(--color-border)",
-              }}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                  <span style={{ color: "var(--color-text)" }}>Trending Topics</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {["#StudyAbroad", "#VisaHelp", "#CultureShock", "#StudentLife", "#LanguageExchange"].map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="outline"
-                    className="mr-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity duration-300"
-                    style={{
-                      backgroundColor: "transparent",
-                      color: "var(--color-text)",
-                      borderColor: "var(--color-border)",
-                    }}
-                  >
-                    {tag}
-                  </Badge>
-                ))}
-              </CardContent>
-            </Card>
           </div>
 
           {/* Main Content */}
